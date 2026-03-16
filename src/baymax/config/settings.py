@@ -56,6 +56,40 @@ class BaymaxSettings(BaseSettings):
     # Consolidation
     enable_memory_consolidation: bool = True
 
+    # --- Iteration 005: Dialogue backend settings ---
+
+    # Backend selector: "rule_based" | "ollama" | "transformers"
+    dialogue_backend: str = "rule_based"
+
+    # Enable structured debug fields in responses
+    enable_dialogue_debug: bool = False
+
+    # Safe-health mode: refuse to make diagnostic claims
+    enable_safe_health_mode: bool = True
+
+    # Max recent conversation turns to include in grounded prompt
+    dialogue_max_history_turns: int = 8
+
+    # Max memories fed into the dialogue prompt
+    dialogue_top_k_memories: int = 5
+
+    # Generation temperature (applies to Ollama and Transformers backends)
+    dialogue_temperature: float = 0.4
+
+    # Max new tokens for the LLM response
+    dialogue_max_new_tokens: int = 220
+
+    # Ollama backend settings
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = ""  # e.g. "qwen2.5:1.5b"
+
+    # HuggingFace Transformers backend settings
+    hf_chat_model: str = "Qwen/Qwen2.5-1.5B-Instruct"
+    hf_dtype: str = "auto"  # "auto" | "float16" | "bfloat16" | "float32"
+
+    # Enable rule-based fallback when the selected backend fails
+    enable_rule_based_fallback: bool = True
+
 
 def get_settings() -> BaymaxSettings:
     """Return a settings instance."""

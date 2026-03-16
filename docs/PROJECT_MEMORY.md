@@ -3,11 +3,11 @@
 This file provides continuity context for AI agents working on the Bay-Max project. Update this file after completing significant work.
 
 ## Last Updated
-2026-03-16 (Iteration 004)
+2026-03-16 (Iteration 005)
 
 ## Current State
-- **Iteration**: 004 (Memory Recall & Consolidation)
-- **Branch**: feature/iteration-004-memory-recall
+- **Iteration**: 005 (Grounded Local Dialogue)
+- **Branch**: feature/iteration-005-grounded-local-dialogue
 - **Status**: Complete
 
 ## What Exists
@@ -33,14 +33,14 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - **Memory correction**: confirm, reject, or update semantic facts via `CorrectionAction`
 - SQLite tables: users, face_enrollments, face_embeddings, sessions, episodic_memories, semantic_facts, recognition_observations, body_state_observations, chat_turns, session_summaries
 - Pydantic v2 schemas: full set including ChatTurn, SessionSummary, ConsolidationResult, MemoryHit, MemoryCorrectionRequest/Result, MemorySummaryResponse
-- FastAPI backend with 16 endpoints (version 0.3.0)
-- Gradio demo with 7 tabs (Setup, Enroll Face, Frame Analysis, Chat, Interact, Consolidate, Memory)
-- 158 tests all passing, ruff lint clean
+- FastAPI backend with 17 endpoints (version 0.4.0)
+- Gradio demo with 8 tabs (Setup, Enroll Face, Frame Analysis, Chat, Interact, Consolidate, Memory, Backends)
+- 194 tests all passing, ruff lint clean
 
 ## What Is Stubbed
 - Frame source / webcam capture (returns empty)
 - Emotion estimator (returns hardcoded values)
-- Dialogue is rule-based (no LLM)
+- Dialogue LLM backends not verified with real models in this environment
 
 ## Key Decisions Made
 - Modular monolith over microservices (ADR-0001)
@@ -58,6 +58,11 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - Majority-vote temporal smoothing over configurable window (Iteration 004)
 - Simple heuristic semantic fact extraction (preference signals in user turns) (Iteration 004)
 - Separate episodic from semantic with confidence and status tracking (Iteration 004)
+- Plan-then-verbalize dialogue pattern: planner picks strategy, LLM verbalizes within constraints (Iteration 005)
+- Ollama as primary local-LLM backend (easiest local testing, no extra Python deps) (Iteration 005)
+- TransformersDialogueProvider as secondary backend, lazy model loading (Iteration 005)
+- Safety gating on both user input and LLM output; rule-based fallback on backend failure (Iteration 005)
+- All backends configurable via env vars; rule_based is default (Iteration 005)
 
 ## Model Stack
 - **Face Detection**: MTCNN (facenet-pytorch) - multi-task cascaded CNN
@@ -68,7 +73,8 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - **Engagement**: Rule-based weighted scoring (see docs/ENGAGEMENT_HEURISTICS.md)
 - **Text Embedding**: sentence-transformers/all-MiniLM-L6-v2 (384-d)
 - **Vector Search**: LanceDB (local, serverless)
-- **Dialogue**: Rule-based templates (no external API)
+- **Dialogue**: Configurable — rule_based (default), Ollama (local server), or Transformers (local model)
+- **Dialogue Safety**: Input check + output check for diagnosis-style requests
 
 ## Known Issues
 - SQLite store uses synchronous sqlite3 despite being wrapped in async
@@ -77,14 +83,16 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - MediaPipe Pose uses legacy API (not the newer Tasks API)
 - LanceDB vector store requires separate install (pip install baymax[vector])
 - Semantic fact extraction uses simple heuristics, not LLM-based
+- Local LLM backends not verified with real models on this machine (environment lacks Ollama/models)
 
 ## For Next Agent
 1. Read this file and `docs/project_state.json` first
 2. Check `docs/BACKLOG.md` for pending work
-3. The highest-impact next steps are: replace dialogue with Claude LLM, add emotion estimation, LLM-based fact extraction
-4. All modules use interfaces; implement concrete classes without changing the interface contracts
-5. The perception module has real implementations alongside stubs - use FacenetDetector and CosineRecognizer for face, MediaPipePoseEstimator for pose
-6. Engagement is real (not stubbed) with temporal smoothing - uses transparent heuristics documented in `docs/ENGAGEMENT_HEURISTICS.md`
-7. Memory pipeline is fully functional: turns → consolidation → episodic/semantic → vector search → memory-aware responses
-8. Test with `scripts/local_test.py` for quick validation of changes
-9. Install vector dependencies with `pip install -e ".[vector]"` for LanceDB support
+3. Dialogue backend is configurable via `BAYMAX_DIALOGUE_BACKEND` (rule_based/ollama/transformers)
+4. The highest-impact next steps are: run a real local-LLM manual smoke test, migrate to aiosqlite, add emotion estimation, LLM-based fact extraction
+5. All dialogue modules are in `src/baymax/dialogue/` with clean interfaces
+6. The `scripts/dialogue_smoke.py` script covers all 5 manual test cases
+7. All modules use interfaces; implement concrete classes without changing the interface contracts
+8. Memory pipeline is fully functional: turns → consolidation → episodic/semantic → vector search → memory-aware responses
+9. Install dialogue dependencies with `pip install -e ".[dialogue]"` for Transformers support
+10. The default backend is always `rule_based`; LLM backends require explicit configuration

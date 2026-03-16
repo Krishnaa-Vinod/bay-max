@@ -9,7 +9,7 @@ A memory-first empathetic companion agent that recognizes enrolled users from vi
 python -m venv .venv
 source .venv/bin/activate
 
-# Install in development mode
+# Install in development mode (core + dev tools)
 pip install -e ".[dev]"
 
 # Set up environment
@@ -26,6 +26,30 @@ make run-api
 make run-demo
 ```
 
+## Install Options
+
+| Command | What it installs | Use when |
+|---------|-----------------|----------|
+| `pip install -e ".[dev]"` | Core + dev tools | Running tests, no vision/dialogue |
+| `pip install -e ".[dev,vector]"` | + LanceDB + sentence-transformers | Memory semantic search |
+| `pip install -e ".[dev,dialogue]"` | + Transformers + PyTorch | Local HuggingFace LLM dialogue |
+| `pip install -e ".[all]"` | Everything | Full local stack |
+
+For **Ollama-based dialogue** (easiest local LLM mode): no extra Python package required.
+Install Ollama separately: https://ollama.ai, then `ollama pull qwen2.5:1.5b`.
+
+## Dialogue Backends (Iteration 005)
+
+Bay-Max supports three dialogue backends, selectable via `BAYMAX_DIALOGUE_BACKEND`:
+
+| Backend | Env value | Requirement |
+|---------|-----------|-------------|
+| Rule-based (default) | `rule_based` | None |
+| Ollama | `ollama` | Ollama server running + model pulled |
+| HuggingFace Transformers | `transformers` | `pip install -e ".[dialogue]"` |
+
+See `docs/LOCAL_TESTING.md` for full local-LLM testing instructions.
+
 ## Project Structure
 
 ```
@@ -38,7 +62,7 @@ src/baymax/          # Core library
   state/             # Interaction state management
   memory/            # Memory storage, retrieval, consolidation
   planner/           # Response strategy planning
-  dialogue/          # Response generation
+  dialogue/          # Response generation (rule-based + LLM backends)
   orchestrator/      # End-to-end flow coordination
 apps/api/            # FastAPI application
 apps/demo/           # Gradio demo application
@@ -52,3 +76,5 @@ reports/             # Iteration reports
 
 See [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md) for AI developer instructions.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system architecture.
+See [docs/DIALOGUE_ARCHITECTURE.md](docs/DIALOGUE_ARCHITECTURE.md) for dialogue backend design.
+See [docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md) for local testing instructions.

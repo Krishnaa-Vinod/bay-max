@@ -7,76 +7,120 @@ Bay-Max follows a **modular monolith** architecture. All modules live in a singl
 - Python 3.11+
 - FastAPI (API layer)
 - Pydantic v2 (data validation)
-- SQLite via `sqlite3` (metadata storage)
+- SQLite via `sqlite3` (metadata storage, synchronous)
+- LanceDB (optional vector store for semantic search)
 - Gradio (demo UI)
 - PyTorch + torchvision (face recognition models)
-- MTCNN (face detection)
+- MTCNN (face detection), InceptionResnetV1 (face embeddings)
 - MediaPipe (pose estimation)
-- OpenCV (image processing)
-- NumPy (array operations)
-- Stub interfaces for: FAISS/LanceDB (future iterations)
+- sentence-transformers (text memory embeddings)
+- Ollama or HuggingFace Transformers (local LLM dialogue, optional)
 
 ## Module Map
 
 ```
 src/baymax/
-├── config/          Settings from environment variables
+├── config/          Settings from environment variables (BaymaxSettings)
 ├── core/            Enums and shared types
 ├── schemas/         Pydantic data models
 │   ├── user.py      UserProfile, FaceEnrollment
 │   ├── session.py   Session
-│   ├── perception.py PerceptionEvent, Observation
-│   ├── memory.py    EpisodicMemory, SemanticFact, InterventionMemory, etc.
-│   └── response.py  SupportiveResponse
+│   ├── perception.py PerceptionEvent, Observation, PoseResult, EngagementResult
+│   ├── memory.py    EpisodicMemory, SemanticFact, ChatTurn, ConsolidationResult, etc.
+│   └── response.py  SupportiveResponse, DialogueBackendInfo, GroundedPromptContext,
+│                    SafetyDecision, GroundedResponse, DialogueDebugTrace
 ├── capture/         Frame source interfaces (stub)
 ├── perception/      Computer vision and engagement estimation
-│   ├── interfaces.py    FaceDetector, FaceRecognizer, PoseEstimator ABCs
-│   ├── mtcnn_face_detector.py  MTCNN face detection
-│   ├── arcface_recognizer.py   ArcFace face recognition
-│   ├── pose_interface.py       Pose estimation interface
-│   ├── mediapipe_pose.py       MediaPipe pose implementation
-│   ├── heuristics.py           Body-state and engagement heuristics
-│   └── annotations.py          Debug visualization utilities
-├── state/           Interaction state management
-├── memory/          Memory storage, retrieval, salience, consolidation
+│   ├── interfaces.py    FaceDetector, FaceRecognizer, PoseEstimator ABCs + stubs
+│   ├── facenet_adapter.py  MTCNN/InceptionResnetV1 face detection+embeddings
+│   ├── pose_interface.py   Pose estimation interface
+│   ├── mediapipe_pose.py   MediaPipe Pose implementation
+│   ├── heuristics.py       Body-state and engagement heuristics + MotionTracker
+│   ├── tracker.py          IoU+cosine face tracker
+│   └── annotations.py      Debug visualization utilities
+├── state/           Interaction state management (InteractionState, StateManager)
+├── memory/          Memory storage, retrieval, salience, consolidation, embeddings
 │   ├── interfaces.py   MetadataStore ABC
-│   ├── store_sqlite.py SQLite implementation
-│   ├── vector_store.py Vector store adapter (stub)
+│   ├── store_sqlite.py SQLite implementation (sync despite async signatures)
+│   ├── vector_store.py LanceDBVectorStore + StubVectorStore adapters
+│   ├── embedding.py    SentenceTransformerEmbedder + StubTextEmbedder
 │   ├── salience.py     Salience scoring
-│   ├── retrieve.py     Memory retrieval
-│   └── consolidate.py  Memory consolidation (stub)
-├── planner/         Response strategy selection
-├── dialogue/        Response generation (rule-based)
-└── orchestrator/    End-to-end flow coordination
+│   ├── retrieve.py     Memory retrieval wrapper
+│   └── consolidate.py  Session consolidation pipeline
+├── planner/         Response strategy selection (SupportivePlanner)
+├── dialogue/        Response generation
+│   ├── interfaces.py           DialogueProvider ABC
+│   ├── rule_based.py           RuleBasedDialogue (template-based fallback)
+│   ├── ollama_provider.py      OllamaDialogueProvider (httpx to local Ollama)
+│   ├── transformers_provider.py TransformersDialogueProvider (local HF model)
+│   ├── prompt_builder.py       GroundedPromptContext builder (plan-then-verbalize)
+│   ├── safety.py               Safety gating (check_safety, check_output_safety)
+│   └── factory.py              create_dialogue_provider() factory with fallback
+└── orchestrator/    End-to-end flow coordination (Orchestrator)
 ```
 
 ## Data Flow
 
-1. **Capture**: Frame source provides video frames (stub in iteration-001)
+1. **Capture**: Frame source provides video frames (stub — webcam not yet implemented)
 2. **Perception**: Face detection → recognition → pose estimation → engagement scoring
 3. **State**: Update interaction state for the session
-4. **Memory**: Store observations, retrieve relevant memories
+4. **Memory**: Store observations, retrieve relevant memories (SQL + vector search)
 5. **Planner**: Choose response strategy based on state and memories
-6. **Dialogue**: Generate supportive response from strategy
-7. **Orchestrator**: Coordinates steps 1-6
+6. **Dialogue**:
+   - Safety check: detect diagnosis-style or unsafe medical requests
+   - Build GroundedPromptContext (state, memories, recent turns, safety rules)
+   - Route to configured backend (rule_based / ollama / transformers)
+   - Fallback to rule_based if backend fails
+7. **Orchestrator**: Coordinates steps 1–6
 
-## API Endpoints
+## Dialogue Architecture (Iteration 005)
+
+Uses a **plan-then-verbalize** pattern:
+
+```
+SupportivePlanner → ResponseStrategy
+                          ↓
+              GroundedPromptBuilder
+          (state + memories + turns + safety)
+                          ↓
+              DialogueProvider.generate()
+          (rule_based | ollama | transformers)
+                          ↓
+              SafetyCheck (output validation)
+                          ↓
+              SupportiveResponse
+          (text + backend + model_name + memory_refs
+           + fallback_used + safety_flags)
+```
+
+See `docs/DIALOGUE_ARCHITECTURE.md` for full details.
+
+## API Endpoints (v0.4.0)
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | /healthz | Health check |
 | POST | /v1/users | Create user |
+| GET | /v1/users | List users |
 | GET | /v1/users/{id} | Get user |
-| POST | /v1/users/{id}/enroll/face | Face enrollment placeholder |
+| POST | /v1/users/{id}/enroll/face | Face enrollment |
 | POST | /v1/sessions | Create session |
 | GET | /v1/sessions/{id}/state | Get session state |
+| POST | /v1/sessions/{id}/frames | Submit frame for analysis |
 | POST | /v1/memory/query | Query memories |
-| POST | /v1/respond | Generate response |
+| POST | /v1/respond | Generate grounded supportive response |
+| POST | /v1/sessions/{id}/turns | Add chat turn |
+| GET | /v1/sessions/{id}/turns | Get chat turns |
+| POST | /v1/sessions/{id}/consolidate | Consolidate session into memories |
+| GET | /v1/memory/summary/{user_id} | Memory summary |
+| POST | /v1/memory/search | Semantic memory search |
+| POST | /v1/memory/correct | Correct a semantic fact |
+| GET | /v1/dialogue/backends | Get dialogue backend configuration |
 
 ## Storage
 
-- **SQLite**: Users, sessions, episodic memories, semantic facts (metadata store)
-- **Vector Store**: Embedding-based similarity search (stub adapter in iteration-001)
+- **SQLite**: Users, sessions, episodic memories, semantic facts, chat turns, session summaries
+- **Vector Store**: LanceDB for embedding-based similarity search (StubVectorStore fallback)
 - **File System**: Model weights, data, caches stored outside repo via env vars
 
 ## Key Design Decisions
@@ -85,3 +129,9 @@ See `docs/adr/` for Architecture Decision Records:
 - ADR-0001: Modular monolith architecture
 - ADR-0002: Storage and data paths
 - ADR-0003: Vision-first MVP
+
+Additional iteration decisions:
+- Iteration 002: cosine similarity face matching, IoU+cosine tracker
+- Iteration 003: MediaPipe Pose, heuristic engagement scoring
+- Iteration 004: sentence-transformers embeddings, LanceDB, majority-vote smoothing
+- Iteration 005: plan-then-verbalize dialogue, Ollama + Transformers backends, safety gating
