@@ -1,7 +1,7 @@
 {
   "iteration": "004",
   "branch_name": "feature/iteration-004-memory-recall",
-  "latest_commit_sha": "PENDING",
+  "latest_commit_sha": "ce7897e",
   "status": "completed",
   "summary": "Implemented full memory recall and consolidation pipeline: text embeddings via sentence-transformers, LanceDB vector retrieval, typed conversation turns, session consolidation into episodic/semantic memories, temporal smoothing, memory-aware responses, memory inspection and correction. 158 tests pass, lint clean.",
   "tasks_completed": [
