@@ -25,7 +25,7 @@ class UserProfile(BaseModel):
 
 
 class FaceEnrollment(BaseModel):
-    """Placeholder model for face enrollment metadata."""
+    """Face enrollment metadata."""
 
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
@@ -36,3 +36,8 @@ class FaceEnrollment(BaseModel):
     )
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     status: str = Field(default="pending", description="pending | enrolled | revoked")
+    embedding_model: str = Field(default="", description="Name of the model used for embedding.")
+    face_count_detected: int = Field(
+        default=0, description="Number of faces detected in the image."
+    )
+    message: str = Field(default="", description="Human-readable status message.")

@@ -13,6 +13,7 @@ from baymax.schemas.memory import (
     MemoryQueryResult,
     SemanticFact,
 )
+from baymax.schemas.perception import FaceEmbeddingRecord, RecognitionObservation
 from baymax.schemas.session import Session
 from baymax.schemas.user import FaceEnrollment, UserProfile
 
@@ -33,6 +34,19 @@ CREATE TABLE IF NOT EXISTS face_enrollments (
     encoding_ref TEXT DEFAULT '',
     confidence REAL DEFAULT 0.0,
     status TEXT DEFAULT 'pending',
+    embedding_model TEXT DEFAULT '',
+    face_count_detected INTEGER DEFAULT 0,
+    message TEXT DEFAULT '',
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS face_embeddings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    embedding TEXT NOT NULL,
+    backend TEXT DEFAULT 'facenet_pytorch',
+    model_name TEXT DEFAULT 'InceptionResnetV1-vggface2',
+    enrolled_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -69,6 +83,17 @@ CREATE TABLE IF NOT EXISTS semantic_facts (
     evidence_refs TEXT DEFAULT '[]',
     status TEXT DEFAULT 'active',
     memory_type TEXT DEFAULT 'semantic'
+);
+
+CREATE TABLE IF NOT EXISTS recognition_observations (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT,
+    timestamp TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    confidence REAL DEFAULT 1.0,
+    evidence_refs TEXT DEFAULT '[]'
 );
 """
 
@@ -127,12 +152,30 @@ class SQLiteMetadataStore(MetadataStore):
             is_active=bool(row["is_active"]),
         )
 
+    async def list_users(self) -> list[UserProfile]:
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT * FROM users WHERE is_active = 1 ORDER BY display_name"
+        ).fetchall()
+        return [
+            UserProfile(
+                id=UUID(row["id"]),
+                display_name=row["display_name"],
+                notes=row["notes"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+                is_active=bool(row["is_active"]),
+            )
+            for row in rows
+        ]
+
     async def create_face_enrollment(self, enrollment: FaceEnrollment) -> FaceEnrollment:
         conn = self._ensure_conn()
         conn.execute(
             "INSERT INTO face_enrollments"
-            " (id, user_id, enrolled_at, encoding_ref, confidence, status)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " (id, user_id, enrolled_at, encoding_ref, confidence, status,"
+            "  embedding_model, face_count_detected, message)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 str(enrollment.id),
                 str(enrollment.user_id),
@@ -140,10 +183,63 @@ class SQLiteMetadataStore(MetadataStore):
                 enrollment.encoding_ref,
                 enrollment.confidence,
                 enrollment.status,
+                enrollment.embedding_model,
+                enrollment.face_count_detected,
+                enrollment.message,
             ),
         )
         conn.commit()
         return enrollment
+
+    async def store_face_embedding(self, record: FaceEmbeddingRecord) -> FaceEmbeddingRecord:
+        conn = self._ensure_conn()
+        conn.execute(
+            "INSERT INTO face_embeddings"
+            " (id, user_id, embedding, backend, model_name, enrolled_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                str(record.id),
+                str(record.user_id),
+                json.dumps(record.embedding),
+                record.backend,
+                record.model_name,
+                record.enrolled_at.isoformat(),
+            ),
+        )
+        conn.commit()
+        return record
+
+    async def get_all_face_embeddings(self) -> list[FaceEmbeddingRecord]:
+        conn = self._ensure_conn()
+        rows = conn.execute("SELECT * FROM face_embeddings").fetchall()
+        return [
+            FaceEmbeddingRecord(
+                id=UUID(row["id"]),
+                user_id=UUID(row["user_id"]),
+                embedding=json.loads(row["embedding"]),
+                backend=row["backend"],
+                model_name=row["model_name"],
+                enrolled_at=datetime.fromisoformat(row["enrolled_at"]),
+            )
+            for row in rows
+        ]
+
+    async def get_face_embeddings_for_user(self, user_id: UUID) -> list[FaceEmbeddingRecord]:
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT * FROM face_embeddings WHERE user_id = ?", (str(user_id),)
+        ).fetchall()
+        return [
+            FaceEmbeddingRecord(
+                id=UUID(row["id"]),
+                user_id=UUID(row["user_id"]),
+                embedding=json.loads(row["embedding"]),
+                backend=row["backend"],
+                model_name=row["model_name"],
+                enrolled_at=datetime.fromisoformat(row["enrolled_at"]),
+            )
+            for row in rows
+        ]
 
     async def create_session(self, session: Session) -> Session:
         conn = self._ensure_conn()
@@ -228,6 +324,27 @@ class SQLiteMetadataStore(MetadataStore):
         )
         conn.commit()
         return fact
+
+    async def store_observation(self, obs: RecognitionObservation) -> RecognitionObservation:
+        conn = self._ensure_conn()
+        conn.execute(
+            "INSERT INTO recognition_observations"
+            " (id, session_id, user_id, timestamp, event_type,"
+            "  content, confidence, evidence_refs)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(obs.id),
+                str(obs.session_id),
+                str(obs.user_id) if obs.user_id else None,
+                obs.timestamp.isoformat(),
+                obs.event_type,
+                obs.content,
+                obs.confidence,
+                json.dumps(obs.evidence_refs),
+            ),
+        )
+        conn.commit()
+        return obs
 
     async def query_memories(self, query: MemoryQuery) -> MemoryQueryResult:
         conn = self._ensure_conn()

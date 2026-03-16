@@ -4,15 +4,26 @@ from abc import ABC, abstractmethod
 from typing import Any
 from uuid import UUID
 
+import numpy as np
+
 from baymax.core.enums import EmotionLabel, EngagementLevel
+from baymax.schemas.perception import DetectedFace, FaceEmbeddingRecord
 
 
 class FaceDetector(ABC):
     """Interface for face detection in frames."""
 
     @abstractmethod
-    def detect(self, frame: Any) -> list[dict[str, Any]]:
-        """Detect faces in a frame. Returns list of face bounding boxes."""
+    def detect(self, frame: np.ndarray) -> list[DetectedFace]:
+        """Detect faces in a BGR/RGB numpy frame.
+
+        Returns list of DetectedFace with bounding boxes and embeddings.
+        """
+        ...
+
+    @abstractmethod
+    def load_model(self) -> None:
+        """Load/initialize the detection model."""
         ...
 
 
@@ -20,8 +31,16 @@ class FaceRecognizer(ABC):
     """Interface for face recognition against enrolled users."""
 
     @abstractmethod
-    def recognize(self, frame: Any, face_bbox: dict[str, Any]) -> UUID | None:
-        """Attempt to match a detected face to an enrolled user. Returns user_id or None."""
+    def recognize(
+        self,
+        embedding: list[float],
+        enrolled: list[FaceEmbeddingRecord],
+        threshold: float = 0.75,
+    ) -> tuple[UUID | None, float]:
+        """Match a face embedding against enrolled embeddings.
+
+        Returns (user_id, confidence) or (None, best_score).
+        """
         ...
 
 
@@ -43,18 +62,29 @@ class EmotionEstimator(ABC):
         ...
 
 
-class StubFaceDetector(FaceDetector):
-    """Returns a single placeholder face detection."""
+# --- Stub implementations for testing / fallback ---
 
-    def detect(self, frame: Any) -> list[dict[str, Any]]:
-        return [{"x": 100, "y": 100, "w": 200, "h": 200, "confidence": 0.95}]
+
+class StubFaceDetector(FaceDetector):
+    """Returns an empty list (no faces detected)."""
+
+    def detect(self, frame: np.ndarray) -> list[DetectedFace]:
+        return []
+
+    def load_model(self) -> None:
+        pass
 
 
 class StubFaceRecognizer(FaceRecognizer):
     """Always returns None (unrecognized)."""
 
-    def recognize(self, frame: Any, face_bbox: dict[str, Any]) -> UUID | None:
-        return None
+    def recognize(
+        self,
+        embedding: list[float],
+        enrolled: list[FaceEmbeddingRecord],
+        threshold: float = 0.75,
+    ) -> tuple[UUID | None, float]:
+        return None, 0.0
 
 
 class StubEngagementEstimator(EngagementEstimator):

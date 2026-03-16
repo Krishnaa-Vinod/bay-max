@@ -25,6 +25,15 @@ class BaymaxSettings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Vision / perception
+    device: str = "cuda_if_available_else_cpu"
+    face_backend: str = "facenet_pytorch"
+    face_match_threshold: float = 0.75
+    max_faces_per_frame: int = 5
+
+    # Vector store
+    vector_backend: str = "lancedb"
+
 
 def get_settings() -> BaymaxSettings:
     """Return a cached settings instance."""

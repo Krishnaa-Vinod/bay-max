@@ -1,6 +1,6 @@
 {
-  "iteration": "001",
-  "branch_name": "bootstrap/iteration-001",
+  "iteration": "002",
+  "branch_name": "feature/iteration-002-vision-identity",
   "status": "completed",
   "last_updated": "2026-03-16",
   "modules_implemented": [
@@ -11,33 +11,38 @@
     "memory",
     "planner",
     "dialogue",
-    "orchestrator"
+    "orchestrator",
+    "perception"
   ],
   "modules_stubbed": [
     "capture",
-    "perception"
+    "memory/vector_store (LanceDB adapter not yet wired)"
   ],
   "tests_passing": true,
   "api_endpoints": [
     "GET /healthz",
     "POST /v1/users",
+    "GET /v1/users",
     "GET /v1/users/{user_id}",
     "POST /v1/users/{user_id}/enroll/face",
     "POST /v1/sessions",
     "GET /v1/sessions/{session_id}/state",
+    "POST /v1/sessions/{session_id}/frames",
     "POST /v1/memory/query",
     "POST /v1/respond"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods",
-    "Perception stubs return hardcoded values",
-    "Vector store stub uses naive dot product similarity"
+    "LanceDB vector store adapter not yet integrated into frame analysis pipeline",
+    "Engagement and emotion estimators remain stubbed",
+    "Gradio demo uses sync-to-async workaround"
   ],
   "next_tasks": [
-    "Implement real face detection",
-    "Add vector store with FAISS or LanceDB",
-    "Replace rule-based dialogue with LLM provider",
-    "Migrate to fully async aiosqlite"
+    "Wire LanceDB vector store for memory text embeddings",
+    "Replace rule-based dialogue with LLM provider (Claude)",
+    "Implement engagement/emotion estimation from face regions",
+    "Migrate to fully async aiosqlite",
+    "Add webcam live-stream support via capture module"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
