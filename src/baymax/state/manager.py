@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from baymax.core.enums import EmotionLabel, EngagementLevel
+from baymax.schemas.perception import EngagementResult
 from baymax.state.models import InteractionState
 
 
@@ -75,6 +76,23 @@ class StateManager:
         if active_track_ids is not None:
             state.active_track_ids = active_track_ids
         state.last_frame_summary = frame_summary
+        return state
+
+    def update_body_state(
+        self,
+        session_id: UUID,
+        engagement_result: EngagementResult,
+    ) -> InteractionState | None:
+        """Update state with body-state and engagement results."""
+        state = self._states.get(session_id)
+        if state is None:
+            return None
+        state.pose_visible = engagement_result.pose_visible
+        state.posture = engagement_result.posture
+        state.lean = engagement_result.lean
+        state.motion = engagement_result.motion
+        state.engagement_level = engagement_result.level
+        state.engagement_score = engagement_result.score
         return state
 
     def remove(self, session_id: UUID) -> None:

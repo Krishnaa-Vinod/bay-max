@@ -1,6 +1,6 @@
 {
-  "iteration": "002",
-  "branch_name": "feature/iteration-002-vision-identity",
+  "iteration": "003",
+  "branch_name": "feature/iteration-003-pose-engagement-local-eval",
   "status": "completed",
   "last_updated": "2026-03-16",
   "modules_implemented": [
@@ -16,7 +16,8 @@
   ],
   "modules_stubbed": [
     "capture",
-    "memory/vector_store (LanceDB adapter not yet wired)"
+    "memory/vector_store (LanceDB adapter not yet wired)",
+    "perception/emotion_estimator"
   ],
   "tests_passing": true,
   "api_endpoints": [
@@ -34,15 +35,17 @@
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods",
     "LanceDB vector store adapter not yet integrated into frame analysis pipeline",
-    "Engagement and emotion estimators remain stubbed",
-    "Gradio demo uses sync-to-async workaround"
+    "Emotion estimator remains stubbed",
+    "Gradio demo uses sync-to-async workaround",
+    "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)"
   ],
   "next_tasks": [
     "Wire LanceDB vector store for memory text embeddings",
     "Replace rule-based dialogue with LLM provider (Claude)",
-    "Implement engagement/emotion estimation from face regions",
+    "Implement emotion estimation from face regions",
     "Migrate to fully async aiosqlite",
-    "Add webcam live-stream support via capture module"
+    "Add webcam live-stream support via capture module",
+    "Migrate to MediaPipe Tasks API for pose estimation"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",

@@ -71,3 +71,32 @@ class PerceptionEventType(StrEnum):
     ENGAGEMENT_CHANGE = "engagement_change"
     EMOTION_CHANGE = "emotion_change"
     POSE_CHANGE = "pose_change"
+    POSTURE_CHANGE = "posture_change"
+    POSE_LOST = "pose_lost"
+
+
+class PostureLabel(StrEnum):
+    """Estimated posture from pose landmarks."""
+
+    UPRIGHT = "upright"
+    SLOUCHED = "slouched"
+    RECLINED = "reclined"
+    UNKNOWN = "unknown"
+
+
+class LeanLabel(StrEnum):
+    """Estimated lean direction from pose landmarks."""
+
+    FORWARD = "forward"
+    NEUTRAL = "neutral"
+    BACKWARD = "backward"
+    UNKNOWN = "unknown"
+
+
+class MotionLevel(StrEnum):
+    """Estimated motion level across recent frames."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    UNKNOWN = "unknown"

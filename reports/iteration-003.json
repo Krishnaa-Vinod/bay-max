@@ -1,0 +1,165 @@
+{
+  "iteration": "003",
+  "branch_name": "feature/iteration-003-pose-engagement-local-eval",
+  "latest_commit_sha": "0e96af9",
+  "status": "completed",
+  "summary": "Added pose estimation using MediaPipe Pose, implemented body-state heuristics for posture/lean/motion, and created engagement scoring combining face recognition with body language. Includes annotated debug outputs and local testing tools. 109 tests pass, lint clean.",
+  "tasks_completed": [
+    {
+      "id": "T301",
+      "title": "Audit Iteration 002 for local-test friction",
+      "evidence": [
+        "docs/LOCAL_TESTING.md",
+        "scripts/local_test.py"
+      ]
+    },
+    {
+      "id": "T302",
+      "title": "Add pose backend interface and MediaPipe adapter",
+      "evidence": [
+        "src/baymax/perception/pose_interface.py",
+        "src/baymax/perception/mediapipe_pose.py",
+        "src/baymax/schemas/perception.py"
+      ]
+    },
+    {
+      "id": "T303",
+      "title": "Add body-state and engagement heuristics",
+      "evidence": [
+        "src/baymax/perception/heuristics.py",
+        "src/baymax/core/enums.py",
+        "docs/ENGAGEMENT_HEURISTICS.md"
+      ]
+    },
+    {
+      "id": "T304",
+      "title": "Extend frame analysis and state management",
+      "evidence": [
+        "src/baymax/orchestrator/service.py",
+        "src/baymax/state/manager.py",
+        "src/baymax/state/models.py",
+        "src/baymax/schemas/perception.py"
+      ]
+    },
+    {
+      "id": "T305",
+      "title": "Write body-state observations to memory",
+      "evidence": [
+        "src/baymax/memory/interfaces.py",
+        "src/baymax/memory/store_sqlite.py",
+        "src/baymax/orchestrator/service.py"
+      ]
+    },
+    {
+      "id": "T306",
+      "title": "Add local manual-test tooling and annotated outputs",
+      "evidence": [
+        "scripts/local_test.py",
+        "src/baymax/perception/annotations.py",
+        "apps/demo/gradio_app.py"
+      ]
+    },
+    {
+      "id": "T307",
+      "title": "Automated tests and manual smoke tests",
+      "evidence": [
+        "tests/test_iteration_003.py"
+      ]
+    },
+    {
+      "id": "T308",
+      "title": "Docs, report, commit, and push",
+      "evidence": [
+        "docs/ENGAGEMENT_HEURISTICS.md",
+        "docs/LOCAL_TESTING.md",
+        "docs/CHANGELOG.md",
+        "docs/MODEL_STACK.md",
+        "docs/PROJECT_MEMORY.md",
+        "docs/ROADMAP.md",
+        "docs/ARCHITECTURE.md",
+        "docs/project_state.json",
+        "reports/iteration-003.md",
+        "reports/iteration-003.json"
+      ]
+    }
+  ],
+  "tasks_partial": [],
+  "tasks_not_done": [],
+  "files_created": [
+    "src/baymax/perception/pose_interface.py",
+    "src/baymax/perception/mediapipe_pose.py",
+    "src/baymax/perception/heuristics.py",
+    "src/baymax/perception/annotations.py",
+    "scripts/local_test.py",
+    "tests/test_iteration_003.py",
+    "docs/ENGAGEMENT_HEURISTICS.md",
+    "docs/LOCAL_TESTING.md",
+    "reports/iteration-003.md",
+    "reports/iteration-003.json"
+  ],
+  "files_modified": [
+    "src/baymax/core/enums.py",
+    "src/baymax/schemas/perception.py",
+    "src/baymax/state/models.py",
+    "src/baymax/state/manager.py",
+    "src/baymax/memory/interfaces.py",
+    "src/baymax/memory/store_sqlite.py",
+    "src/baymax/orchestrator/service.py",
+    "src/baymax/config/settings.py",
+    "apps/demo/gradio_app.py",
+    "docs/CHANGELOG.md",
+    "docs/MODEL_STACK.md",
+    "docs/PROJECT_MEMORY.md",
+    "docs/ROADMAP.md",
+    "docs/ARCHITECTURE.md",
+    "docs/project_state.json",
+    "pyproject.toml",
+    ".env.example",
+    "Makefile"
+  ],
+  "tests_run": [
+    {
+      "command": "pytest tests/ -v",
+      "result": "passed",
+      "notes": "109 passed, 0 failed (65 existing + 44 new iteration 003 tests)"
+    },
+    {
+      "command": "ruff check src/ apps/ tests/ scripts/",
+      "result": "passed",
+      "notes": "All checks passed after fixing forward references and unused imports"
+    }
+  ],
+  "model_stack": {
+    "face_detection": "MTCNN (facenet-pytorch)",
+    "face_embedding": "InceptionResnetV1 pretrained on vggface2 (512-d)",
+    "face_matching": "Cosine similarity, threshold 0.75",
+    "face_tracking": "Greedy IoU (0.4) + cosine (0.6) tracker",
+    "pose_estimation": "MediaPipe Pose (33-point landmarks)",
+    "body_state_heuristics": "Rule-based posture/lean/motion detection",
+    "engagement_scoring": "Weighted signal combination (face + body state)",
+    "dialogue": "Rule-based templates (unchanged from previous iterations)"
+  },
+  "known_issues": [
+    "MediaPipe uses legacy mp.solutions.pose API (may be deprecated)",
+    "Pose estimation requires good lighting and clear body visibility",
+    "Single-person pose detection only (multi-person not supported)",
+    "Motion tracking window size not configurable per session",
+    "SQLite store uses synchronous sqlite3 despite async signatures"
+  ],
+  "deviations_from_prompt": [],
+  "risks": [
+    "MediaPipe model loading not exercised in CI-friendly tests",
+    "Engagement thresholds may need tuning with diverse user populations",
+    "Pose heuristics assume standard camera angles and distances",
+    "Motion tracking may be sensitive to camera shake or auto-focus"
+  ],
+  "next_recommended_tasks": [
+    "Migrate to MediaPipe solutions.tasks API for future compatibility",
+    "Add multi-person pose tracking support",
+    "Implement emotion recognition from facial landmarks",
+    "Add temporal smoothing for engagement transitions",
+    "Create camera calibration and pose normalization",
+    "Add real-time streaming support with webcam integration",
+    "Implement LLM-based dialogue with engagement-aware responses"
+  ]
+}

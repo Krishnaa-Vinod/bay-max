@@ -1,19 +1,23 @@
-.PHONY: help install lint test run-api run-demo clean
+.PHONY: help install install-all lint test run-api run-demo clean
 
 help:
 	@echo "Bay-Max development commands:"
-	@echo "  make install   - Install dependencies in dev mode"
-	@echo "  make lint      - Run ruff linter"
-	@echo "  make test      - Run pytest test suite"
-	@echo "  make run-api   - Start FastAPI server on port 8000"
-	@echo "  make run-demo  - Start Gradio demo on port 7860"
-	@echo "  make clean     - Remove build artifacts and caches"
+	@echo "  make install       - Install dev dependencies only (no vision models)"
+	@echo "  make install-all   - Install dev + vision (face + pose) dependencies"
+	@echo "  make lint          - Run ruff linter"
+	@echo "  make test          - Run pytest test suite"
+	@echo "  make run-api       - Start FastAPI server on port 8000"
+	@echo "  make run-demo      - Start Gradio demo on port 7860"
+	@echo "  make clean         - Remove build artifacts and caches"
 
 install:
 	pip install -e ".[dev]"
 
+install-all:
+	pip install -e ".[all]"
+
 lint:
-	ruff check src/ apps/ tests/
+	ruff check src/ apps/ tests/ scripts/
 
 test:
 	pytest tests/ -v

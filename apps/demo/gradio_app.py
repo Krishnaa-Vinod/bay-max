@@ -8,6 +8,7 @@ import gradio as gr
 import numpy as np
 
 from baymax.orchestrator.service import Orchestrator
+from baymax.perception.annotations import draw_annotations
 from baymax.schemas.user import UserProfileCreate
 
 orch = Orchestrator()
@@ -79,22 +80,45 @@ def enroll_face_from_image(user_id: str, image: np.ndarray | None) -> str:
     return run_async(_inner())
 
 
-def analyze_frame_image(session_id: str, image: np.ndarray | None) -> str:
-    """Analyze an uploaded frame for face detection and recognition."""
+def analyze_frame_image(
+    session_id: str, image: np.ndarray | None,
+) -> tuple[str, np.ndarray | None]:
+    """Analyze an uploaded frame for face detection, recognition, pose, and engagement."""
 
     async def _inner():
         await ensure_init()
         if image is None:
-            return json.dumps({"error": "No image provided"}, indent=2)
+            return json.dumps({"error": "No image provided"}, indent=2), None
         if not session_id.strip():
-            return json.dumps({"error": "Session ID is required"}, indent=2)
+            return json.dumps({"error": "Session ID is required"}, indent=2), None
         try:
             sid = UUID(session_id.strip())
         except ValueError:
-            return json.dumps({"error": "Invalid Session ID format"}, indent=2)
+            return json.dumps({"error": "Invalid Session ID format"}, indent=2), None
 
         result = await orch.analyze_frame(sid, image)
-        return json.dumps({
+
+        # Draw annotated overlay
+        annotated = draw_annotations(
+            image,
+            recognized_faces=result.recognized_faces,
+            unknown_faces=result.unknown_faces,
+            pose_result=result.pose_result,
+            engagement=result.engagement,
+        )
+
+        engagement_data = None
+        if result.engagement:
+            engagement_data = {
+                "level": str(result.engagement.level),
+                "score": round(result.engagement.score, 3),
+                "posture": str(result.engagement.posture),
+                "lean": str(result.engagement.lean),
+                "motion": str(result.engagement.motion),
+                "pose_visible": result.engagement.pose_visible,
+            }
+
+        output = json.dumps({
             "session_id": str(result.session_id),
             "faces_detected": result.faces_detected,
             "recognized_faces": [
@@ -106,10 +130,14 @@ def analyze_frame_image(session_id: str, image: np.ndarray | None) -> str:
                 for r in result.recognized_faces
             ],
             "unknown_faces": len(result.unknown_faces),
+            "pose_detected": result.pose_result.pose_present if result.pose_result else False,
+            "engagement": engagement_data,
             "observations_written": result.observations_written,
             "latency_ms": result.latency_ms,
             "frame_summary": result.state.get("last_frame_summary", ""),
         }, indent=2)
+
+        return output, annotated
 
     return run_async(_inner())
 
@@ -152,7 +180,10 @@ def build_demo() -> gr.Blocks:
     """Build the Gradio demo interface."""
     with gr.Blocks(title="Bay-Max Demo") as demo:
         gr.Markdown("# Bay-Max Companion Demo")
-        gr.Markdown("A memory-first empathetic companion agent with face recognition.")
+        gr.Markdown(
+            "A memory-first empathetic companion agent with face recognition,"
+            " pose estimation, and engagement tracking."
+        )
 
         with gr.Tab("Setup"):
             name_input = gr.Textbox(label="Display Name", placeholder="Enter your name")
@@ -176,18 +207,23 @@ def build_demo() -> gr.Blocks:
             )
 
         with gr.Tab("Frame Analysis"):
-            gr.Markdown("Upload a frame to detect and recognize faces.")
+            gr.Markdown(
+                "Upload a frame to detect/recognize faces, estimate pose,"
+                " and compute engagement."
+            )
             frame_session_input = gr.Textbox(
                 label="Session ID",
                 placeholder="Paste session ID from Setup tab",
             )
             frame_image = gr.Image(label="Frame", type="numpy")
             frame_btn = gr.Button("Analyze Frame")
-            frame_output = gr.JSON(label="Analysis Result")
+            with gr.Row():
+                frame_output = gr.JSON(label="Analysis Result")
+                frame_annotated = gr.Image(label="Annotated Frame")
             frame_btn.click(
                 analyze_frame_image,
                 inputs=[frame_session_input, frame_image],
-                outputs=[frame_output],
+                outputs=[frame_output, frame_annotated],
             )
 
         with gr.Tab("Interact"):

@@ -31,10 +31,18 @@ class BaymaxSettings(BaseSettings):
     face_match_threshold: float = 0.75
     max_faces_per_frame: int = 5
 
+    # Pose estimation
+    pose_backend: str = "mediapipe"
+    pose_min_confidence: float = 0.5
+
+    # Annotation and debug artifacts
+    enable_annotations: bool = True
+    artifact_dir: str = "./artifacts"
+
     # Vector store
     vector_backend: str = "lancedb"
 
 
 def get_settings() -> BaymaxSettings:
-    """Return a cached settings instance."""
+    """Return a settings instance."""
     return BaymaxSettings()

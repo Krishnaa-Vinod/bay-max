@@ -1,6 +1,6 @@
 # Bay-Max Roadmap
 
-## Iteration 001 - Bootstrap (Current)
+## Iteration 001 - Bootstrap (Completed)
 - [x] Repository structure and Python project setup
 - [x] Core schemas (user, session, perception, memory, response)
 - [x] Settings management from environment variables
@@ -13,22 +13,34 @@
 - [x] Documentation and ADRs
 - [x] CI workflow
 
-## Iteration 002 - Vision Pipeline (Planned)
-- [ ] OpenCV webcam capture integration
-- [ ] Face detection with a lightweight model
-- [ ] Face embedding and enrollment
-- [ ] Basic face recognition for enrolled users
-- [ ] Engagement estimation from face tracking
-- [ ] Perception events flowing through the pipeline
+## Iteration 002 - Face Recognition (Completed)
+- [x] OpenCV webcam capture integration
+- [x] Face detection with MTCNN model
+- [x] Face embedding with ArcFace model
+- [x] Face enrollment and recognition pipeline
+- [x] User registration and authentication flow
+- [x] Perception events and memory integration
+- [x] Local testing tools and Gradio demo
+- [x] Comprehensive test suite
 
-## Iteration 003 - Memory Depth (Planned)
+## Iteration 003 - Pose Estimation & Engagement (Completed)
+- [x] MediaPipe Pose backend integration
+- [x] Body-state heuristics (posture, lean, motion)
+- [x] Engagement scoring from multiple signals
+- [x] Body-state observation events
+- [x] Annotated debug output visualization
+- [x] Local testing tools and manual evaluation
+- [x] Comprehensive test coverage
+- [x] Documentation and heuristics specification
+
+## Iteration 004 - Memory Depth (Planned)
 - [ ] Vector store integration (FAISS or LanceDB)
 - [ ] Semantic search over memories
 - [ ] Memory consolidation (episodic -> semantic)
 - [ ] Salience-based memory decay and pruning
 - [ ] Retrieval-augmented response generation
 
-## Iteration 004 - LLM Dialogue (Planned)
+## Iteration 005 - LLM Dialogue (Planned)
 - [ ] LLM-based dialogue provider (local model or API)
 - [ ] Prompt engineering for supportive responses
 - [ ] Memory-augmented prompts

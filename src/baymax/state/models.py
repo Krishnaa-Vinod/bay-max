@@ -5,7 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from baymax.core.enums import EmotionLabel, EngagementLevel, ResponseStrategy
+from baymax.core.enums import (
+    EmotionLabel,
+    EngagementLevel,
+    LeanLabel,
+    MotionLevel,
+    PostureLabel,
+    ResponseStrategy,
+)
 
 
 class InteractionState(BaseModel):
@@ -27,3 +34,10 @@ class InteractionState(BaseModel):
     last_seen_at: datetime | None = None
     active_track_ids: list[str] = Field(default_factory=list)
     last_frame_summary: str = ""
+
+    # --- Iteration 003: body-state and engagement fields ---
+    pose_visible: bool = False
+    posture: PostureLabel = PostureLabel.UNKNOWN
+    lean: LeanLabel = LeanLabel.UNKNOWN
+    motion: MotionLevel = MotionLevel.UNKNOWN
+    engagement_score: float = Field(default=0.0, ge=0.0, le=1.0)
