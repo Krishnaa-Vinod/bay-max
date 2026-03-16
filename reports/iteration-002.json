@@ -1,7 +1,7 @@
 {
   "iteration": "002",
   "branch_name": "feature/iteration-002-vision-identity",
-  "latest_commit_sha": "pending",
+  "latest_commit_sha": "c1926c8",
   "status": "completed",
   "summary": "Replaced all stub perception components with a real local face recognition pipeline using facenet-pytorch. MTCNN for detection, InceptionResnetV1 for 512-d embeddings, cosine similarity for matching, simple IoU+cosine tracker. 65 tests pass, lint clean, 10 API endpoints.",
   "tasks_completed": [
