@@ -1,5 +1,6 @@
 """State manager for interaction sessions."""
 
+from datetime import datetime
 from uuid import UUID
 
 from baymax.core.enums import EmotionLabel, EngagementLevel
@@ -46,6 +47,34 @@ class StateManager:
         state = self._states.get(session_id)
         if state:
             state.turn_count += 1
+        return state
+
+    def update_recognition(
+        self,
+        session_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        user_display_name: str | None = None,
+        identity_confidence: float = 0.0,
+        face_count: int = 0,
+        active_track_ids: list[str] | None = None,
+        frame_summary: str = "",
+    ) -> InteractionState | None:
+        """Update state with face recognition results."""
+        state = self._states.get(session_id)
+        if state is None:
+            return None
+        if user_id is not None:
+            state.user_id = user_id
+            state.is_new_user = False
+        if user_display_name is not None:
+            state.user_display_name = user_display_name
+        state.identity_confidence = identity_confidence
+        state.face_count = face_count
+        state.last_seen_at = datetime.utcnow()
+        if active_track_ids is not None:
+            state.active_track_ids = active_track_ids
+        state.last_frame_summary = frame_summary
         return state
 
     def remove(self, session_id: UUID) -> None:

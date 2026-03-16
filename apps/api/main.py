@@ -1,12 +1,16 @@
 """Bay-Max FastAPI application."""
 
+import io
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
+import numpy as np
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from PIL import Image
 
 from baymax.orchestrator.service import Orchestrator
 from baymax.schemas.memory import MemoryQuery, MemoryQueryResult
+from baymax.schemas.perception import FrameAnalysisResult
 from baymax.schemas.response import RespondRequest, SupportiveResponse
 from baymax.schemas.session import Session, SessionCreate
 from baymax.schemas.user import FaceEnrollment, UserProfile, UserProfileCreate
@@ -25,7 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -36,10 +40,19 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# --- Users ---
+
+
 @app.post("/v1/users", response_model=UserProfile, status_code=201)
 async def create_user(request: UserProfileCreate) -> UserProfile:
     """Create a new user profile."""
     return await orchestrator.create_user(request)
+
+
+@app.get("/v1/users", response_model=list[UserProfile])
+async def list_users() -> list[UserProfile]:
+    """List all active users."""
+    return await orchestrator.list_users()
 
 
 @app.get("/v1/users/{user_id}", response_model=UserProfile)
@@ -51,13 +64,31 @@ async def get_user(user_id: UUID) -> UserProfile:
     return user
 
 
+# --- Face Enrollment ---
+
+
 @app.post("/v1/users/{user_id}/enroll/face", response_model=FaceEnrollment, status_code=201)
-async def enroll_face(user_id: UUID) -> FaceEnrollment:
-    """Store placeholder face enrollment metadata."""
+async def enroll_face(user_id: UUID, file: UploadFile = File(...)) -> FaceEnrollment:
+    """Enroll a face from an uploaded image.
+
+    Expects a single image file (JPEG/PNG). The image must contain exactly one face.
+    """
     user = await orchestrator.get_user(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return await orchestrator.enroll_face(user_id)
+
+    # Read and decode the uploaded image
+    contents = await file.read()
+    try:
+        pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
+        frame = np.array(pil_image)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    return await orchestrator.enroll_face(user_id, frame)
+
+
+# --- Sessions ---
 
 
 @app.post("/v1/sessions", response_model=Session, status_code=201)
@@ -75,6 +106,33 @@ async def get_session_state(session_id: UUID) -> InteractionState:
     return state
 
 
+# --- Frame Analysis ---
+
+
+@app.post("/v1/sessions/{session_id}/frames", response_model=FrameAnalysisResult)
+async def analyze_frame(session_id: UUID, file: UploadFile = File(...)) -> FrameAnalysisResult:
+    """Submit a frame for face detection and recognition.
+
+    Expects a single image file (JPEG/PNG). Returns detection results,
+    recognized/unknown faces, updated state, and any observations written.
+    """
+    session = await orchestrator.get_session_state(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    contents = await file.read()
+    try:
+        pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
+        frame = np.array(pil_image)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    return await orchestrator.analyze_frame(session_id, frame)
+
+
+# --- Memory ---
+
+
 @app.post("/v1/memory/query", response_model=MemoryQueryResult)
 async def query_memories(request: MemoryQuery) -> MemoryQueryResult:
     """Retrieve memories for a user."""
@@ -83,6 +141,9 @@ async def query_memories(request: MemoryQuery) -> MemoryQueryResult:
         query=request.query,
         limit=request.limit,
     )
+
+
+# --- Response ---
 
 
 @app.post("/v1/respond", response_model=SupportiveResponse)

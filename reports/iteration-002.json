@@ -1,0 +1,148 @@
+{
+  "iteration": "002",
+  "branch_name": "feature/iteration-002-vision-identity",
+  "latest_commit_sha": "pending",
+  "status": "completed",
+  "summary": "Replaced all stub perception components with a real local face recognition pipeline using facenet-pytorch. MTCNN for detection, InceptionResnetV1 for 512-d embeddings, cosine similarity for matching, simple IoU+cosine tracker. 65 tests pass, lint clean, 10 API endpoints.",
+  "tasks_completed": [
+    {
+      "id": "T201",
+      "title": "Audit Iteration 001 contracts",
+      "evidence": [
+        "src/baymax/perception/interfaces.py",
+        "src/baymax/orchestrator/service.py",
+        "src/baymax/memory/interfaces.py"
+      ]
+    },
+    {
+      "id": "T202",
+      "title": "Real face detection and embedding (MTCNN + InceptionResnetV1)",
+      "evidence": [
+        "src/baymax/perception/facenet_adapter.py",
+        "src/baymax/perception/interfaces.py",
+        "src/baymax/schemas/perception.py"
+      ]
+    },
+    {
+      "id": "T203",
+      "title": "Real face enrollment from uploaded images",
+      "evidence": [
+        "src/baymax/orchestrator/service.py",
+        "apps/api/main.py"
+      ]
+    },
+    {
+      "id": "T204",
+      "title": "Frame analysis endpoint with recognition",
+      "evidence": [
+        "src/baymax/orchestrator/service.py",
+        "apps/api/main.py"
+      ]
+    },
+    {
+      "id": "T205",
+      "title": "Simple IoU + cosine face tracker",
+      "evidence": [
+        "src/baymax/perception/tracker.py",
+        "src/baymax/state/manager.py",
+        "src/baymax/state/models.py"
+      ]
+    },
+    {
+      "id": "T206",
+      "title": "Write recognition observations to memory",
+      "evidence": [
+        "src/baymax/orchestrator/service.py",
+        "src/baymax/memory/store_sqlite.py",
+        "src/baymax/schemas/perception.py"
+      ]
+    },
+    {
+      "id": "T207",
+      "title": "Upgrade Gradio demo with enrollment and frame analysis",
+      "evidence": [
+        "apps/demo/gradio_app.py"
+      ]
+    },
+    {
+      "id": "T208",
+      "title": "Tests, docs, commit, and report",
+      "evidence": [
+        "tests/test_iteration_002.py",
+        "docs/MODEL_STACK.md",
+        "docs/PROJECT_MEMORY.md",
+        "docs/project_state.json",
+        "reports/iteration-002.md",
+        "reports/iteration-002.json"
+      ]
+    }
+  ],
+  "tasks_partial": [],
+  "tasks_not_done": [],
+  "files_created": [
+    "src/baymax/perception/facenet_adapter.py",
+    "src/baymax/perception/tracker.py",
+    "tests/test_iteration_002.py",
+    "docs/MODEL_STACK.md",
+    "reports/iteration-002.md",
+    "reports/iteration-002.json"
+  ],
+  "files_modified": [
+    "src/baymax/perception/interfaces.py",
+    "src/baymax/schemas/perception.py",
+    "src/baymax/schemas/user.py",
+    "src/baymax/state/models.py",
+    "src/baymax/state/manager.py",
+    "src/baymax/memory/interfaces.py",
+    "src/baymax/memory/store_sqlite.py",
+    "src/baymax/orchestrator/service.py",
+    "src/baymax/config/settings.py",
+    "apps/api/main.py",
+    "apps/demo/gradio_app.py",
+    "docs/project_state.json",
+    "docs/PROJECT_MEMORY.md",
+    "docs/CHANGELOG.md",
+    "pyproject.toml"
+  ],
+  "tests_run": [
+    {
+      "command": "pytest tests/ -v",
+      "result": "passed",
+      "notes": "65 passed, 0 failed"
+    },
+    {
+      "command": "ruff check src/ apps/ tests/",
+      "result": "passed",
+      "notes": "All checks passed"
+    }
+  ],
+  "model_stack": {
+    "face_detection": "MTCNN (facenet-pytorch)",
+    "face_embedding": "InceptionResnetV1 pretrained on vggface2 (512-d)",
+    "face_matching": "Cosine similarity, threshold 0.75",
+    "face_tracking": "Greedy IoU (0.4) + cosine (0.6) tracker",
+    "dialogue": "Rule-based templates (unchanged from iteration 001)"
+  },
+  "known_issues": [
+    "SQLite store uses synchronous sqlite3 despite async method signatures",
+    "LanceDB vector store adapter not yet integrated",
+    "Engagement and emotion estimators remain stubbed",
+    "Gradio demo uses sync-to-async workaround",
+    "No end-to-end test with real model inference"
+  ],
+  "deviations_from_prompt": [],
+  "risks": [
+    "Real MTCNN/InceptionResnetV1 loading was not exercised in tests",
+    "Cosine similarity threshold may need tuning with real-world images",
+    "Sync SQLite in async context remains a blocking concern",
+    "Tracker greedy assignment may struggle with many simultaneous faces"
+  ],
+  "next_recommended_tasks": [
+    "Wire LanceDB vector store for memory text embeddings",
+    "Replace rule-based dialogue with Claude LLM integration",
+    "Implement engagement/emotion estimation from face regions",
+    "Migrate to fully async aiosqlite",
+    "Add webcam live-stream support via capture module",
+    "Add end-to-end integration tests with real model inference"
+  ]
+}

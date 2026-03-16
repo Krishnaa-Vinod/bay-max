@@ -9,6 +9,7 @@ from baymax.schemas.memory import (
     MemoryQueryResult,
     SemanticFact,
 )
+from baymax.schemas.perception import FaceEmbeddingRecord, RecognitionObservation
 from baymax.schemas.session import Session
 from baymax.schemas.user import FaceEnrollment, UserProfile
 
@@ -25,7 +26,23 @@ class MetadataStore(ABC):
         ...
 
     @abstractmethod
+    async def list_users(self) -> list[UserProfile]:
+        ...
+
+    @abstractmethod
     async def create_face_enrollment(self, enrollment: FaceEnrollment) -> FaceEnrollment:
+        ...
+
+    @abstractmethod
+    async def store_face_embedding(self, record: FaceEmbeddingRecord) -> FaceEmbeddingRecord:
+        ...
+
+    @abstractmethod
+    async def get_all_face_embeddings(self) -> list[FaceEmbeddingRecord]:
+        ...
+
+    @abstractmethod
+    async def get_face_embeddings_for_user(self, user_id: UUID) -> list[FaceEmbeddingRecord]:
         ...
 
     @abstractmethod
@@ -42,6 +59,10 @@ class MetadataStore(ABC):
 
     @abstractmethod
     async def store_semantic_fact(self, fact: SemanticFact) -> SemanticFact:
+        ...
+
+    @abstractmethod
+    async def store_observation(self, obs: RecognitionObservation) -> RecognitionObservation:
         ...
 
     @abstractmethod
