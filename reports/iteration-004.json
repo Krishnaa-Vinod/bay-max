@@ -1,0 +1,170 @@
+{
+  "iteration": "004",
+  "branch_name": "feature/iteration-004-memory-recall",
+  "latest_commit_sha": "ce7897e",
+  "status": "completed",
+  "summary": "Implemented full memory recall and consolidation pipeline: text embeddings via sentence-transformers, LanceDB vector retrieval, typed conversation turns, session consolidation into episodic/semantic memories, temporal smoothing, memory-aware responses, memory inspection and correction. 158 tests pass, lint clean.",
+  "tasks_completed": [
+    {
+      "id": "T401",
+      "title": "Create working branch, audit install/docs, fix pyproject extras",
+      "evidence": [
+        "pyproject.toml",
+        ".env.example",
+        "Makefile"
+      ]
+    },
+    {
+      "id": "T402",
+      "title": "Implement text embedding adapter + LanceDB vector store",
+      "evidence": [
+        "src/baymax/memory/embedding.py",
+        "src/baymax/memory/vector_store.py",
+        "src/baymax/config/settings.py"
+      ]
+    },
+    {
+      "id": "T403",
+      "title": "Add typed conversation turns and session text memory",
+      "evidence": [
+        "src/baymax/core/enums.py",
+        "src/baymax/schemas/memory.py",
+        "src/baymax/memory/interfaces.py",
+        "src/baymax/memory/store_sqlite.py",
+        "src/baymax/orchestrator/service.py"
+      ]
+    },
+    {
+      "id": "T404",
+      "title": "Implement session consolidation and memory promotion",
+      "evidence": [
+        "src/baymax/memory/consolidate.py",
+        "src/baymax/schemas/memory.py",
+        "src/baymax/memory/store_sqlite.py"
+      ]
+    },
+    {
+      "id": "T405",
+      "title": "Add temporal smoothing and memory-write suppression",
+      "evidence": [
+        "src/baymax/orchestrator/service.py",
+        "src/baymax/config/settings.py"
+      ]
+    },
+    {
+      "id": "T406",
+      "title": "Make responses memory-aware",
+      "evidence": [
+        "src/baymax/orchestrator/service.py",
+        "src/baymax/schemas/response.py"
+      ]
+    },
+    {
+      "id": "T407",
+      "title": "Add memory inspection and correction support",
+      "evidence": [
+        "src/baymax/core/enums.py",
+        "src/baymax/schemas/memory.py",
+        "src/baymax/memory/interfaces.py",
+        "src/baymax/memory/store_sqlite.py",
+        "src/baymax/orchestrator/service.py",
+        "apps/api/main.py"
+      ]
+    },
+    {
+      "id": "T408",
+      "title": "Upgrade Gradio demo and manual test flow",
+      "evidence": [
+        "apps/demo/gradio_app.py"
+      ]
+    },
+    {
+      "id": "T409",
+      "title": "Tests, docs, report, commit, and push",
+      "evidence": [
+        "tests/test_iteration_004.py",
+        "docs/project_state.json",
+        "docs/PROJECT_MEMORY.md",
+        "docs/BACKLOG.md",
+        "reports/iteration-004.md",
+        "reports/iteration-004.json"
+      ]
+    }
+  ],
+  "tasks_partial": [],
+  "tasks_not_done": [],
+  "files_created": [
+    "src/baymax/memory/embedding.py",
+    "tests/test_iteration_004.py",
+    "reports/iteration-004.md",
+    "reports/iteration-004.json"
+  ],
+  "files_modified": [
+    "pyproject.toml",
+    ".env.example",
+    "Makefile",
+    "src/baymax/config/settings.py",
+    "src/baymax/core/enums.py",
+    "src/baymax/schemas/memory.py",
+    "src/baymax/schemas/response.py",
+    "src/baymax/memory/interfaces.py",
+    "src/baymax/memory/store_sqlite.py",
+    "src/baymax/memory/vector_store.py",
+    "src/baymax/memory/consolidate.py",
+    "src/baymax/orchestrator/service.py",
+    "apps/api/main.py",
+    "apps/demo/gradio_app.py",
+    "docs/project_state.json",
+    "docs/PROJECT_MEMORY.md",
+    "docs/BACKLOG.md"
+  ],
+  "tests_run": [
+    {
+      "command": "pytest tests/ -v",
+      "result": "passed",
+      "notes": "158 passed, 0 failed (109 existing + 49 new iteration 004 tests)"
+    },
+    {
+      "command": "ruff check src/ apps/ tests/",
+      "result": "passed",
+      "notes": "All checks passed after fixing unused imports and import sorting"
+    }
+  ],
+  "model_stack": {
+    "face_detection": "MTCNN (facenet-pytorch)",
+    "face_embedding": "InceptionResnetV1 pretrained on vggface2 (512-d)",
+    "face_matching": "Cosine similarity, threshold 0.75",
+    "face_tracking": "Greedy IoU (0.4) + cosine (0.6) tracker",
+    "pose_estimation": "MediaPipe Pose (33-point landmarks)",
+    "body_state_heuristics": "Rule-based posture/lean/motion detection",
+    "engagement_scoring": "Weighted signal combination with temporal smoothing",
+    "text_embedding": "sentence-transformers/all-MiniLM-L6-v2 (384-d)",
+    "vector_search": "LanceDB (local, serverless) with StubVectorStore fallback",
+    "dialogue": "Rule-based templates (unchanged from previous iterations)"
+  },
+  "known_issues": [
+    "SQLite store uses synchronous sqlite3 despite async signatures",
+    "Emotion estimator remains stubbed",
+    "Gradio demo uses sync-to-async workaround",
+    "MediaPipe uses legacy mp.solutions.pose API",
+    "LanceDB requires separate pip extra install",
+    "Semantic fact extraction uses simple keyword heuristics"
+  ],
+  "deviations_from_prompt": [],
+  "risks": [
+    "SentenceTransformerEmbedder model loading not exercised in CI tests",
+    "LanceDB integration not tested with real backend in automated tests",
+    "Semantic fact extraction heuristics may miss complex preference patterns",
+    "Temporal smoothing window is global, not per-session configurable",
+    "Memory correction has no audit trail beyond fact status field"
+  ],
+  "next_recommended_tasks": [
+    "Replace rule-based dialogue with Claude LLM-based generation",
+    "Implement emotion estimation from facial expressions",
+    "Add LLM-based semantic fact extraction during consolidation",
+    "Migrate to fully async aiosqlite",
+    "Add salience decay over time for episodic memories",
+    "Add webcam live-stream support via capture module",
+    "Migrate to MediaPipe Tasks API for pose estimation"
+  ]
+}

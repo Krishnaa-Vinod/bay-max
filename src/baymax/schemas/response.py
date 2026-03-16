@@ -28,3 +28,11 @@ class SupportiveResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     evidence_refs: list[str] = Field(default_factory=list)
     metadata: dict[str, str] = Field(default_factory=dict)
+    memory_refs: list[str] = Field(
+        default_factory=list,
+        description="Content of memories used to generate this response.",
+    )
+    state_summary: dict[str, str] = Field(
+        default_factory=dict,
+        description="Snapshot of session state at response time.",
+    )

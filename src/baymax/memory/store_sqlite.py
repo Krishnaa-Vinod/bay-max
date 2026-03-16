@@ -8,10 +8,12 @@ from uuid import UUID
 from baymax.core.enums import MemoryStatus, MemoryType
 from baymax.memory.interfaces import MetadataStore
 from baymax.schemas.memory import (
+    ChatTurn,
     EpisodicMemory,
     MemoryQuery,
     MemoryQueryResult,
     SemanticFact,
+    SessionSummary,
 )
 from baymax.schemas.perception import (
     BodyStateObservation,
@@ -98,6 +100,27 @@ CREATE TABLE IF NOT EXISTS recognition_observations (
     content TEXT NOT NULL,
     confidence REAL DEFAULT 1.0,
     evidence_refs TEXT DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS chat_turns (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT,
+    role TEXT NOT NULL,
+    text TEXT NOT NULL,
+    timestamp TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_summaries (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    summary_text TEXT NOT NULL,
+    turn_count INTEGER DEFAULT 0,
+    observation_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    episodic_ids TEXT DEFAULT '[]',
+    semantic_ids TEXT DEFAULT '[]'
 );
 """
 
@@ -329,6 +352,43 @@ class SQLiteMetadataStore(MetadataStore):
         conn.commit()
         return fact
 
+    async def get_semantic_fact(self, fact_id: UUID) -> SemanticFact | None:
+        conn = self._ensure_conn()
+        row = conn.execute(
+            "SELECT * FROM semantic_facts WHERE id = ?", (str(fact_id),)
+        ).fetchone()
+        if row is None:
+            return None
+        return SemanticFact(
+            id=UUID(row["id"]),
+            user_id=UUID(row["user_id"]),
+            content=row["content"],
+            confidence=row["confidence"],
+            first_observed=datetime.fromisoformat(row["first_observed"]),
+            last_confirmed=datetime.fromisoformat(row["last_confirmed"]),
+            evidence_refs=json.loads(row["evidence_refs"]),
+            status=row["status"],
+            memory_type=row["memory_type"],
+        )
+
+    async def update_semantic_fact(self, fact: SemanticFact) -> SemanticFact:
+        conn = self._ensure_conn()
+        conn.execute(
+            "UPDATE semantic_facts SET content = ?, confidence = ?,"
+            " last_confirmed = ?, status = ?, evidence_refs = ?"
+            " WHERE id = ?",
+            (
+                fact.content,
+                fact.confidence,
+                fact.last_confirmed.isoformat(),
+                fact.status.value,
+                json.dumps(fact.evidence_refs),
+                str(fact.id),
+            ),
+        )
+        conn.commit()
+        return fact
+
     async def store_observation(
         self, obs: RecognitionObservation | BodyStateObservation
     ) -> RecognitionObservation | BodyStateObservation:
@@ -406,6 +466,131 @@ class SQLiteMetadataStore(MetadataStore):
             semantic_facts=semantic,
             total_count=total,
         )
+
+    # --- Iteration 004: chat turns ---
+
+    async def store_chat_turn(self, turn: ChatTurn) -> ChatTurn:
+        conn = self._ensure_conn()
+        conn.execute(
+            "INSERT INTO chat_turns (id, session_id, user_id, role, text, timestamp)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                str(turn.id),
+                str(turn.session_id),
+                str(turn.user_id) if turn.user_id else None,
+                turn.role.value,
+                turn.text,
+                turn.timestamp.isoformat(),
+            ),
+        )
+        conn.commit()
+        return turn
+
+    async def get_chat_turns(self, session_id: UUID) -> list[ChatTurn]:
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT * FROM chat_turns WHERE session_id = ? ORDER BY timestamp",
+            (str(session_id),),
+        ).fetchall()
+        return [
+            ChatTurn(
+                id=UUID(row["id"]),
+                session_id=UUID(row["session_id"]),
+                user_id=UUID(row["user_id"]) if row["user_id"] else None,
+                role=row["role"],
+                text=row["text"],
+                timestamp=datetime.fromisoformat(row["timestamp"]),
+            )
+            for row in rows
+        ]
+
+    # --- Iteration 004: session summaries ---
+
+    async def store_session_summary(self, summary: SessionSummary) -> SessionSummary:
+        conn = self._ensure_conn()
+        conn.execute(
+            "INSERT INTO session_summaries"
+            " (id, session_id, user_id, summary_text, turn_count,"
+            "  observation_count, created_at, episodic_ids, semantic_ids)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(summary.id),
+                str(summary.session_id),
+                str(summary.user_id),
+                summary.summary_text,
+                summary.turn_count,
+                summary.observation_count,
+                summary.created_at.isoformat(),
+                json.dumps(summary.episodic_ids),
+                json.dumps(summary.semantic_ids),
+            ),
+        )
+        conn.commit()
+        return summary
+
+    async def get_session_summaries(self, user_id: UUID) -> list[SessionSummary]:
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT * FROM session_summaries WHERE user_id = ? ORDER BY created_at DESC",
+            (str(user_id),),
+        ).fetchall()
+        return [
+            SessionSummary(
+                id=UUID(row["id"]),
+                session_id=UUID(row["session_id"]),
+                user_id=UUID(row["user_id"]),
+                summary_text=row["summary_text"],
+                turn_count=row["turn_count"],
+                observation_count=row["observation_count"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+                episodic_ids=json.loads(row["episodic_ids"]),
+                semantic_ids=json.loads(row["semantic_ids"]),
+            )
+            for row in rows
+        ]
+
+    # --- Iteration 004: observations for consolidation ---
+
+    async def get_observations_for_session(
+        self, session_id: UUID
+    ) -> list[RecognitionObservation | BodyStateObservation]:
+        conn = self._ensure_conn()
+        rows = conn.execute(
+            "SELECT * FROM recognition_observations"
+            " WHERE session_id = ? ORDER BY timestamp",
+            (str(session_id),),
+        ).fetchall()
+        results: list[RecognitionObservation | BodyStateObservation] = []
+        for row in rows:
+            results.append(RecognitionObservation(
+                id=UUID(row["id"]),
+                session_id=UUID(row["session_id"]),
+                user_id=UUID(row["user_id"]) if row["user_id"] else None,
+                timestamp=datetime.fromisoformat(row["timestamp"]),
+                event_type=row["event_type"],
+                content=row["content"],
+                confidence=row["confidence"],
+                evidence_refs=json.loads(row["evidence_refs"]),
+            ))
+        return results
+
+    async def count_episodic_memories(self, user_id: UUID) -> int:
+        conn = self._ensure_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM episodic_memories"
+            " WHERE user_id = ? AND status = ?",
+            (str(user_id), MemoryStatus.ACTIVE.value),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+    async def count_semantic_facts(self, user_id: UUID) -> int:
+        conn = self._ensure_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM semantic_facts"
+            " WHERE user_id = ? AND status = ?",
+            (str(user_id), MemoryStatus.ACTIVE.value),
+        ).fetchone()
+        return row["cnt"] if row else 0
 
     async def close(self) -> None:
         if self._conn:

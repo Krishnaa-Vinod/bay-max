@@ -6,7 +6,13 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
-from baymax.core.enums import MemoryStatus, MemoryType
+from baymax.core.enums import (
+    CorrectionAction,
+    FactStatus,
+    MemoryStatus,
+    MemoryType,
+    TurnRole,
+)
 
 
 class EpisodicMemory(BaseModel):
@@ -91,6 +97,96 @@ class MemoryQueryResult(BaseModel):
     semantic_facts: list[SemanticFact] = Field(default_factory=list)
     intervention_memories: list[InterventionMemory] = Field(default_factory=list)
     total_count: int = 0
+
+
+# --- Iteration 004: new schemas ---
+
+
+class ChatTurn(BaseModel):
+    """A single typed conversation turn."""
+
+    id: UUID = Field(default_factory=uuid4)
+    session_id: UUID
+    user_id: UUID | None = None
+    role: TurnRole
+    text: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SessionSummary(BaseModel):
+    """Summary produced by consolidating a session."""
+
+    id: UUID = Field(default_factory=uuid4)
+    session_id: UUID
+    user_id: UUID
+    summary_text: str
+    turn_count: int = 0
+    observation_count: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    episodic_ids: list[str] = Field(default_factory=list)
+    semantic_ids: list[str] = Field(default_factory=list)
+
+
+class MemoryEmbeddingRecord(BaseModel):
+    """Record linking a memory to its vector embedding."""
+
+    memory_id: UUID
+    memory_type: MemoryType
+    user_id: UUID
+    content: str
+    embedding: list[float] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemoryHit(BaseModel):
+    """A single result from semantic memory search."""
+
+    memory_id: UUID
+    memory_type: MemoryType
+    content: str
+    score: float
+    user_id: UUID
+
+
+class ConsolidationResult(BaseModel):
+    """Result of running session consolidation."""
+
+    session_id: UUID
+    user_id: UUID
+    summary: SessionSummary | None = None
+    episodic_memories_created: int = 0
+    semantic_facts_created: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class MemoryCorrectionRequest(BaseModel):
+    """Request to correct a semantic fact."""
+
+    fact_id: UUID
+    action: CorrectionAction
+    updated_content: str | None = None
+
+
+class MemoryCorrectionResult(BaseModel):
+    """Result of a memory correction."""
+
+    fact_id: UUID
+    action: CorrectionAction
+    previous_content: str
+    new_content: str | None = None
+    new_status: FactStatus
+
+
+class MemorySummaryResponse(BaseModel):
+    """Summary of all memories for a user."""
+
+    user_id: UUID
+    episodic_count: int = 0
+    semantic_count: int = 0
+    intervention_count: int = 0
+    session_summaries: list[SessionSummary] = Field(default_factory=list)
+    recent_episodic: list[EpisodicMemory] = Field(default_factory=list)
+    confirmed_facts: list[SemanticFact] = Field(default_factory=list)
 
 
 class ProjectState(BaseModel):

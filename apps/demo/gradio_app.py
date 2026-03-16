@@ -7,8 +7,10 @@ from uuid import UUID
 import gradio as gr
 import numpy as np
 
+from baymax.core.enums import CorrectionAction, TurnRole
 from baymax.orchestrator.service import Orchestrator
 from baymax.perception.annotations import draw_annotations
+from baymax.schemas.memory import MemoryCorrectionRequest
 from baymax.schemas.user import UserProfileCreate
 
 orch = Orchestrator()
@@ -143,7 +145,7 @@ def analyze_frame_image(
 
 
 def get_response(session_id: str, user_id: str, context: str) -> str:
-    """Generate a supportive response."""
+    """Generate a supportive response with memory-aware output."""
 
     async def _inner():
         await ensure_init()
@@ -156,6 +158,8 @@ def get_response(session_id: str, user_id: str, context: str) -> str:
         return json.dumps({
             "strategy": response.strategy.value,
             "message": response.message,
+            "memory_refs": response.memory_refs,
+            "state_summary": response.state_summary,
         }, indent=2)
 
     return run_async(_inner())
@@ -176,13 +180,128 @@ def query_user_memories(user_id: str) -> str:
     return run_async(_inner())
 
 
+# --- Iteration 004: new Gradio handlers ---
+
+
+def add_chat_turn(session_id: str, user_id: str, role: str, text: str) -> str:
+    """Add a typed conversation turn."""
+
+    async def _inner():
+        await ensure_init()
+        if not session_id.strip() or not text.strip():
+            return json.dumps({"error": "Session ID and text are required"}, indent=2)
+        try:
+            sid = UUID(session_id.strip())
+        except ValueError:
+            return json.dumps({"error": "Invalid Session ID"}, indent=2)
+        uid = UUID(user_id.strip()) if user_id.strip() else None
+        turn_role = TurnRole.USER if role == "user" else TurnRole.SYSTEM
+        turn = await orch.add_turn(
+            session_id=sid, role=turn_role, text=text.strip(), user_id=uid
+        )
+        return json.dumps({
+            "turn_id": str(turn.id),
+            "role": turn.role.value,
+            "text": turn.text,
+            "timestamp": turn.timestamp.isoformat(),
+        }, indent=2)
+
+    return run_async(_inner())
+
+
+def get_session_turns(session_id: str) -> str:
+    """Get all turns for a session."""
+
+    async def _inner():
+        await ensure_init()
+        sid = UUID(session_id.strip())
+        turns = await orch.get_turns(sid)
+        return json.dumps([
+            {"role": t.role.value, "text": t.text, "time": t.timestamp.isoformat()}
+            for t in turns
+        ], indent=2)
+
+    return run_async(_inner())
+
+
+def consolidate_session_handler(session_id: str, user_id: str) -> str:
+    """Consolidate a session into memories."""
+
+    async def _inner():
+        await ensure_init()
+        if not session_id.strip() or not user_id.strip():
+            return json.dumps({"error": "Session ID and User ID are required"}, indent=2)
+        result = await orch.consolidate(
+            session_id=UUID(session_id.strip()),
+            user_id=UUID(user_id.strip()),
+        )
+        out = {
+            "session_id": str(result.session_id),
+            "episodic_created": result.episodic_memories_created,
+            "semantic_created": result.semantic_facts_created,
+        }
+        if result.summary:
+            out["summary"] = result.summary.summary_text
+        if result.errors:
+            out["errors"] = result.errors
+        return json.dumps(out, indent=2)
+
+    return run_async(_inner())
+
+
+def get_memory_summary_handler(user_id: str) -> str:
+    """Get memory summary for a user."""
+
+    async def _inner():
+        await ensure_init()
+        summary = await orch.get_memory_summary(UUID(user_id.strip()))
+        return json.dumps({
+            "episodic_count": summary.episodic_count,
+            "semantic_count": summary.semantic_count,
+            "session_summaries": [s.summary_text for s in summary.session_summaries],
+            "recent_episodic": [m.content for m in summary.recent_episodic],
+            "confirmed_facts": [
+                {"id": str(f.id), "content": f.content, "confidence": f.confidence}
+                for f in summary.confirmed_facts
+            ],
+        }, indent=2)
+
+    return run_async(_inner())
+
+
+def correct_memory_handler(fact_id: str, action: str, updated_content: str) -> str:
+    """Correct a semantic fact."""
+
+    async def _inner():
+        await ensure_init()
+        act = CorrectionAction(action)
+        req = MemoryCorrectionRequest(
+            fact_id=UUID(fact_id.strip()),
+            action=act,
+            updated_content=updated_content.strip() if updated_content.strip() else None,
+        )
+        try:
+            result = await orch.correct_memory(req)
+            return json.dumps({
+                "fact_id": str(result.fact_id),
+                "action": result.action.value,
+                "previous_content": result.previous_content,
+                "new_content": result.new_content,
+                "new_status": result.new_status.value,
+            }, indent=2)
+        except ValueError as e:
+            return json.dumps({"error": str(e)}, indent=2)
+
+    return run_async(_inner())
+
+
 def build_demo() -> gr.Blocks:
     """Build the Gradio demo interface."""
     with gr.Blocks(title="Bay-Max Demo") as demo:
         gr.Markdown("# Bay-Max Companion Demo")
         gr.Markdown(
             "A memory-first empathetic companion agent with face recognition,"
-            " pose estimation, and engagement tracking."
+            " pose estimation, engagement tracking, and memory recall."
         )
 
         with gr.Tab("Setup"):
@@ -226,7 +345,33 @@ def build_demo() -> gr.Blocks:
                 outputs=[frame_output, frame_annotated],
             )
 
+        with gr.Tab("Chat"):
+            gr.Markdown("Type conversation turns to simulate dialogue (before audio exists).")
+            chat_session_input = gr.Textbox(
+                label="Session ID", placeholder="Paste session ID"
+            )
+            chat_user_input = gr.Textbox(label="User ID", placeholder="Paste user ID")
+            chat_role = gr.Radio(
+                choices=["user", "system"], value="user", label="Role"
+            )
+            chat_text = gr.Textbox(label="Message", placeholder="Type a message...")
+            chat_send_btn = gr.Button("Send Turn")
+            chat_result = gr.JSON(label="Turn Result")
+            chat_send_btn.click(
+                add_chat_turn,
+                inputs=[chat_session_input, chat_user_input, chat_role, chat_text],
+                outputs=[chat_result],
+            )
+            chat_history_btn = gr.Button("View Turn History")
+            chat_history = gr.JSON(label="Turn History")
+            chat_history_btn.click(
+                get_session_turns,
+                inputs=[chat_session_input],
+                outputs=[chat_history],
+            )
+
         with gr.Tab("Interact"):
+            gr.Markdown("Generate a memory-aware supportive response.")
             session_input = gr.Textbox(
                 label="Session ID",
                 placeholder="Paste session ID from Setup",
@@ -244,11 +389,51 @@ def build_demo() -> gr.Blocks:
                 outputs=[response_output],
             )
 
+        with gr.Tab("Consolidate"):
+            gr.Markdown("Consolidate a session into episodic memories and semantic facts.")
+            cons_session_input = gr.Textbox(
+                label="Session ID", placeholder="Paste session ID"
+            )
+            cons_user_input = gr.Textbox(label="User ID", placeholder="Paste user ID")
+            cons_btn = gr.Button("Consolidate Session")
+            cons_output = gr.JSON(label="Consolidation Result")
+            cons_btn.click(
+                consolidate_session_handler,
+                inputs=[cons_session_input, cons_user_input],
+                outputs=[cons_output],
+            )
+
         with gr.Tab("Memory"):
+            gr.Markdown("Query and inspect memories for a user.")
             mem_user_input = gr.Textbox(label="User ID", placeholder="Enter user ID")
-            mem_btn = gr.Button("Query Memories")
+            with gr.Row():
+                mem_btn = gr.Button("Query Memories")
+                mem_summary_btn = gr.Button("Memory Summary")
             mem_output = gr.JSON(label="Memories")
             mem_btn.click(query_user_memories, inputs=[mem_user_input], outputs=[mem_output])
+            mem_summary_btn.click(
+                get_memory_summary_handler,
+                inputs=[mem_user_input],
+                outputs=[mem_output],
+            )
+            gr.Markdown("### Correct a Semantic Fact")
+            corr_fact_id = gr.Textbox(label="Fact ID", placeholder="Paste fact UUID")
+            corr_action = gr.Radio(
+                choices=["confirm", "reject", "update"],
+                value="confirm",
+                label="Action",
+            )
+            corr_content = gr.Textbox(
+                label="Updated Content (for update only)",
+                placeholder="New fact text...",
+            )
+            corr_btn = gr.Button("Apply Correction")
+            corr_output = gr.JSON(label="Correction Result")
+            corr_btn.click(
+                correct_memory_handler,
+                inputs=[corr_fact_id, corr_action, corr_content],
+                outputs=[corr_output],
+            )
 
     return demo
 

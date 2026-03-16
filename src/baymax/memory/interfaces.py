@@ -4,10 +4,12 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from baymax.schemas.memory import (
+    ChatTurn,
     EpisodicMemory,
     MemoryQuery,
     MemoryQueryResult,
     SemanticFact,
+    SessionSummary,
 )
 from baymax.schemas.perception import (
     BodyStateObservation,
@@ -66,6 +68,14 @@ class MetadataStore(ABC):
         ...
 
     @abstractmethod
+    async def get_semantic_fact(self, fact_id: UUID) -> SemanticFact | None:
+        ...
+
+    @abstractmethod
+    async def update_semantic_fact(self, fact: SemanticFact) -> SemanticFact:
+        ...
+
+    @abstractmethod
     async def store_observation(
         self, obs: RecognitionObservation | BodyStateObservation
     ) -> RecognitionObservation | BodyStateObservation:
@@ -73,6 +83,42 @@ class MetadataStore(ABC):
 
     @abstractmethod
     async def query_memories(self, query: MemoryQuery) -> MemoryQueryResult:
+        ...
+
+    # --- Iteration 004: chat turns ---
+
+    @abstractmethod
+    async def store_chat_turn(self, turn: ChatTurn) -> ChatTurn:
+        ...
+
+    @abstractmethod
+    async def get_chat_turns(self, session_id: UUID) -> list[ChatTurn]:
+        ...
+
+    # --- Iteration 004: session summaries ---
+
+    @abstractmethod
+    async def store_session_summary(self, summary: SessionSummary) -> SessionSummary:
+        ...
+
+    @abstractmethod
+    async def get_session_summaries(self, user_id: UUID) -> list[SessionSummary]:
+        ...
+
+    # --- Iteration 004: observations for consolidation ---
+
+    @abstractmethod
+    async def get_observations_for_session(
+        self, session_id: UUID
+    ) -> list[RecognitionObservation | BodyStateObservation]:
+        ...
+
+    @abstractmethod
+    async def count_episodic_memories(self, user_id: UUID) -> int:
+        ...
+
+    @abstractmethod
+    async def count_semantic_facts(self, user_id: UUID) -> int:
         ...
 
     @abstractmethod

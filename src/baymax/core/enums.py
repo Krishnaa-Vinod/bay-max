@@ -100,3 +100,26 @@ class MotionLevel(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     UNKNOWN = "unknown"
+
+
+class TurnRole(StrEnum):
+    """Role in a conversation turn."""
+
+    USER = "user"
+    SYSTEM = "system"
+
+
+class FactStatus(StrEnum):
+    """Status of a candidate semantic fact."""
+
+    CANDIDATE = "candidate"
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"
+
+
+class CorrectionAction(StrEnum):
+    """Action to take on a memory correction request."""
+
+    CONFIRM = "confirm"
+    REJECT = "reject"
+    UPDATE = "update"
