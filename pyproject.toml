@@ -44,7 +44,7 @@ vector = [
     "sentence-transformers>=2.2.0",
 ]
 all = [
-    "baymax[dev,vision]",
+    "baymax[dev,vision,vector]",
 ]
 
 [tool.hatch.build.targets.wheel]

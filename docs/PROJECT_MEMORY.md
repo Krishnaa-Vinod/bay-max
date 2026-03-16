@@ -3,11 +3,11 @@
 This file provides continuity context for AI agents working on the Bay-Max project. Update this file after completing significant work.
 
 ## Last Updated
-2026-03-16 (Iteration 003)
+2026-03-16 (Iteration 004)
 
 ## Current State
-- **Iteration**: 003 (Pose Estimation & Engagement Heuristics)
-- **Branch**: feature/iteration-003-pose-engagement-local-eval
+- **Iteration**: 004 (Memory Recall & Consolidation)
+- **Branch**: feature/iteration-004-memory-recall
 - **Status**: Complete
 
 ## What Exists
@@ -20,23 +20,25 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - Pose estimation via MediaPipe Pose (33 landmarks, backend-agnostic interface)
 - Body-state heuristics: posture, lean, motion classification from landmarks
 - Engagement scoring (weighted 0.0-1.0 from face, pose, posture, lean, motion signals)
+- Temporal smoothing for engagement and posture (majority-vote over configurable window)
 - Body-state observations written to memory on meaningful transitions
 - Annotated debug frame output (face boxes, pose skeleton, engagement labels)
 - Local test CLI (`scripts/local_test.py`) for headless image analysis and frame replay
-- Face enrollment endpoint (upload image, detect 1 face, store embedding)
-- Frame analysis endpoint (detect, embed, recognize, track, pose, engage, write observations)
-- Recognition-aware InteractionState with identity_confidence, face_count, track IDs
-- Body-state InteractionState with pose_visible, posture, lean, motion, engagement_score
-- SQLite tables: users, face_enrollments, face_embeddings, sessions, episodic_memories, semantic_facts, recognition_observations
-- Pydantic v2 schemas: full set including PoseLandmark2D, PoseResult, EngagementResult, AnnotatedArtifactRef, BodyStateObservation
-- FastAPI backend with 10 endpoints
-- Gradio demo with 5 tabs (Setup, Enroll Face, Frame Analysis with annotated overlay, Interact, Memory)
-- 109 tests all passing, ruff lint clean
+- **Text embedding adapter** with `TextEmbedder` ABC, `SentenceTransformerEmbedder` (all-MiniLM-L6-v2, 384-d), and `StubTextEmbedder`
+- **LanceDB vector store** for semantic memory search (with `StubVectorStore` fallback)
+- **Typed conversation turns** (`ChatTurn` with `TurnRole` user/system) for pre-audio dialogue
+- **Session consolidation pipeline**: turns + observations → session summary → episodic memories → candidate semantic facts
+- **Memory-aware responses**: top-k semantic search populates `memory_refs` and `state_summary` in `SupportiveResponse`
+- **Memory inspection**: `MemorySummaryResponse` with counts, session summaries, recent episodic, confirmed facts
+- **Memory correction**: confirm, reject, or update semantic facts via `CorrectionAction`
+- SQLite tables: users, face_enrollments, face_embeddings, sessions, episodic_memories, semantic_facts, recognition_observations, body_state_observations, chat_turns, session_summaries
+- Pydantic v2 schemas: full set including ChatTurn, SessionSummary, ConsolidationResult, MemoryHit, MemoryCorrectionRequest/Result, MemorySummaryResponse
+- FastAPI backend with 16 endpoints (version 0.3.0)
+- Gradio demo with 7 tabs (Setup, Enroll Face, Frame Analysis, Chat, Interact, Consolidate, Memory)
+- 158 tests all passing, ruff lint clean
 
 ## What Is Stubbed
 - Frame source / webcam capture (returns empty)
-- LanceDB vector store adapter (interface exists, stub in-memory implementation)
-- Memory consolidation (returns empty)
 - Emotion estimator (returns hardcoded values)
 - Dialogue is rule-based (no LLM)
 
@@ -51,6 +53,11 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - MediaPipe Pose for body pose estimation with stub fallback (Iteration 003)
 - Backend-agnostic PoseEstimator interface for future RTMPose swap (Iteration 003)
 - Simple weighted scoring for engagement (transparent, documented thresholds) (Iteration 003)
+- sentence-transformers/all-MiniLM-L6-v2 for text memory embeddings (384-d) (Iteration 004)
+- LanceDB for local vector retrieval (no server dependency) (Iteration 004)
+- Majority-vote temporal smoothing over configurable window (Iteration 004)
+- Simple heuristic semantic fact extraction (preference signals in user turns) (Iteration 004)
+- Separate episodic from semantic with confidence and status tracking (Iteration 004)
 
 ## Model Stack
 - **Face Detection**: MTCNN (facenet-pytorch) - multi-task cascaded CNN
@@ -59,20 +66,25 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - **Tracking**: Simple greedy IoU (0.4 weight) + cosine (0.6 weight) tracker
 - **Pose Estimation**: MediaPipe Pose (33 landmarks, legacy mp.solutions.pose API)
 - **Engagement**: Rule-based weighted scoring (see docs/ENGAGEMENT_HEURISTICS.md)
+- **Text Embedding**: sentence-transformers/all-MiniLM-L6-v2 (384-d)
+- **Vector Search**: LanceDB (local, serverless)
 - **Dialogue**: Rule-based templates (no external API)
 
 ## Known Issues
 - SQLite store uses synchronous sqlite3 despite being wrapped in async
-- LanceDB vector store adapter not yet integrated
 - Emotion estimator remains stubbed
 - Gradio demo uses sync-to-async workaround
 - MediaPipe Pose uses legacy API (not the newer Tasks API)
+- LanceDB vector store requires separate install (pip install baymax[vector])
+- Semantic fact extraction uses simple heuristics, not LLM-based
 
 ## For Next Agent
 1. Read this file and `docs/project_state.json` first
 2. Check `docs/BACKLOG.md` for pending work
-3. The highest-impact next steps are: wire LanceDB, replace dialogue with Claude, add emotion estimation
+3. The highest-impact next steps are: replace dialogue with Claude LLM, add emotion estimation, LLM-based fact extraction
 4. All modules use interfaces; implement concrete classes without changing the interface contracts
-5. The perception module now has real implementations alongside stubs - use FacenetDetector and CosineRecognizer for face, MediaPipePoseEstimator for pose
-6. Engagement is now real (not stubbed) - uses transparent heuristics documented in `docs/ENGAGEMENT_HEURISTICS.md`
-7. Test with `scripts/local_test.py` for quick validation of changes
+5. The perception module has real implementations alongside stubs - use FacenetDetector and CosineRecognizer for face, MediaPipePoseEstimator for pose
+6. Engagement is real (not stubbed) with temporal smoothing - uses transparent heuristics documented in `docs/ENGAGEMENT_HEURISTICS.md`
+7. Memory pipeline is fully functional: turns → consolidation → episodic/semantic → vector search → memory-aware responses
+8. Test with `scripts/local_test.py` for quick validation of changes
+9. Install vector dependencies with `pip install -e ".[vector]"` for LanceDB support

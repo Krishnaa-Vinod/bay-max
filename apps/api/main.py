@@ -7,9 +7,20 @@ from uuid import UUID
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from PIL import Image
+from pydantic import BaseModel, Field
 
+from baymax.core.enums import TurnRole
 from baymax.orchestrator.service import Orchestrator
-from baymax.schemas.memory import MemoryQuery, MemoryQueryResult
+from baymax.schemas.memory import (
+    ChatTurn,
+    ConsolidationResult,
+    MemoryCorrectionRequest,
+    MemoryCorrectionResult,
+    MemoryHit,
+    MemoryQuery,
+    MemoryQueryResult,
+    MemorySummaryResponse,
+)
 from baymax.schemas.perception import FrameAnalysisResult
 from baymax.schemas.response import RespondRequest, SupportiveResponse
 from baymax.schemas.session import Session, SessionCreate
@@ -29,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -77,7 +88,6 @@ async def enroll_face(user_id: UUID, file: UploadFile = File(...)) -> FaceEnroll
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Read and decode the uploaded image
     contents = await file.read()
     try:
         pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
@@ -111,11 +121,7 @@ async def get_session_state(session_id: UUID) -> InteractionState:
 
 @app.post("/v1/sessions/{session_id}/frames", response_model=FrameAnalysisResult)
 async def analyze_frame(session_id: UUID, file: UploadFile = File(...)) -> FrameAnalysisResult:
-    """Submit a frame for face detection and recognition.
-
-    Expects a single image file (JPEG/PNG). Returns detection results,
-    recognized/unknown faces, updated state, and any observations written.
-    """
+    """Submit a frame for face detection and recognition."""
     session = await orchestrator.get_session_state(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -154,3 +160,118 @@ async def respond(request: RespondRequest) -> SupportiveResponse:
         user_id=request.user_id,
         context=request.context,
     )
+
+
+# --- Iteration 004: Chat Turns ---
+
+
+class ChatTurnRequest(BaseModel):
+    """Request to add a typed conversation turn."""
+
+    role: TurnRole
+    text: str
+    user_id: UUID | None = None
+
+
+@app.post(
+    "/v1/sessions/{session_id}/turns",
+    response_model=ChatTurn,
+    status_code=201,
+)
+async def add_turn(session_id: UUID, request: ChatTurnRequest) -> ChatTurn:
+    """Add a typed conversation turn to a session."""
+    session = await orchestrator.get_session_state(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return await orchestrator.add_turn(
+        session_id=session_id,
+        role=request.role,
+        text=request.text,
+        user_id=request.user_id,
+    )
+
+
+@app.get(
+    "/v1/sessions/{session_id}/turns",
+    response_model=list[ChatTurn],
+)
+async def get_turns(session_id: UUID) -> list[ChatTurn]:
+    """Get all chat turns for a session."""
+    return await orchestrator.get_turns(session_id)
+
+
+# --- Iteration 004: Consolidation ---
+
+
+class ConsolidateRequest(BaseModel):
+    """Request to consolidate a session."""
+
+    user_id: UUID
+
+
+@app.post(
+    "/v1/sessions/{session_id}/consolidate",
+    response_model=ConsolidationResult,
+)
+async def consolidate_session(
+    session_id: UUID, request: ConsolidateRequest
+) -> ConsolidationResult:
+    """Consolidate a session into episodic memories and semantic facts."""
+    return await orchestrator.consolidate(
+        session_id=session_id,
+        user_id=request.user_id,
+    )
+
+
+# --- Iteration 004: Memory Summary ---
+
+
+@app.get(
+    "/v1/memory/summary/{user_id}",
+    response_model=MemorySummaryResponse,
+)
+async def get_memory_summary(user_id: UUID) -> MemorySummaryResponse:
+    """Get a summary of all memories for a user."""
+    user = await orchestrator.get_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return await orchestrator.get_memory_summary(user_id)
+
+
+# --- Iteration 004: Semantic Memory Query ---
+
+
+class SemanticQueryRequest(BaseModel):
+    """Request for semantic memory search."""
+
+    user_id: UUID
+    query: str
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
+@app.post(
+    "/v1/memory/search",
+    response_model=list[MemoryHit],
+)
+async def query_memory_semantic(request: SemanticQueryRequest) -> list[MemoryHit]:
+    """Search memories using semantic similarity."""
+    return await orchestrator.query_memory_semantic(
+        user_id=request.user_id,
+        query=request.query,
+        top_k=request.top_k,
+    )
+
+
+# --- Iteration 004: Memory Correction ---
+
+
+@app.post(
+    "/v1/memory/correct",
+    response_model=MemoryCorrectionResult,
+)
+async def correct_memory(request: MemoryCorrectionRequest) -> MemoryCorrectionResult:
+    """Apply a correction to a semantic fact (confirm, reject, or update)."""
+    try:
+        return await orchestrator.correct_memory(request)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

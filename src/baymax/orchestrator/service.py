@@ -1,5 +1,6 @@
 """Orchestrator service coordinating the end-to-end flow."""
 
+import collections
 import logging
 import time
 from datetime import datetime
@@ -8,10 +9,20 @@ from uuid import UUID
 import numpy as np
 
 from baymax.config.settings import get_settings
-from baymax.core.enums import EngagementLevel, PostureLabel
+from baymax.core.enums import (
+    CorrectionAction,
+    EngagementLevel,
+    FactStatus,
+    MemoryStatus,
+    PostureLabel,
+    TurnRole,
+)
 from baymax.dialogue.rule_based import RuleBasedDialogue
+from baymax.memory.consolidate import consolidate_session
+from baymax.memory.embedding import StubTextEmbedder, TextEmbedder
 from baymax.memory.retrieve import retrieve_memories
 from baymax.memory.store_sqlite import SQLiteMetadataStore
+from baymax.memory.vector_store import LanceDBVectorStore, StubVectorStore, VectorStore
 from baymax.perception.facenet_adapter import CosineRecognizer, FacenetDetector
 from baymax.perception.heuristics import (
     MotionTracker,
@@ -23,7 +34,15 @@ from baymax.perception.interfaces import FaceDetector, FaceRecognizer, StubFaceD
 from baymax.perception.pose_interface import PoseEstimator, StubPoseEstimator
 from baymax.perception.tracker import SimpleTracker
 from baymax.planner.supportive_planner import SupportivePlanner
-from baymax.schemas.memory import MemoryQueryResult
+from baymax.schemas.memory import (
+    ChatTurn,
+    ConsolidationResult,
+    MemoryCorrectionRequest,
+    MemoryCorrectionResult,
+    MemoryHit,
+    MemoryQueryResult,
+    MemorySummaryResponse,
+)
 from baymax.schemas.perception import (
     BodyStateObservation,
     EngagementResult,
@@ -70,10 +89,22 @@ class Orchestrator:
         self._enable_annotations = settings.enable_annotations
         self._artifact_dir = settings.artifact_dir
 
+        # Iteration 004: memory settings
+        self._vector_backend = settings.vector_backend
+        self._text_embedding_model = settings.text_embedding_model
+        self._memory_top_k = settings.memory_top_k
+        self._memory_similarity_threshold = settings.memory_similarity_threshold
+        self._smoothing_window = settings.session_smoothing_window
+        self._enable_consolidation = settings.enable_memory_consolidation
+
         # Perception backends (lazy-loaded)
         self._detector: FaceDetector | None = None
         self._recognizer: FaceRecognizer | None = None
         self._pose_estimator: PoseEstimator | None = None
+
+        # Iteration 004: text embedding + vector store (lazy-loaded)
+        self._text_embedder: TextEmbedder | None = None
+        self._vector_store: VectorStore | None = None
 
         # Cached enrolled embeddings (refreshed on enroll)
         self._enrolled_embeddings: list[FaceEmbeddingRecord] = []
@@ -83,6 +114,10 @@ class Orchestrator:
         self._prev_posture: dict[UUID, PostureLabel] = {}
         self._prev_engagement: dict[UUID, EngagementLevel] = {}
         self._prev_pose_visible: dict[UUID, bool] = {}
+
+        # Iteration 004: temporal smoothing buffers
+        self._engagement_buffer: dict[UUID, collections.deque] = {}
+        self._posture_buffer: dict[UUID, collections.deque] = {}
 
     def _ensure_detector(self) -> FaceDetector:
         if self._detector is None:
@@ -126,6 +161,63 @@ class Orchestrator:
                 logger.info("Pose backend '%s' not supported, using stub", self._pose_backend)
                 self._pose_estimator = StubPoseEstimator()
         return self._pose_estimator
+
+    def _ensure_text_embedder(self) -> TextEmbedder:
+        if self._text_embedder is None:
+            try:
+                from baymax.memory.embedding import SentenceTransformerEmbedder
+                self._text_embedder = SentenceTransformerEmbedder(
+                    model_name=self._text_embedding_model
+                )
+                logger.info("SentenceTransformerEmbedder loaded")
+            except Exception:
+                logger.warning(
+                    "Failed to load SentenceTransformerEmbedder, using stub",
+                    exc_info=True,
+                )
+                self._text_embedder = StubTextEmbedder()
+        return self._text_embedder
+
+    def _ensure_vector_store(self) -> VectorStore:
+        if self._vector_store is None:
+            if self._vector_backend == "lancedb":
+                try:
+                    settings = get_settings()
+                    db_path = f"{settings.data_dir}/lancedb"
+                    self._vector_store = LanceDBVectorStore(db_path=db_path)
+                    logger.info("LanceDBVectorStore at %s", db_path)
+                except Exception:
+                    logger.warning(
+                        "Failed to init LanceDBVectorStore, using stub",
+                        exc_info=True,
+                    )
+                    self._vector_store = StubVectorStore()
+            else:
+                self._vector_store = StubVectorStore()
+        return self._vector_store
+
+    def _smoothed_engagement(self, session_id: UUID, level: EngagementLevel) -> EngagementLevel:
+        """Apply temporal smoothing to engagement level changes."""
+        buf = self._engagement_buffer.setdefault(
+            session_id, collections.deque(maxlen=self._smoothing_window)
+        )
+        buf.append(level)
+        if len(buf) < self._smoothing_window:
+            return level
+        # Return the most frequent level in the window
+        counter = collections.Counter(buf)
+        return counter.most_common(1)[0][0]
+
+    def _smoothed_posture(self, session_id: UUID, posture: PostureLabel) -> PostureLabel:
+        """Apply temporal smoothing to posture label changes."""
+        buf = self._posture_buffer.setdefault(
+            session_id, collections.deque(maxlen=self._smoothing_window)
+        )
+        buf.append(posture)
+        if len(buf) < self._smoothing_window:
+            return posture
+        counter = collections.Counter(buf)
+        return counter.most_common(1)[0][0]
 
     async def initialize(self) -> None:
         """Initialize the orchestrator and its dependencies."""
@@ -215,11 +307,7 @@ class Orchestrator:
     async def analyze_frame(
         self, session_id: UUID, frame: np.ndarray
     ) -> FrameAnalysisResult:
-        """Run detection + recognition + pose + engagement on a frame and update state.
-
-        Returns a FrameAnalysisResult with recognized/unknown faces, pose, engagement,
-        and observations.
-        """
+        """Run detection + recognition + pose + engagement on a frame and update state."""
         t0 = time.time()
 
         detector = self._ensure_detector()
@@ -254,7 +342,6 @@ class Orchestrator:
             )
 
             if user_id is not None:
-                # Look up display name
                 user = await self.store.get_user(user_id)
                 display_name = user.display_name if user else None
                 recognized.append(RecognizedFace(
@@ -269,7 +356,6 @@ class Orchestrator:
                     primary_confidence = score
                     primary_display_name = display_name
 
-                # Associate track with user
                 for track in tracks:
                     if det.embedding == track.embedding:
                         self.tracker.set_user_id(track.track_id, user_id, score)
@@ -285,11 +371,14 @@ class Orchestrator:
         pose_result: PoseResult = pose_estimator.estimate(frame)
 
         # 5. Compute body-state heuristics
-        posture = compute_posture(pose_result)
+        raw_posture = compute_posture(pose_result)
         lean = compute_lean(pose_result)
         motion = self.motion_tracker.update(pose_result)
         face_visible = len(detections) > 0
         face_recognized = len(recognized) > 0
+
+        # Apply temporal smoothing (Iteration 004)
+        posture = self._smoothed_posture(session_id, raw_posture)
 
         engagement_result = compute_engagement(
             posture=posture,
@@ -297,6 +386,18 @@ class Orchestrator:
             motion=motion,
             face_visible=face_visible,
             face_recognized=face_recognized,
+            pose_visible=pose_result.pose_present,
+        )
+
+        # Smooth engagement level
+        smoothed_level = self._smoothed_engagement(session_id, engagement_result.level)
+        engagement_result = EngagementResult(
+            level=smoothed_level,
+            score=engagement_result.score,
+            posture=posture,
+            lean=lean,
+            motion=motion,
+            face_visible=face_visible,
             pose_visible=pose_result.pose_present,
         )
 
@@ -325,6 +426,7 @@ class Orchestrator:
         self.state_manager.update_body_state(session_id, engagement_result)
 
         # 8. Write meaningful observations (face + body-state)
+        # Only write if smoothed values differ from previous (suppresses noisy writes)
         obs_count = await self._write_observations(
             session_id=session_id,
             recognized=recognized,
@@ -368,18 +470,10 @@ class Orchestrator:
         primary_user_id: UUID | None,
         primary_confidence: float,
     ) -> int:
-        """Write recognition observations only on meaningful events.
-
-        Meaningful events:
-        - first_recognition: first time a user is seen in this session
-        - user_switch: different user recognized than before
-        - unknown_to_known: previously unknown face now matched
-        - known_to_unknown: previously matched face now unrecognized
-        """
+        """Write recognition observations only on meaningful events."""
         prev_user = self._prev_user_ids.get(session_id)
         count = 0
 
-        # First recognition in session
         if prev_user is None and primary_user_id is not None:
             user = await self.store.get_user(primary_user_id)
             name = user.display_name if user else str(primary_user_id)[:8]
@@ -397,7 +491,6 @@ class Orchestrator:
             await self.store.store_observation(obs)
             count += 1
 
-        # User switch
         elif (
             prev_user is not None
             and primary_user_id is not None
@@ -416,7 +509,6 @@ class Orchestrator:
             await self.store.store_observation(obs)
             count += 1
 
-        # Known to unknown
         elif prev_user is not None and primary_user_id is None and len(unknown) > 0:
             obs = RecognitionObservation(
                 session_id=session_id,
@@ -437,20 +529,12 @@ class Orchestrator:
         engagement_result: EngagementResult,
         user_id: UUID | None,
     ) -> int:
-        """Write body-state observations only on meaningful transitions.
-
-        Meaningful events:
-        - pose_first_seen: first time pose is detected in this session
-        - pose_lost: pose was visible but is no longer detected
-        - posture_change: posture label changed
-        - engagement_change: engagement level changed
-        """
+        """Write body-state observations only on meaningful transitions."""
         count = 0
         prev_pose_visible = self._prev_pose_visible.get(session_id, False)
         prev_posture = self._prev_posture.get(session_id, PostureLabel.UNKNOWN)
         prev_engagement = self._prev_engagement.get(session_id, EngagementLevel.MEDIUM)
 
-        # Pose first seen
         if not prev_pose_visible and engagement_result.pose_visible:
             obs = BodyStateObservation(
                 session_id=session_id,
@@ -466,9 +550,8 @@ class Orchestrator:
             )
             await self.store.store_observation(obs)
             count += 1
-            return count  # Don't double-report on same frame
+            return count
 
-        # Pose lost
         if prev_pose_visible and not engagement_result.pose_visible:
             obs = BodyStateObservation(
                 session_id=session_id,
@@ -485,7 +568,6 @@ class Orchestrator:
         if not engagement_result.pose_visible:
             return count
 
-        # Posture change
         if (
             engagement_result.posture != PostureLabel.UNKNOWN
             and prev_posture != PostureLabel.UNKNOWN
@@ -504,7 +586,6 @@ class Orchestrator:
             await self.store.store_observation(obs)
             count += 1
 
-        # Engagement change
         if engagement_result.level != prev_engagement:
             obs = BodyStateObservation(
                 session_id=session_id,
@@ -550,6 +631,75 @@ class Orchestrator:
             limit=limit,
         )
 
+    # --- Iteration 004: Typed conversation turns (T403) ---
+
+    async def add_turn(
+        self,
+        session_id: UUID,
+        role: TurnRole,
+        text: str,
+        user_id: UUID | None = None,
+    ) -> ChatTurn:
+        """Add a typed conversation turn to a session."""
+        turn = ChatTurn(
+            session_id=session_id,
+            user_id=user_id,
+            role=role,
+            text=text,
+        )
+        stored = await self.store.store_chat_turn(turn)
+        return stored
+
+    async def get_turns(self, session_id: UUID) -> list[ChatTurn]:
+        """Get all chat turns for a session."""
+        return await self.store.get_chat_turns(session_id)
+
+    # --- Iteration 004: Session consolidation (T404) ---
+
+    async def consolidate(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+    ) -> ConsolidationResult:
+        """Consolidate a session into episodic memories and semantic facts.
+
+        Also embeds new memories in the vector store if available.
+        """
+        result = await consolidate_session(
+            store=self.store,
+            session_id=session_id,
+            user_id=user_id,
+        )
+
+        # Embed new memories in vector store
+        if result.summary and result.episodic_memories_created > 0:
+            try:
+                embedder = self._ensure_text_embedder()
+                vs = self._ensure_vector_store()
+                # Re-fetch the episodic memories we just created
+                mq_result = await retrieve_memories(
+                    store=self.store,
+                    user_id=user_id,
+                    limit=result.episodic_memories_created + 5,
+                )
+                for mem in mq_result.episodic_memories:
+                    vec = embedder.embed_single(mem.content)
+                    await vs.add(
+                        memory_id=mem.id,
+                        embedding=vec,
+                        metadata={
+                            "user_id": str(user_id),
+                            "memory_type": "episodic",
+                            "content": mem.content,
+                        },
+                    )
+            except Exception:
+                logger.warning("Failed to embed memories in vector store", exc_info=True)
+
+        return result
+
+    # --- Iteration 004: Memory-aware responses (T406) ---
+
     async def respond(
         self,
         session_id: UUID,
@@ -564,13 +714,26 @@ class Orchestrator:
             user_id=user_id or UUID("00000000-0000-0000-0000-000000000000"),
             query=context,
         )
+        memory_refs: list[str] = []
         if user_id:
             memories = await retrieve_memories(
                 store=self.store,
                 user_id=user_id,
                 query=context,
-                limit=5,
+                limit=self._memory_top_k,
             )
+            # Also try semantic search via vector store
+            semantic_hits = await self._semantic_search(user_id, context)
+            for hit in semantic_hits:
+                memory_refs.append(hit.content)
+
+            # Add SQL-retrieved memories to refs
+            for m in memories.episodic_memories:
+                if m.content not in memory_refs:
+                    memory_refs.append(m.content)
+            for f in memories.semantic_facts:
+                if f.content not in memory_refs:
+                    memory_refs.append(f.content)
 
         # Plan strategy
         strategy = self.planner.plan(state, memories)
@@ -578,10 +741,144 @@ class Orchestrator:
         # Generate response
         response = self.dialogue.generate(strategy, state, memories)
 
+        # Add memory refs and state summary (Iteration 004)
+        response.memory_refs = memory_refs[:self._memory_top_k]
+        response.state_summary = {
+            "engagement": state.engagement_level.value,
+            "posture": state.posture.value,
+            "turn_count": str(state.turn_count),
+        }
+        if state.user_display_name:
+            response.state_summary["user"] = state.user_display_name
+
         # Update state
         self.state_manager.increment_turn(session_id)
 
         return response
+
+    async def _semantic_search(
+        self,
+        user_id: UUID,
+        query: str,
+    ) -> list[MemoryHit]:
+        """Search for semantically similar memories via vector store."""
+        if not query:
+            return []
+        try:
+            embedder = self._ensure_text_embedder()
+            vs = self._ensure_vector_store()
+            query_vec = embedder.embed_single(query)
+            results = await vs.search(
+                query_embedding=query_vec,
+                top_k=self._memory_top_k,
+                filter_user_id=user_id,
+            )
+            hits = []
+            for r in results:
+                if r["score"] >= self._memory_similarity_threshold:
+                    hits.append(MemoryHit(
+                        memory_id=UUID(r["memory_id"]),
+                        memory_type=r["metadata"].get("memory_type", "episodic"),
+                        content=r["metadata"].get("content", ""),
+                        score=r["score"],
+                        user_id=user_id,
+                    ))
+            return hits
+        except Exception:
+            logger.warning("Semantic search failed", exc_info=True)
+            return []
+
+    # --- Iteration 004: Memory summary (T407) ---
+
+    async def get_memory_summary(self, user_id: UUID) -> MemorySummaryResponse:
+        """Get a summary of all memories for a user."""
+        episodic_count = await self.store.count_episodic_memories(user_id)
+        semantic_count = await self.store.count_semantic_facts(user_id)
+        session_summaries = await self.store.get_session_summaries(user_id)
+
+        mq_result = await retrieve_memories(
+            store=self.store,
+            user_id=user_id,
+            limit=10,
+        )
+
+        return MemorySummaryResponse(
+            user_id=user_id,
+            episodic_count=episodic_count,
+            semantic_count=semantic_count,
+            session_summaries=session_summaries,
+            recent_episodic=mq_result.episodic_memories[:5],
+            confirmed_facts=mq_result.semantic_facts[:10],
+        )
+
+    # --- Iteration 004: Memory correction (T407) ---
+
+    async def correct_memory(
+        self, request: MemoryCorrectionRequest
+    ) -> MemoryCorrectionResult:
+        """Apply a correction action to a semantic fact."""
+        fact = await self.store.get_semantic_fact(request.fact_id)
+        if fact is None:
+            raise ValueError(f"Semantic fact {request.fact_id} not found")
+
+        previous_content = fact.content
+
+        if request.action == CorrectionAction.CONFIRM:
+            fact.status = MemoryStatus.ACTIVE
+            fact.confidence = min(fact.confidence + 0.2, 1.0)
+            fact.last_confirmed = datetime.utcnow()
+            await self.store.update_semantic_fact(fact)
+            return MemoryCorrectionResult(
+                fact_id=request.fact_id,
+                action=request.action,
+                previous_content=previous_content,
+                new_content=fact.content,
+                new_status=FactStatus.CONFIRMED,
+            )
+
+        elif request.action == CorrectionAction.REJECT:
+            fact.status = MemoryStatus.DELETED
+            await self.store.update_semantic_fact(fact)
+            # Also remove from vector store
+            try:
+                vs = self._ensure_vector_store()
+                await vs.delete(request.fact_id)
+            except Exception:
+                logger.warning("Failed to delete from vector store", exc_info=True)
+            return MemoryCorrectionResult(
+                fact_id=request.fact_id,
+                action=request.action,
+                previous_content=previous_content,
+                new_status=FactStatus.REJECTED,
+            )
+
+        elif request.action == CorrectionAction.UPDATE:
+            if not request.updated_content:
+                raise ValueError("updated_content is required for update action")
+            fact.content = request.updated_content
+            fact.status = MemoryStatus.CORRECTED
+            fact.last_confirmed = datetime.utcnow()
+            await self.store.update_semantic_fact(fact)
+            return MemoryCorrectionResult(
+                fact_id=request.fact_id,
+                action=request.action,
+                previous_content=previous_content,
+                new_content=request.updated_content,
+                new_status=FactStatus.CONFIRMED,
+            )
+
+        raise ValueError(f"Unknown correction action: {request.action}")
+
+    # --- Iteration 004: Semantic memory query via vector store ---
+
+    async def query_memory_semantic(
+        self,
+        user_id: UUID,
+        query: str,
+        top_k: int | None = None,
+    ) -> list[MemoryHit]:
+        """Query memories using semantic similarity."""
+        return await self._semantic_search(user_id, query)
 
     async def shutdown(self) -> None:
         """Shut down the orchestrator."""

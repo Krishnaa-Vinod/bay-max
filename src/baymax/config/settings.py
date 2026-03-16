@@ -42,6 +42,20 @@ class BaymaxSettings(BaseSettings):
     # Vector store
     vector_backend: str = "lancedb"
 
+    # Text embedding (for memory retrieval)
+    text_embedding_model: str = "all-MiniLM-L6-v2"
+    text_embedding_dim: int = 384
+
+    # Memory retrieval
+    memory_top_k: int = 5
+    memory_similarity_threshold: float = 0.4
+
+    # Session smoothing
+    session_smoothing_window: int = 5
+
+    # Consolidation
+    enable_memory_consolidation: bool = True
+
 
 def get_settings() -> BaymaxSettings:
     """Return a settings instance."""

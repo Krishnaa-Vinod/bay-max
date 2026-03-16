@@ -1,6 +1,6 @@
 {
-  "iteration": "003",
-  "branch_name": "feature/iteration-003-pose-engagement-local-eval",
+  "iteration": "004",
+  "branch_name": "feature/iteration-004-memory-recall",
   "status": "completed",
   "last_updated": "2026-03-16",
   "modules_implemented": [
@@ -16,7 +16,6 @@
   ],
   "modules_stubbed": [
     "capture",
-    "memory/vector_store (LanceDB adapter not yet wired)",
     "perception/emotion_estimator"
   ],
   "tests_passing": true,
@@ -30,22 +29,30 @@
     "GET /v1/sessions/{session_id}/state",
     "POST /v1/sessions/{session_id}/frames",
     "POST /v1/memory/query",
-    "POST /v1/respond"
+    "POST /v1/respond",
+    "POST /v1/sessions/{session_id}/turns",
+    "GET /v1/sessions/{session_id}/turns",
+    "POST /v1/sessions/{session_id}/consolidate",
+    "GET /v1/memory/summary/{user_id}",
+    "POST /v1/memory/search",
+    "POST /v1/memory/correct"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods",
-    "LanceDB vector store adapter not yet integrated into frame analysis pipeline",
     "Emotion estimator remains stubbed",
     "Gradio demo uses sync-to-async workaround",
-    "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)"
+    "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)",
+    "LanceDB vector store requires separate install (pip install baymax[vector])",
+    "Semantic fact extraction uses simple heuristics (not LLM-based)"
   ],
   "next_tasks": [
-    "Wire LanceDB vector store for memory text embeddings",
     "Replace rule-based dialogue with LLM provider (Claude)",
     "Implement emotion estimation from face regions",
     "Migrate to fully async aiosqlite",
     "Add webcam live-stream support via capture module",
-    "Migrate to MediaPipe Tasks API for pose estimation"
+    "Migrate to MediaPipe Tasks API for pose estimation",
+    "Add LLM-based semantic fact extraction during consolidation",
+    "Add salience decay over time for episodic memories"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
