@@ -155,11 +155,32 @@ def get_response(session_id: str, user_id: str, context: str) -> str:
             user_id=uid,
             context=context,
         )
-        return json.dumps({
+        out = {
             "strategy": response.strategy.value,
             "message": response.message,
+            "backend": response.backend,
+            "model_name": response.model_name,
+            "fallback_used": response.fallback_used,
+            "safety_flags": response.safety_flags,
             "memory_refs": response.memory_refs,
             "state_summary": response.state_summary,
+        }
+        return json.dumps(out, indent=2)
+
+    return run_async(_inner())
+
+
+def get_dialogue_backends() -> str:
+    """Return dialogue backend configuration."""
+
+    async def _inner():
+        await ensure_init()
+        info = orch.get_dialogue_backends()
+        return json.dumps({
+            "available_backends": info.available_backends,
+            "active_backend": info.active_backend,
+            "active_model": info.active_model,
+            "fallback_enabled": info.fallback_enabled,
         }, indent=2)
 
     return run_async(_inner())
@@ -382,11 +403,27 @@ def build_demo() -> gr.Blocks:
                 placeholder="Optional context for the interaction",
             )
             respond_btn = gr.Button("Get Response")
-            response_output = gr.JSON(label="Response")
+            response_output = gr.JSON(
+                label="Response (includes backend, memory_refs, safety_flags)"
+            )
             respond_btn.click(
                 get_response,
                 inputs=[session_input, user_input, context_input],
                 outputs=[response_output],
+            )
+
+        with gr.Tab("Backends"):
+            gr.Markdown("### Dialogue Backend Status")
+            gr.Markdown(
+                "Shows the active dialogue backend, configured model, "
+                "and whether rule-based fallback is enabled."
+            )
+            backends_btn = gr.Button("Refresh Backend Status")
+            backends_output = gr.JSON(label="Backend Configuration")
+            backends_btn.click(
+                get_dialogue_backends,
+                inputs=[],
+                outputs=[backends_output],
             )
 
         with gr.Tab("Consolidate"):

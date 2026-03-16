@@ -1,0 +1,276 @@
+{
+  "iteration": "005",
+  "branch_name": "feature/iteration-005-grounded-local-dialogue",
+  "latest_commit_sha": "c978b2f",
+  "status": "completed",
+  "summary": "Iteration 005 adds a grounded local dialogue system to Bay-Max. Three dialogue backends are implemented (rule_based, ollama, transformers) with a shared provider interface, plan-then-verbalize prompt builder, safety gating on input and output, and graceful fallback. The /v1/respond endpoint now returns backend, model_name, fallback_used, and safety_flags. A new GET /v1/dialogue/backends endpoint exposes configuration. All 194 automated tests pass. Five smoke-test cases pass with rule_based backend. Ollama and Transformers backends are implemented but not exercised with real models in this environment.",
+  "dialogue_backends": [
+    {
+      "backend": "rule_based",
+      "status": "implemented",
+      "model_or_endpoint": "template strings",
+      "notes": "Default fallback. Always available. 5/5 smoke tests passed."
+    },
+    {
+      "backend": "ollama",
+      "status": "implemented",
+      "model_or_endpoint": "http://localhost:11434/api/chat",
+      "notes": "Implemented with urllib, configurable model. Not tested with real model — Ollama server not running in this environment."
+    },
+    {
+      "backend": "transformers",
+      "status": "implemented",
+      "model_or_endpoint": "Qwen/Qwen2.5-1.5B-Instruct (default)",
+      "notes": "In-process HF pipeline with lazy loading. Not tested with real model — model not downloaded in this environment."
+    }
+  ],
+  "tasks_completed": [
+    {
+      "id": "T501",
+      "title": "Audit iteration-004 drift and fix docs/install parity",
+      "evidence": [
+        "README.md updated with install table and dialogue backend section",
+        "ROADMAP.md: iteration-004 marked Completed, iteration-005 items listed as Completed",
+        "CHANGELOG.md: iteration-004 entry added, iteration-005 entry added",
+        "project_state.json: updated to iteration 005"
+      ]
+    },
+    {
+      "id": "T502",
+      "title": "Add dialogue backend abstraction and configuration",
+      "evidence": [
+        "src/baymax/dialogue/interfaces.py updated with prompt_context, backend_name, model_name, is_available()",
+        "src/baymax/dialogue/factory.py: create_dialogue_provider() with fallback",
+        "src/baymax/config/settings.py: 13 new env vars with defaults",
+        ".env.example: all new vars documented"
+      ]
+    },
+    {
+      "id": "T503",
+      "title": "Implement at least one real free local-model backend",
+      "evidence": [
+        "src/baymax/dialogue/ollama_provider.py: OllamaDialogueProvider with urllib HTTP",
+        "src/baymax/dialogue/transformers_provider.py: TransformersDialogueProvider with lazy HF pipeline",
+        "Factory handles ValueError (empty OLLAMA_MODEL) and import errors gracefully"
+      ]
+    },
+    {
+      "id": "T504",
+      "title": "Build grounded prompt packaging and structured response parsing",
+      "evidence": [
+        "src/baymax/dialogue/prompt_builder.py: build_prompt_context(), build_messages(), build_system_prompt(), build_grounded_user_prompt()",
+        "GroundedPromptContext Pydantic model validates all fields",
+        "Orchestrator respond() now calls build_prompt_context() and passes result to dialogue.generate()"
+      ]
+    },
+    {
+      "id": "T505",
+      "title": "Integrate safety and fallback behavior",
+      "evidence": [
+        "src/baymax/dialogue/safety.py: check_safety() (20+ patterns), check_output_safety()",
+        "Orchestrator catches generate() exceptions and calls fallback_dialogue.generate()",
+        "safety_flags and fallback_used in SupportiveResponse",
+        "4/5 smoke tests directly test safety and fallback"
+      ]
+    },
+    {
+      "id": "T506",
+      "title": "Wire memory-grounded dialogue into the API and demo",
+      "evidence": [
+        "apps/api/main.py: GET /v1/dialogue/backends added, version 0.4.0",
+        "SupportiveResponse returned from /v1/respond includes backend, model_name, fallback_used, safety_flags",
+        "apps/demo/gradio_app.py: Backends tab added, Interact tab shows debug fields",
+        "Recent turns now fetched from SQLite and included in GroundedPromptContext"
+      ]
+    },
+    {
+      "id": "T507",
+      "title": "Add local smoke testing and evaluation flow",
+      "evidence": [
+        "scripts/dialogue_smoke.py: 5 test cases, JSON output",
+        "make smoke-test target added",
+        "docs/LOCAL_TESTING.md: commands for all three backends and smoke test",
+        "Smoke test executed: 5/5 passed with rule_based backend"
+      ]
+    },
+    {
+      "id": "T508",
+      "title": "Add tests, docs, report, commit, and push",
+      "evidence": [
+        "tests/test_iteration_005.py: 36 tests covering settings, factory, rule-based, prompt builder, safety, fallback, schemas, API endpoints",
+        "194 total tests passing",
+        "ruff lint: 0 errors",
+        "docs/DIALOGUE_ARCHITECTURE.md created",
+        "docs/SAFETY_GUARDRAILS.md created",
+        "reports/iteration-005.md created",
+        "reports/iteration-005.json created"
+      ]
+    }
+  ],
+  "tasks_partial": [],
+  "tasks_not_done": [],
+  "files_created": [
+    "src/baymax/dialogue/safety.py",
+    "src/baymax/dialogue/prompt_builder.py",
+    "src/baymax/dialogue/ollama_provider.py",
+    "src/baymax/dialogue/transformers_provider.py",
+    "src/baymax/dialogue/factory.py",
+    "tests/test_iteration_005.py",
+    "scripts/dialogue_smoke.py",
+    "docs/DIALOGUE_ARCHITECTURE.md",
+    "docs/SAFETY_GUARDRAILS.md",
+    "reports/iteration-005.md",
+    "reports/iteration-005.json"
+  ],
+  "files_modified": [
+    "src/baymax/config/settings.py",
+    "src/baymax/dialogue/interfaces.py",
+    "src/baymax/dialogue/rule_based.py",
+    "src/baymax/schemas/response.py",
+    "src/baymax/orchestrator/service.py",
+    "apps/api/main.py",
+    "apps/demo/gradio_app.py",
+    "pyproject.toml",
+    "Makefile",
+    ".env.example",
+    "README.md",
+    "docs/ROADMAP.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CHANGELOG.md",
+    "docs/project_state.json",
+    "docs/MODEL_STACK.md",
+    "docs/LOCAL_TESTING.md",
+    "docs/PROJECT_MEMORY.md"
+  ],
+  "commands_run": [
+    "git checkout -b feature/iteration-005-grounded-local-dialogue",
+    "pip install -e '.[dev]'",
+    "python -m pytest tests/ -v",
+    "python -m ruff check --fix src/ apps/ tests/ scripts/",
+    "python scripts/dialogue_smoke.py"
+  ],
+  "automated_tests_run": [
+    {
+      "command": "python -m pytest tests/ -q",
+      "result": "passed",
+      "notes": "194 passed, 227 warnings (all utcnow deprecation — pre-existing)"
+    },
+    {
+      "command": "python -m ruff check src/ apps/ tests/ scripts/",
+      "result": "passed",
+      "notes": "0 errors after 9 auto-fixes"
+    }
+  ],
+  "manual_smoke_tests": [
+    {
+      "case": "Rule-based baseline still works",
+      "result": "passed",
+      "notes": "102ms, response='Hello! It's good to see you. How are you doing today?'"
+    },
+    {
+      "case": "Grounded local-LLM recall (two-session)",
+      "result": "passed",
+      "notes": "memory_refs=1 (SQL episodic, not vector — StubVectorStore in this env). backend=rule_based, fallback=False"
+    },
+    {
+      "case": "Graceful no-memory response",
+      "result": "passed",
+      "notes": "No fabricated memory. memory_refs=[]"
+    },
+    {
+      "case": "Safety refusal test",
+      "result": "passed",
+      "notes": "safety_flags=['diagnosis_request:diagnose me'], redirect message returned"
+    },
+    {
+      "case": "Backend failure fallback",
+      "result": "passed",
+      "notes": "Factory with bad Ollama URL returns rule_based provider"
+    },
+    {
+      "case": "Ollama grounded recall (real model)",
+      "result": "not_run",
+      "notes": "Ollama server not running in this environment. Backend implemented and unit-tested via mocks."
+    },
+    {
+      "case": "Transformers grounded recall (real model)",
+      "result": "not_run",
+      "notes": "Models not downloaded in this environment. Backend implemented and unit-tested via mocks."
+    }
+  ],
+  "api_endpoints_verified": [
+    {
+      "path": "GET /v1/dialogue/backends",
+      "result": "passed",
+      "notes": "Returns available_backends, active_backend, active_model, fallback_enabled via TestClient"
+    },
+    {
+      "path": "POST /v1/respond",
+      "result": "passed",
+      "notes": "Returns backend, model_name, fallback_used, safety_flags, memory_refs, state_summary"
+    },
+    {
+      "path": "POST /v1/respond (safety trigger)",
+      "result": "passed",
+      "notes": "Diagnosis context returns non-empty safety_flags and redirect message"
+    }
+  ],
+  "config_defaults_used": {
+    "dialogue_backend": "rule_based",
+    "hf_chat_model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "ollama_model": "(empty — not configured)",
+    "dialogue_top_k_memories": "5",
+    "dialogue_temperature": "0.4"
+  },
+  "model_download_locations": [
+    "No models were downloaded during this iteration.",
+    "HuggingFace models would be cached to BAYMAX_MODEL_DIR when Transformers backend is used.",
+    "Ollama models are managed by the Ollama daemon in its own storage."
+  ],
+  "artifact_output_locations": [
+    "./artifacts/smoke_test_005.json (gitignored)"
+  ],
+  "known_issues": [
+    "SQLite store uses synchronous sqlite3 wrapped in async methods — aiosqlite migration pending",
+    "Emotion estimator remains stubbed",
+    "Gradio demo uses sync-to-async ThreadPoolExecutor workaround",
+    "MediaPipe Pose uses legacy mp.solutions.pose API",
+    "LanceDB real backend not exercised in automated tests (StubVectorStore used)",
+    "Semantic fact extraction uses keyword heuristics — 0 semantic facts created in smoke test consolidation",
+    "Ollama and Transformers backends not verified with real model inference in this environment",
+    "Safety pattern matching is substring-based — may miss paraphrased unsafe requests"
+  ],
+  "deviations_from_prompt": [
+    "Transformers backend is implemented but not smoke-tested with a real model (environment lacks downloaded models) — reported honestly as not_run",
+    "Ollama backend is implemented but not smoke-tested with a real server — reported honestly as not_run",
+    "Test count for test_project_state_schema.py is now 7 (was 6) because project_state.json now has 17 endpoints — still passes the >=8 check",
+    "dialogue extras in pyproject.toml include 'accelerate' for device_map='auto' support"
+  ],
+  "risks": [
+    "LLM dialogue quality (tone, groundedness) is unverified without real model execution",
+    "Ollama HTTP probing in is_available() adds a small latency bump on first check",
+    "Safety pattern matching may miss paraphrased or novel unsafe requests",
+    "StubVectorStore in default env means vector-similarity grounding is not exercised"
+  ],
+  "open_questions": [
+    "Should check_safety() use semantic/embedding-based matching in a future iteration?",
+    "Should LanceDB be tested with a real embedded backend in iteration-006?",
+    "Is Qwen/Qwen2.5-1.5B-Instruct approved for use on Sol GPU?",
+    "Should the smoke test be run automatically in CI with the rule_based backend?"
+  ],
+  "next_recommended_tasks": [
+    "Run scripts/dialogue_smoke.py with real Ollama model to validate grounded recall end-to-end",
+    "Migrate SQLiteMetadataStore to fully async aiosqlite",
+    "Implement emotion estimation from face regions",
+    "Add LLM-based semantic fact extraction during consolidation",
+    "Verify LanceDB + SentenceTransformerEmbedder real round-trip",
+    "Add salience decay over time for episodic memories",
+    "Run CI smoke-test with rule_based backend on every PR"
+  ],
+  "doc_parity_check": {
+    "readme_matches_install_flow": "true",
+    "roadmap_matches_iteration_status": "true",
+    "architecture_matches_code": "true",
+    "notes": "All 8 required docs updated. 2 new docs created. Endpoints, schemas, and module map match implementation."
+  }
+}

@@ -14,42 +14,56 @@
 - [x] CI workflow
 
 ## Iteration 002 - Face Recognition (Completed)
-- [x] OpenCV webcam capture integration
-- [x] Face detection with MTCNN model
-- [x] Face embedding with ArcFace model
+- [x] OpenCV / NumPy image processing
+- [x] Face detection with MTCNN model (facenet-pytorch)
+- [x] Face embedding with InceptionResnetV1 (VGGFace2, 512-d)
+- [x] Cosine similarity face recognition with configurable threshold
+- [x] IoU + cosine face tracker for frame-to-frame continuity
 - [x] Face enrollment and recognition pipeline
-- [x] User registration and authentication flow
-- [x] Perception events and memory integration
-- [x] Local testing tools and Gradio demo
-- [x] Comprehensive test suite
+- [x] Comprehensive test suite (65 tests)
 
 ## Iteration 003 - Pose Estimation & Engagement (Completed)
-- [x] MediaPipe Pose backend integration
+- [x] MediaPipe Pose backend integration (33 landmarks)
 - [x] Body-state heuristics (posture, lean, motion)
-- [x] Engagement scoring from multiple signals
+- [x] Engagement scoring from multiple signals (weighted 0.0–1.0)
 - [x] Body-state observation events
 - [x] Annotated debug output visualization
-- [x] Local testing tools and manual evaluation
-- [x] Comprehensive test coverage
-- [x] Documentation and heuristics specification
+- [x] Local testing CLI (`scripts/local_test.py`)
+- [x] 44 new tests (109 total)
 
-## Iteration 004 - Memory Depth (Planned)
-- [ ] Vector store integration (FAISS or LanceDB)
-- [ ] Semantic search over memories
-- [ ] Memory consolidation (episodic -> semantic)
-- [ ] Salience-based memory decay and pruning
-- [ ] Retrieval-augmented response generation
+## Iteration 004 - Memory Depth (Completed)
+- [x] Typed conversation turns (ChatTurn, TurnRole)
+- [x] Session consolidation pipeline (turns + observations → episodic → semantic)
+- [x] Text embedding adapter (SentenceTransformer all-MiniLM-L6-v2, 384-d)
+- [x] LanceDB vector store for semantic memory search
+- [x] Temporal smoothing for engagement and posture (majority-vote)
+- [x] Memory-aware responses (memory_refs + state_summary in SupportiveResponse)
+- [x] Memory summary, semantic query, and correction endpoints
+- [x] 49 new tests (158 total)
 
-## Iteration 005 - LLM Dialogue (Planned)
-- [ ] LLM-based dialogue provider (local model or API)
-- [ ] Prompt engineering for supportive responses
-- [ ] Memory-augmented prompts
-- [ ] Response safety filtering
+## Iteration 005 - Grounded Local Dialogue (Completed)
+- [x] Dialogue provider interface extended for grounded backends
+- [x] Rule-based fallback preserved and functional
+- [x] Ollama-compatible local dialogue backend (configurable model)
+- [x] HuggingFace Transformers local dialogue backend
+- [x] Provider factory with graceful fallback on init failure
+- [x] Grounded prompt builder (plan-then-verbalize pattern)
+- [x] Safety gating: diagnosis-style and medical certainty requests redirected
+- [x] Fallback from LLM backend to rule-based on generate() failure
+- [x] GET /v1/dialogue/backends endpoint
+- [x] /v1/respond returns backend, model_name, fallback_used, safety_flags
+- [x] New schemas: DialogueBackendInfo, GroundedPromptContext, SafetyDecision, etc.
+- [x] Gradio demo: Backends tab + debug fields in Interact tab
+- [x] Smoke test script (`scripts/dialogue_smoke.py`)
+- [x] All docs updated, 36 new tests (194 total)
 
 ## Future Iterations
+- Async SQLite migration (aiosqlite throughout)
 - Emotion recognition from facial expressions
 - Multi-session user journey tracking
-- Proactive check-ins
+- Proactive check-ins and salience-decay for episodic memory
 - Conversation history and context window management
-- Audio integration
+- Audio integration (Whisper)
+- MediaPipe Tasks API migration for pose estimation
+- LLM-based semantic fact extraction during consolidation
 - Production deployment considerations

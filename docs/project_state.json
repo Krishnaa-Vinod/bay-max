@@ -1,6 +1,6 @@
 {
-  "iteration": "004",
-  "branch_name": "feature/iteration-004-memory-recall",
+  "iteration": "005",
+  "branch_name": "feature/iteration-005-grounded-local-dialogue",
   "status": "completed",
   "last_updated": "2026-03-16",
   "modules_implemented": [
@@ -35,28 +35,34 @@
     "POST /v1/sessions/{session_id}/consolidate",
     "GET /v1/memory/summary/{user_id}",
     "POST /v1/memory/search",
-    "POST /v1/memory/correct"
+    "POST /v1/memory/correct",
+    "GET /v1/dialogue/backends"
   ],
   "known_issues": [
-    "SQLite store uses synchronous sqlite3 wrapped in async methods",
-    "Emotion estimator remains stubbed",
-    "Gradio demo uses sync-to-async workaround",
+    "SQLite store uses synchronous sqlite3 wrapped in async methods — not migrated to aiosqlite",
+    "Emotion estimator remains stubbed (always returns NEUTRAL)",
+    "Gradio demo uses sync-to-async ThreadPoolExecutor workaround",
     "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)",
     "LanceDB vector store requires separate install (pip install baymax[vector])",
-    "Semantic fact extraction uses simple heuristics (not LLM-based)"
+    "Semantic fact extraction uses simple keyword heuristics (not LLM-based)",
+    "Local LLM backends (Ollama, Transformers) not smoke-tested with real models on this machine — environment lacks models",
+    "LanceDB real backend not tested in automated tests (stub used)"
   ],
   "next_tasks": [
-    "Replace rule-based dialogue with LLM provider (Claude)",
-    "Implement emotion estimation from face regions",
-    "Migrate to fully async aiosqlite",
+    "Manual smoke test grounded recall with real local model (Ollama or Transformers)",
+    "Verify LanceDB real backend with actual embedding + search round-trip",
+    "Migrate SQLite store to fully async aiosqlite",
+    "Implement emotion estimation from facial expressions",
+    "Add LLM-based semantic fact extraction during consolidation",
+    "Add salience decay over time for episodic memories",
     "Add webcam live-stream support via capture module",
     "Migrate to MediaPipe Tasks API for pose estimation",
-    "Add LLM-based semantic fact extraction during consolidation",
-    "Add salience decay over time for episodic memories"
+    "Add dialogue streaming support (token-by-token)"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP"
+    "scope": "vision-first empathetic companion MVP",
+    "api_version": "0.4.0"
   }
 }

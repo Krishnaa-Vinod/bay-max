@@ -36,3 +36,114 @@ class SupportiveResponse(BaseModel):
         default_factory=dict,
         description="Snapshot of session state at response time.",
     )
+    # --- Iteration 005: Grounded dialogue metadata ---
+    backend: str = Field(
+        default="rule_based",
+        description="Dialogue backend that generated this response.",
+    )
+    model_name: str = Field(
+        default="",
+        description="Model name used by the backend.",
+    )
+    fallback_used: bool = Field(
+        default=False,
+        description="Whether the rule-based fallback was used instead of the primary backend.",
+    )
+    safety_flags: list[str] = Field(
+        default_factory=list,
+        description="Safety flags raised during response generation.",
+    )
+
+
+# --- Iteration 005: New schemas ---
+
+
+class DialogueBackendInfo(BaseModel):
+    """Information about available dialogue backends and active configuration."""
+
+    available_backends: list[str] = Field(
+        description="All backends that have been implemented.",
+    )
+    active_backend: str = Field(
+        description="Currently configured backend.",
+    )
+    active_model: str = Field(
+        description="Currently configured model name (empty for rule_based).",
+    )
+    fallback_enabled: bool = Field(
+        description="Whether rule-based fallback is enabled.",
+    )
+
+
+class GroundedPromptContext(BaseModel):
+    """Packaged context used to build a grounded prompt for the LLM."""
+
+    user_id: UUID | None = None
+    user_display_name: str | None = None
+    session_id: UUID
+    strategy: ResponseStrategy
+    state_summary: dict[str, str] = Field(default_factory=dict)
+    memory_refs: list[str] = Field(
+        default_factory=list,
+        description="Retrieved memory contents to include in the prompt.",
+    )
+    recent_turns: list[dict] = Field(
+        default_factory=list,
+        description="Recent conversation turns: [{role, text, timestamp}]",
+    )
+    safety_rules: list[str] = Field(default_factory=list)
+    context: str = ""
+    top_k_memories: int = 5
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SafetyDecision(BaseModel):
+    """Result of a safety check on the user context or LLM output."""
+
+    is_safe: bool
+    flags: list[str] = Field(default_factory=list)
+    redirect_response: str | None = Field(
+        default=None,
+        description="Pre-composed safe redirect message when is_safe=False.",
+    )
+
+
+class DialogueDebugTrace(BaseModel):
+    """Debug trace for a single dialogue generation call."""
+
+    backend: str
+    model_name: str
+    prompt_tokens_approx: int = 0
+    latency_ms: float = 0.0
+    raw_output: str | None = None
+    fallback_used: bool = False
+    safety_flags: list[str] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GroundedResponse(BaseModel):
+    """Full structured output from the grounded dialogue pipeline."""
+
+    text: str
+    strategy: ResponseStrategy
+    memory_refs: list[str] = Field(default_factory=list)
+    state_summary: dict[str, str] = Field(default_factory=dict)
+    backend: str = "rule_based"
+    model_name: str = ""
+    fallback_used: bool = False
+    safety_flags: list[str] = Field(default_factory=list)
+    debug: DialogueDebugTrace | None = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DialogueSmokeTestResult(BaseModel):
+    """Result of a single dialogue smoke-test case."""
+
+    case: str
+    backend: str
+    result: str = Field(description="passed|failed|not_run|ambiguous")
+    notes: str = ""
+    response_text: str | None = None
+    memory_refs: list[str] = Field(default_factory=list)
+    latency_ms: float = 0.0
+    timestamp: datetime = Field(default_factory=datetime.utcnow)

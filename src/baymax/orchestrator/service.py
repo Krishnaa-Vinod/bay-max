@@ -17,7 +17,11 @@ from baymax.core.enums import (
     PostureLabel,
     TurnRole,
 )
+from baymax.dialogue.factory import AVAILABLE_BACKENDS, create_dialogue_provider, get_active_model
+from baymax.dialogue.interfaces import DialogueProvider
+from baymax.dialogue.prompt_builder import build_prompt_context
 from baymax.dialogue.rule_based import RuleBasedDialogue
+from baymax.dialogue.safety import check_safety
 from baymax.memory.consolidate import consolidate_session
 from baymax.memory.embedding import StubTextEmbedder, TextEmbedder
 from baymax.memory.retrieve import retrieve_memories
@@ -53,7 +57,7 @@ from baymax.schemas.perception import (
     RecognizedFace,
     UnknownFace,
 )
-from baymax.schemas.response import SupportiveResponse
+from baymax.schemas.response import DialogueBackendInfo, SupportiveResponse
 from baymax.schemas.session import Session
 from baymax.schemas.user import FaceEnrollment, UserProfile, UserProfileCreate
 from baymax.state.manager import StateManager
@@ -69,7 +73,6 @@ class Orchestrator:
         self.store = SQLiteMetadataStore(db_path=db_path)
         self.state_manager = StateManager()
         self.planner = SupportivePlanner()
-        self.dialogue = RuleBasedDialogue()
         self.tracker = SimpleTracker()
         self.motion_tracker = MotionTracker()
 
@@ -96,6 +99,18 @@ class Orchestrator:
         self._memory_similarity_threshold = settings.memory_similarity_threshold
         self._smoothing_window = settings.session_smoothing_window
         self._enable_consolidation = settings.enable_memory_consolidation
+
+        # Iteration 005: dialogue settings
+        self._dialogue_backend_name = settings.dialogue_backend
+        self._dialogue_top_k_memories = settings.dialogue_top_k_memories
+        self._dialogue_max_history_turns = settings.dialogue_max_history_turns
+        self._enable_rule_based_fallback = settings.enable_rule_based_fallback
+        self._enable_safe_health_mode = settings.enable_safe_health_mode
+        self._dialogue_active_model = get_active_model(settings)
+
+        # Initialise the dialogue provider via factory (with fallback support)
+        self.dialogue: DialogueProvider = create_dialogue_provider(settings)
+        self._fallback_dialogue = RuleBasedDialogue()
 
         # Perception backends (lazy-loaded)
         self._detector: FaceDetector | None = None
@@ -698,7 +713,18 @@ class Orchestrator:
 
         return result
 
-    # --- Iteration 004: Memory-aware responses (T406) ---
+    # --- Iteration 005: Dialogue backends info ---
+
+    def get_dialogue_backends(self) -> DialogueBackendInfo:
+        """Return information about configured dialogue backends."""
+        return DialogueBackendInfo(
+            available_backends=AVAILABLE_BACKENDS,
+            active_backend=self.dialogue.backend_name,
+            active_model=self.dialogue.model_name,
+            fallback_enabled=self._enable_rule_based_fallback,
+        )
+
+    # --- Iteration 004: Memory-aware responses (T406) + Iteration 005: Grounded dialogue ---
 
     async def respond(
         self,
@@ -706,8 +732,48 @@ class Orchestrator:
         user_id: UUID | None = None,
         context: str = "",
     ) -> SupportiveResponse:
-        """Generate a supportive response for the current session."""
+        """Generate a supportive response for the current session.
+
+        With Iteration 005 this method:
+          - Checks user context for safety concerns before generating
+          - Builds a grounded prompt context from state + memories + recent turns
+          - Routes through the configured dialogue backend
+          - Falls back to rule-based dialogue if the backend fails
+        """
         state = self.state_manager.get_or_create(session_id, user_id=user_id)
+
+        # Safety-check the incoming context (if safe_health_mode is on)
+        safety_flags: list[str] = []
+        if self._enable_safe_health_mode and context:
+            safety_decision = check_safety(context)
+            if not safety_decision.is_safe:
+                safety_flags = safety_decision.flags
+                self.state_manager.increment_turn(session_id)
+                redirect_text = safety_decision.redirect_response or (
+                    "I'm here to support you. "
+                    "For medical concerns, please consult a qualified professional."
+                )
+                return SupportiveResponse(
+                    session_id=session_id,
+                    user_id=user_id,
+                    strategy=self.planner.plan(
+                        state,
+                        MemoryQueryResult(
+                            user_id=user_id or UUID("00000000-0000-0000-0000-000000000000"),
+                            query=context,
+                        ),
+                    ),
+                    message=redirect_text,
+                    backend=self.dialogue.backend_name,
+                    model_name=self.dialogue.model_name,
+                    fallback_used=False,
+                    safety_flags=safety_flags,
+                    state_summary={
+                        "engagement": state.engagement_level.value,
+                        "posture": state.posture.value,
+                        "turn_count": str(state.turn_count),
+                    },
+                )
 
         # Retrieve memories if we have a user
         memories = MemoryQueryResult(
@@ -720,7 +786,7 @@ class Orchestrator:
                 store=self.store,
                 user_id=user_id,
                 query=context,
-                limit=self._memory_top_k,
+                limit=self._dialogue_top_k_memories,
             )
             # Also try semantic search via vector store
             semantic_hits = await self._semantic_search(user_id, context)
@@ -735,21 +801,63 @@ class Orchestrator:
                 if f.content not in memory_refs:
                     memory_refs.append(f.content)
 
+        # Fetch recent turns for grounded prompting
+        recent_turns = []
+        if user_id or session_id:
+            try:
+                all_turns = await self.store.get_chat_turns(session_id)
+                # Keep the most recent N turns
+                recent_turns = all_turns[-self._dialogue_max_history_turns:]
+            except Exception:
+                logger.warning("Failed to fetch recent turns for prompt", exc_info=True)
+
         # Plan strategy
         strategy = self.planner.plan(state, memories)
 
-        # Generate response
-        response = self.dialogue.generate(strategy, state, memories)
+        # Build grounded prompt context (Iteration 005)
+        prompt_context = build_prompt_context(
+            strategy=strategy,
+            state=state,
+            memories=memories,
+            recent_turns=recent_turns,
+            context=context,
+            top_k_memories=self._dialogue_top_k_memories,
+        )
+        # Use the merged memory_refs (semantic + SQL)
+        prompt_context.memory_refs = memory_refs[:self._dialogue_top_k_memories]
 
-        # Add memory refs and state summary (Iteration 004)
-        response.memory_refs = memory_refs[:self._memory_top_k]
-        response.state_summary = {
+        # Generate response — with fallback on failure
+        response: SupportiveResponse
+        fallback_used = False
+
+        try:
+            response = self.dialogue.generate(strategy, state, memories, prompt_context)
+        except Exception as exc:
+            if self._enable_rule_based_fallback:
+                logger.warning(
+                    "Dialogue backend '%s' failed, falling back to rule_based: %s",
+                    self.dialogue.backend_name,
+                    exc,
+                )
+                response = self._fallback_dialogue.generate(strategy, state, memories)
+                fallback_used = True
+            else:
+                raise
+
+        # Attach memory refs, state summary, and backend metadata
+        state_summary = {
             "engagement": state.engagement_level.value,
             "posture": state.posture.value,
             "turn_count": str(state.turn_count),
         }
         if state.user_display_name:
-            response.state_summary["user"] = state.user_display_name
+            state_summary["user"] = state.user_display_name
+
+        response.memory_refs = memory_refs[:self._dialogue_top_k_memories]
+        response.state_summary = state_summary
+        response.fallback_used = fallback_used
+        if safety_flags:
+            response.safety_flags = safety_flags
 
         # Update state
         self.state_manager.increment_turn(session_id)

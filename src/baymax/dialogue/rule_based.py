@@ -1,9 +1,9 @@
-"""Rule-based dialogue provider for iteration-001."""
+"""Rule-based dialogue provider — baseline fallback."""
 
 from baymax.core.enums import ResponseStrategy
 from baymax.dialogue.interfaces import DialogueProvider
 from baymax.schemas.memory import MemoryQueryResult
-from baymax.schemas.response import SupportiveResponse
+from baymax.schemas.response import GroundedPromptContext, SupportiveResponse
 from baymax.state.models import InteractionState
 
 _TEMPLATES: dict[ResponseStrategy, list[str]] = {
@@ -44,11 +44,23 @@ class RuleBasedDialogue(DialogueProvider):
     def __init__(self) -> None:
         self._turn_counter: int = 0
 
+    @property
+    def backend_name(self) -> str:
+        return "rule_based"
+
+    @property
+    def model_name(self) -> str:
+        return ""
+
+    def is_available(self) -> bool:
+        return True
+
     def generate(
         self,
         strategy: ResponseStrategy,
         state: InteractionState,
         memories: MemoryQueryResult,
+        prompt_context: GroundedPromptContext | None = None,
     ) -> SupportiveResponse:
         templates = _TEMPLATES.get(strategy, _TEMPLATES[ResponseStrategy.ENCOURAGE])
         template = templates[self._turn_counter % len(templates)]
@@ -70,4 +82,6 @@ class RuleBasedDialogue(DialogueProvider):
             user_id=state.user_id,
             strategy=strategy,
             message=message,
+            backend="rule_based",
+            model_name="",
         )

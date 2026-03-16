@@ -1,29 +1,60 @@
 # Changelog
 
-## [0.3.0] - 2026-03-16 (Iteration 003)
+## [0.4.0] - 2026-03-16 (Iteration 005)
+
+### Added
+- Dialogue provider interface extended with `prompt_context` parameter and `backend_name`/`model_name`/`is_available()` methods
+- `OllamaDialogueProvider`: connects to a locally running Ollama server via HTTP `/api/chat`
+- `TransformersDialogueProvider`: loads a HuggingFace chat model directly in-process (recommended: Qwen/Qwen2.5-1.5B-Instruct)
+- `create_dialogue_provider()` factory with graceful fallback to `RuleBasedDialogue` on init failure
+- `GroundedPromptBuilder` (`dialogue/prompt_builder.py`): packages state, memories, recent turns, safety rules into a structured prompt using plan-then-verbalize pattern
+- Safety gating (`dialogue/safety.py`): `check_safety()` detects diagnosis-style requests on input; `check_output_safety()` validates LLM outputs
+- `GET /v1/dialogue/backends` endpoint returning available backends and active configuration
+- `SupportiveResponse` extended with `backend`, `model_name`, `fallback_used`, `safety_flags` fields
+- New schemas: `DialogueBackendInfo`, `GroundedPromptContext`, `SafetyDecision`, `DialogueDebugTrace`, `GroundedResponse`, `DialogueSmokeTestResult`
+- New settings: `BAYMAX_DIALOGUE_BACKEND`, `BAYMAX_ENABLE_DIALOGUE_DEBUG`, `BAYMAX_ENABLE_SAFE_HEALTH_MODE`, `BAYMAX_DIALOGUE_MAX_HISTORY_TURNS`, `BAYMAX_DIALOGUE_TOP_K_MEMORIES`, `BAYMAX_DIALOGUE_TEMPERATURE`, `BAYMAX_DIALOGUE_MAX_NEW_TOKENS`, `BAYMAX_OLLAMA_BASE_URL`, `BAYMAX_OLLAMA_MODEL`, `BAYMAX_HF_CHAT_MODEL`, `BAYMAX_HF_DTYPE`, `BAYMAX_ENABLE_RULE_BASED_FALLBACK`
+- Smoke test script (`scripts/dialogue_smoke.py`) with 5 test cases
+- Gradio demo: new Backends tab + debug fields in Interact tab response
+- `install-dialogue` Makefile target and `dialogue` extras in pyproject.toml
+- New docs: `DIALOGUE_ARCHITECTURE.md`, `SAFETY_GUARDRAILS.md`
+- 36 new tests (194 total)
+
+### Changed
+- `pyproject.toml` version bumped to 0.4.0; API version bumped to 0.4.0
+- `orchestrator/service.py`: `respond()` now builds grounded prompt context, applies safety check, routes to configured backend, handles fallback
+- All required docs updated: README, ROADMAP, ARCHITECTURE, MODEL_STACK, LOCAL_TESTING, PROJECT_MEMORY, CHANGELOG
+
+## [0.3.0] - 2026-03-16 (Iteration 004)
+
+### Added
+- Text embedding adapter (`TextEmbedder` ABC, `SentenceTransformerEmbedder`, `StubTextEmbedder`)
+- LanceDB vector store for semantic memory search (`LanceDBVectorStore` + `StubVectorStore`)
+- Typed conversation turns (`ChatTurn`, `TurnRole` enum, `store_chat_turn`, `get_chat_turns`)
+- Session consolidation pipeline: turns + observations → `SessionSummary` → episodic memories → candidate semantic facts
+- Temporal smoothing (majority-vote, configurable window) for engagement and posture
+- Memory-aware responses: `memory_refs` and `state_summary` added to `SupportiveResponse`
+- `MemorySummaryResponse`, `MemoryHit`, `ConsolidationResult`, `MemoryCorrectionRequest/Result`, `MemoryEmbeddingRecord`, `SessionSummary` schemas
+- Memory correction: confirm, reject, or update semantic facts
+- New API endpoints: `/v1/sessions/{id}/turns`, `/v1/sessions/{id}/consolidate`, `/v1/memory/summary/{user_id}`, `/v1/memory/search`, `/v1/memory/correct`
+- 7-tab Gradio demo (Chat, Consolidate, Memory tabs added)
+- 49 new tests (158 total)
+
+### Changed
+- API version bumped to 0.3.0
+- `BaymaxSettings` extended with vector/embedding/memory/smoothing settings
+
+## [0.2.1] - 2026-03-16 (Iteration 003)
 
 ### Added
 - Pose estimation via MediaPipe Pose (33 landmarks, backend-agnostic interface)
 - Body-state heuristics: posture (upright/slouched/reclined), lean (forward/neutral/backward), motion (low/medium/high)
-- Engagement scoring (weighted 0.0-1.0 score from face, pose, posture, lean, motion signals)
-- Body-state observation writing on meaningful transitions (pose_first_seen, pose_lost, posture_change, engagement_change)
-- Annotated debug frame output with face boxes, pose skeleton, and engagement labels
-- Local test CLI script (`scripts/local_test.py`) for headless image analysis and frame replay
+- Engagement scoring (weighted 0.0–1.0 from face, pose, posture, lean, motion signals)
+- Body-state observation writing on meaningful transitions
+- Annotated debug frame output
+- Local test CLI script (`scripts/local_test.py`)
 - New Pydantic schemas: PoseLandmark2D, PoseResult, EngagementResult, AnnotatedArtifactRef, BodyStateObservation
 - New enums: PostureLabel, LeanLabel, MotionLevel
-- Engagement heuristics documentation (`docs/ENGAGEMENT_HEURISTICS.md`)
-- Local testing guide (`docs/LOCAL_TESTING.md`)
 - 44 new tests (109 total)
-
-### Changed
-- FrameAnalysisResult extended with pose_result, engagement, and annotation_artifact fields
-- InteractionState extended with pose_visible, posture, lean, motion, engagement_score fields
-- StateManager gains update_body_state() method
-- Orchestrator analyze_frame() now runs pose estimation and engagement heuristics
-- MetadataStore.store_observation() accepts BodyStateObservation in addition to RecognitionObservation
-- Gradio Frame Analysis tab shows annotated image alongside JSON output
-- pyproject.toml: mediapipe added to vision extras, new "all" extras group
-- Makefile: added install-all target, scripts/ included in lint
 
 ## [0.2.0] - 2026-03-16 (Iteration 002)
 
@@ -32,40 +63,15 @@
 - Real face embeddings using InceptionResnetV1 pretrained on VGGFace2 (512-d vectors)
 - Cosine similarity face recognition against enrolled embeddings (threshold 0.75)
 - Simple IoU + cosine face tracker for frame-to-frame continuity
-- Face enrollment endpoint accepting image uploads (`POST /v1/users/{user_id}/enroll/face`)
-- Frame analysis endpoint with full recognition pipeline (`POST /v1/sessions/{session_id}/frames`)
-- List users endpoint (`GET /v1/users`)
-- Recognition-aware InteractionState (identity_confidence, face_count, track_ids)
-- Meaningful-event-only observation writing (first_recognition, user_switch, known_to_unknown)
-- New Pydantic schemas: FaceBoundingBox, DetectedFace, RecognizedFace, UnknownFace, FaceEmbeddingRecord, FrameAnalysisResult, RecognitionObservation
-- New SQLite tables: face_embeddings, recognition_observations
-- Gradio demo tabs for face enrollment and frame analysis
+- Face enrollment and frame analysis endpoints
 - 33 new tests (65 total)
-- Model stack documentation (docs/MODEL_STACK.md)
-
-### Changed
-- Perception interfaces now use typed signatures (DetectedFace, FaceEmbeddingRecord)
-- Device setting defaults to `cuda_if_available_else_cpu` (auto-detect)
-- API version bumped to 0.2.0
-- Orchestrator lazy-loads perception models with fallback to stubs
 
 ## [0.1.0] - 2026-03-16 (Iteration 001)
 
 ### Added
-- Initial repository structure and Python project setup
-- Core enums: SessionStatus, EngagementLevel, EmotionLabel, MemoryType, MemoryStatus, ResponseStrategy, PerceptionEventType
-- Configuration settings from environment variables (BAYMAX_DATA_DIR, BAYMAX_CACHE_DIR, BAYMAX_MODEL_DIR, BAYMAX_DB_URL)
-- Pydantic v2 schemas: UserProfile, FaceEnrollment, Session, PerceptionEvent, Observation, EpisodicMemory, SemanticFact, InterventionMemory, RetrievalLog, MemoryQuery, MemoryQueryResult, ProjectState, SupportiveResponse
-- Capture module with FrameSource interface and StubFrameSource
-- Perception module with interfaces for FaceDetector, FaceRecognizer, EngagementEstimator, EmotionEstimator (all with stub implementations)
-- State management with InteractionState model and StateManager
-- Memory module with MetadataStore interface, SQLiteMetadataStore, VectorStore interface, StubVectorStore, salience scoring, retrieval, and consolidation stubs
-- Planner module with ResponsePlanner interface and SupportivePlanner
-- Dialogue module with DialogueProvider interface and RuleBasedDialogue
-- Orchestrator service coordinating end-to-end flow
-- FastAPI application with 8 endpoints
-- Gradio demo shell with Setup, Interact, and Memory tabs
-- AI developer instructions (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md)
+- Initial repository structure, Python project setup
+- Core enums, Pydantic v2 schemas, settings, SQLite store
+- Stub perception, rule-based dialogue, orchestrator
+- FastAPI application with 8 endpoints, Gradio demo shell
 - Architecture documentation and 3 ADRs
-- CI workflow for lint and test
-- Makefile with install, lint, test, run-api, run-demo targets
+- CI workflow, Makefile

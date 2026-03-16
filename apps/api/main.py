@@ -22,7 +22,11 @@ from baymax.schemas.memory import (
     MemorySummaryResponse,
 )
 from baymax.schemas.perception import FrameAnalysisResult
-from baymax.schemas.response import RespondRequest, SupportiveResponse
+from baymax.schemas.response import (
+    DialogueBackendInfo,
+    RespondRequest,
+    SupportiveResponse,
+)
 from baymax.schemas.session import Session, SessionCreate
 from baymax.schemas.user import FaceEnrollment, UserProfile, UserProfileCreate
 from baymax.state.models import InteractionState
@@ -40,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -150,6 +154,15 @@ async def query_memories(request: MemoryQuery) -> MemoryQueryResult:
 
 
 # --- Response ---
+
+
+# --- Iteration 005: Dialogue Backends ---
+
+
+@app.get("/v1/dialogue/backends", response_model=DialogueBackendInfo)
+async def get_dialogue_backends() -> DialogueBackendInfo:
+    """Return configured and available dialogue backends."""
+    return orchestrator.get_dialogue_backends()
 
 
 @app.post("/v1/respond", response_model=SupportiveResponse)

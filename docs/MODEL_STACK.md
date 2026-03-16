@@ -112,6 +112,75 @@ All heuristics are documented in detail in `docs/ENGAGEMENT_HEURISTICS.md`.
 These remain unimplemented and return hardcoded values:
 
 - **Emotion estimation**: Returns `EmotionLabel.NEUTRAL`
-- **LanceDB vector store**: Interface exists, in-memory stub in use
-- **Memory consolidation**: Returns empty
 - **Frame source / webcam capture**: Returns empty frames
+
+---
+
+## Dialogue Backends (Iteration 005)
+
+### Rule-Based (Default)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `rule_based` (default) |
+| **Model** | None (template strings) |
+| **Requires** | Nothing — no model download |
+| **Use case** | Development, fallback, no-model environments |
+
+Simple deterministic template cycling. Always available. Used as fallback when all other backends fail.
+
+### Ollama
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `ollama` |
+| **API** | POST `http://localhost:11434/api/chat` |
+| **Required env** | `BAYMAX_OLLAMA_MODEL=qwen2.5:1.5b` (or any Ollama model) |
+| **Recommended model** | `qwen2.5:1.5b` (laptop default), `qwen2.5:7b` (GPU) |
+| **Install** | `ollama pull qwen2.5:1.5b` (server separate) |
+| **Notes** | Easiest local-LLM setup; no Python extras needed |
+
+The Ollama backend sends chat messages in OpenAI-compatible format. Temperature and max tokens are configurable.
+
+### HuggingFace Transformers
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `transformers` |
+| **Default model** | `Qwen/Qwen2.5-1.5B-Instruct` |
+| **Low-resource fallback** | `Qwen/Qwen2.5-0.5B-Instruct` |
+| **GPU option** | `Qwen/Qwen2.5-7B-Instruct` |
+| **Install** | `pip install -e ".[dialogue]"` |
+| **Cache dir** | `BAYMAX_MODEL_DIR` (default: `/scratch/$USER/bay-max/models`) |
+
+Model is lazy-loaded on first `generate()` call. Uses `device_map="auto"` for automatic GPU/CPU placement.
+
+### Backend Selection
+
+```bash
+# Rule-based (default, no model needed)
+BAYMAX_DIALOGUE_BACKEND=rule_based
+
+# Ollama
+BAYMAX_DIALOGUE_BACKEND=ollama
+BAYMAX_OLLAMA_BASE_URL=http://localhost:11434
+BAYMAX_OLLAMA_MODEL=qwen2.5:1.5b
+
+# Transformers
+BAYMAX_DIALOGUE_BACKEND=transformers
+BAYMAX_HF_CHAT_MODEL=Qwen/Qwen2.5-1.5B-Instruct
+BAYMAX_HF_DTYPE=auto  # auto | float16 | bfloat16 | float32
+```
+
+### Generation Parameters
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BAYMAX_DIALOGUE_TEMPERATURE` | `0.4` | Sampling temperature |
+| `BAYMAX_DIALOGUE_MAX_NEW_TOKENS` | `220` | Max tokens to generate |
+| `BAYMAX_DIALOGUE_TOP_K_MEMORIES` | `5` | Max memories in prompt |
+| `BAYMAX_DIALOGUE_MAX_HISTORY_TURNS` | `8` | Max recent turns in prompt |
+| `BAYMAX_ENABLE_RULE_BASED_FALLBACK` | `true` | Fall back to rule_based on backend failure |
+| `BAYMAX_ENABLE_SAFE_HEALTH_MODE` | `true` | Block diagnosis-style requests |
+| `BAYMAX_ENABLE_DIALOGUE_DEBUG` | `false` | Include debug trace in response |
+

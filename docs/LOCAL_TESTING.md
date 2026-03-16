@@ -82,8 +82,8 @@ Files are named: `frame_{session_id_prefix}_{timestamp}.jpg`
 # Run all tests
 make test
 
-# Run only iteration 003 tests
-pytest tests/test_iteration_003.py -v
+# Run only iteration 005 tests
+pytest tests/test_iteration_005.py -v
 
 # Run with lint
 make lint
@@ -95,16 +95,65 @@ make lint
 make run-demo
 ```
 
-Opens on `http://0.0.0.0:7860`. The Frame Analysis tab shows both JSON results and an annotated image overlay.
+Opens on `http://0.0.0.0:7860`. The Interact tab now shows backend, model_name, fallback_used, safety_flags, and memory_refs. The Backends tab shows active backend configuration.
 
-## Smoke Test Checklist
+## Smoke Test Checklist (Iteration 005)
 
-1. `pip install -e ".[all]"` completes without errors
+1. `pip install -e ".[dev]"` completes without errors
 2. `make lint` passes (0 errors)
-3. `make test` passes (109 tests)
-4. `python scripts/local_test.py --enroll face.jpg --name "Test"` produces enrollment JSON
-5. `python scripts/local_test.py --image test.jpg` produces analysis JSON and annotated artifact
-6. Annotated artifact file exists in `./artifacts/`
+3. `make test` passes (194 tests)
+4. `curl http://localhost:8000/v1/dialogue/backends` returns JSON with `available_backends`, `active_backend`
+5. `POST /v1/respond` returns `backend`, `model_name`, `fallback_used`, `safety_flags` fields
+6. Safety test: context `"Can you diagnose me from my face?"` returns non-empty `safety_flags`
+7. (Ollama) Two-session recall returns non-empty `memory_refs` after consolidation
+
+---
+
+## Dialogue Backend Testing (Iteration 005)
+
+### Rule-Based Mode (no model required)
+
+```bash
+# Default — rule_based requires nothing extra
+BAYMAX_DIALOGUE_BACKEND=rule_based make run-api
+```
+
+### Ollama Mode
+
+```bash
+# Install Ollama and pull model
+ollama pull qwen2.5:1.5b
+
+# Run Bay-Max with Ollama
+BAYMAX_DIALOGUE_BACKEND=ollama BAYMAX_OLLAMA_MODEL=qwen2.5:1.5b make run-api
+```
+
+### Transformers Mode
+
+```bash
+pip install -e ".[dialogue]"
+BAYMAX_DIALOGUE_BACKEND=transformers \
+  BAYMAX_HF_CHAT_MODEL=Qwen/Qwen2.5-1.5B-Instruct \
+  make run-api
+```
+
+### Smoke Test Script
+
+```bash
+# Rule-based (no model needed)
+python scripts/dialogue_smoke.py
+
+# Ollama
+BAYMAX_DIALOGUE_BACKEND=ollama BAYMAX_OLLAMA_MODEL=qwen2.5:1.5b \
+  python scripts/dialogue_smoke.py
+
+# Transformers
+BAYMAX_DIALOGUE_BACKEND=transformers \
+  BAYMAX_HF_CHAT_MODEL=Qwen/Qwen2.5-1.5B-Instruct \
+  python scripts/dialogue_smoke.py
+```
+
+Outputs: `./artifacts/smoke_test_005.json`
 
 ## Troubleshooting
 
