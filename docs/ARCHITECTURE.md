@@ -9,7 +9,12 @@ Bay-Max follows a **modular monolith** architecture. All modules live in a singl
 - Pydantic v2 (data validation)
 - SQLite via `sqlite3` (metadata storage)
 - Gradio (demo UI)
-- Stub interfaces for: PyTorch, OpenCV, FAISS/LanceDB (future iterations)
+- PyTorch + torchvision (face recognition models)
+- MTCNN (face detection)
+- MediaPipe (pose estimation)
+- OpenCV (image processing)
+- NumPy (array operations)
+- Stub interfaces for: FAISS/LanceDB (future iterations)
 
 ## Module Map
 
@@ -24,7 +29,14 @@ src/baymax/
 │   ├── memory.py    EpisodicMemory, SemanticFact, InterventionMemory, etc.
 │   └── response.py  SupportiveResponse
 ├── capture/         Frame source interfaces (stub)
-├── perception/      Face detection/recognition interfaces (stub)
+├── perception/      Computer vision and engagement estimation
+│   ├── interfaces.py    FaceDetector, FaceRecognizer, PoseEstimator ABCs
+│   ├── mtcnn_face_detector.py  MTCNN face detection
+│   ├── arcface_recognizer.py   ArcFace face recognition
+│   ├── pose_interface.py       Pose estimation interface
+│   ├── mediapipe_pose.py       MediaPipe pose implementation
+│   ├── heuristics.py           Body-state and engagement heuristics
+│   └── annotations.py          Debug visualization utilities
 ├── state/           Interaction state management
 ├── memory/          Memory storage, retrieval, salience, consolidation
 │   ├── interfaces.py   MetadataStore ABC
@@ -41,7 +53,7 @@ src/baymax/
 ## Data Flow
 
 1. **Capture**: Frame source provides video frames (stub in iteration-001)
-2. **Perception**: Detect faces, recognize users, estimate engagement/emotion (stub)
+2. **Perception**: Face detection → recognition → pose estimation → engagement scoring
 3. **State**: Update interaction state for the session
 4. **Memory**: Store observations, retrieve relevant memories
 5. **Planner**: Choose response strategy based on state and memories

@@ -1,12 +1,21 @@
 """Perception-related Pydantic schemas."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
-from baymax.core.enums import EmotionLabel, EngagementLevel, PerceptionEventType
+from baymax.core.enums import (
+    EmotionLabel,
+    EngagementLevel,
+    LeanLabel,
+    MotionLevel,
+    PerceptionEventType,
+    PostureLabel,
+)
 
 
 class PerceptionEvent(BaseModel):
@@ -111,9 +120,12 @@ class FrameAnalysisResult(BaseModel):
     faces_detected: int = 0
     recognized_faces: list[RecognizedFace] = Field(default_factory=list)
     unknown_faces: list[UnknownFace] = Field(default_factory=list)
+    pose_result: PoseResult | None = None
+    engagement: EngagementResult | None = None
     state: dict[str, Any] = Field(default_factory=dict)
     observations_written: int = 0
     latency_ms: float = 0.0
+    annotation_artifact: AnnotatedArtifactRef | None = None
 
 
 class RecognitionObservation(BaseModel):
@@ -129,6 +141,70 @@ class RecognitionObservation(BaseModel):
             "first_recognition | unknown_to_known | known_to_unknown"
             " | user_switch | confidence_change"
         ),
+    )
+    content: str
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+# --- Iteration 003: Pose estimation and engagement models ---
+
+
+class PoseLandmark2D(BaseModel):
+    """A single 2D pose landmark with visibility."""
+
+    x: float = Field(description="Normalized x coordinate (0.0-1.0)")
+    y: float = Field(description="Normalized y coordinate (0.0-1.0)")
+    visibility: float = Field(default=0.0, ge=0.0, le=1.0)
+    name: str = ""
+
+
+class PoseResult(BaseModel):
+    """Result of pose estimation on a single frame."""
+
+    pose_present: bool = False
+    landmarks: list[PoseLandmark2D] = Field(default_factory=list)
+    landmark_count: int = 0
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    backend: str = "mediapipe"
+    model_name: str = "pose_landmarker"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EngagementResult(BaseModel):
+    """Computed engagement level with supporting evidence."""
+
+    level: EngagementLevel = EngagementLevel.MEDIUM
+    posture: PostureLabel = PostureLabel.UNKNOWN
+    lean: LeanLabel = LeanLabel.UNKNOWN
+    motion: MotionLevel = MotionLevel.UNKNOWN
+    face_visible: bool = False
+    face_recognized: bool = False
+    pose_visible: bool = False
+    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: list[str] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AnnotatedArtifactRef(BaseModel):
+    """Reference to a saved annotated debug artifact."""
+
+    path: str
+    artifact_type: str = "annotated_frame"
+    session_id: UUID | None = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BodyStateObservation(BaseModel):
+    """An observation about body-state or engagement changes."""
+
+    id: UUID = Field(default_factory=uuid4)
+    session_id: UUID
+    user_id: UUID | None = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    event_type: str = Field(
+        default="posture_change",
+        description="posture_change | engagement_change | pose_first_seen | pose_lost",
     )
     content: str
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)

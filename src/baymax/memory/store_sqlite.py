@@ -13,7 +13,11 @@ from baymax.schemas.memory import (
     MemoryQueryResult,
     SemanticFact,
 )
-from baymax.schemas.perception import FaceEmbeddingRecord, RecognitionObservation
+from baymax.schemas.perception import (
+    BodyStateObservation,
+    FaceEmbeddingRecord,
+    RecognitionObservation,
+)
 from baymax.schemas.session import Session
 from baymax.schemas.user import FaceEnrollment, UserProfile
 
@@ -325,7 +329,9 @@ class SQLiteMetadataStore(MetadataStore):
         conn.commit()
         return fact
 
-    async def store_observation(self, obs: RecognitionObservation) -> RecognitionObservation:
+    async def store_observation(
+        self, obs: RecognitionObservation | BodyStateObservation
+    ) -> RecognitionObservation | BodyStateObservation:
         conn = self._ensure_conn()
         conn.execute(
             "INSERT INTO recognition_observations"

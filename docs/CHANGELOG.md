@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.3.0] - 2026-03-16 (Iteration 003)
+
+### Added
+- Pose estimation via MediaPipe Pose (33 landmarks, backend-agnostic interface)
+- Body-state heuristics: posture (upright/slouched/reclined), lean (forward/neutral/backward), motion (low/medium/high)
+- Engagement scoring (weighted 0.0-1.0 score from face, pose, posture, lean, motion signals)
+- Body-state observation writing on meaningful transitions (pose_first_seen, pose_lost, posture_change, engagement_change)
+- Annotated debug frame output with face boxes, pose skeleton, and engagement labels
+- Local test CLI script (`scripts/local_test.py`) for headless image analysis and frame replay
+- New Pydantic schemas: PoseLandmark2D, PoseResult, EngagementResult, AnnotatedArtifactRef, BodyStateObservation
+- New enums: PostureLabel, LeanLabel, MotionLevel
+- Engagement heuristics documentation (`docs/ENGAGEMENT_HEURISTICS.md`)
+- Local testing guide (`docs/LOCAL_TESTING.md`)
+- 44 new tests (109 total)
+
+### Changed
+- FrameAnalysisResult extended with pose_result, engagement, and annotation_artifact fields
+- InteractionState extended with pose_visible, posture, lean, motion, engagement_score fields
+- StateManager gains update_body_state() method
+- Orchestrator analyze_frame() now runs pose estimation and engagement heuristics
+- MetadataStore.store_observation() accepts BodyStateObservation in addition to RecognitionObservation
+- Gradio Frame Analysis tab shows annotated image alongside JSON output
+- pyproject.toml: mediapipe added to vision extras, new "all" extras group
+- Makefile: added install-all target, scripts/ included in lint
+
 ## [0.2.0] - 2026-03-16 (Iteration 002)
 
 ### Added

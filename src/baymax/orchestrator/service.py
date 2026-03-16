@@ -8,17 +8,28 @@ from uuid import UUID
 import numpy as np
 
 from baymax.config.settings import get_settings
+from baymax.core.enums import EngagementLevel, PostureLabel
 from baymax.dialogue.rule_based import RuleBasedDialogue
 from baymax.memory.retrieve import retrieve_memories
 from baymax.memory.store_sqlite import SQLiteMetadataStore
 from baymax.perception.facenet_adapter import CosineRecognizer, FacenetDetector
+from baymax.perception.heuristics import (
+    MotionTracker,
+    compute_engagement,
+    compute_lean,
+    compute_posture,
+)
 from baymax.perception.interfaces import FaceDetector, FaceRecognizer, StubFaceDetector
+from baymax.perception.pose_interface import PoseEstimator, StubPoseEstimator
 from baymax.perception.tracker import SimpleTracker
 from baymax.planner.supportive_planner import SupportivePlanner
 from baymax.schemas.memory import MemoryQueryResult
 from baymax.schemas.perception import (
+    BodyStateObservation,
+    EngagementResult,
     FaceEmbeddingRecord,
     FrameAnalysisResult,
+    PoseResult,
     RecognitionObservation,
     RecognizedFace,
     UnknownFace,
@@ -41,6 +52,7 @@ class Orchestrator:
         self.planner = SupportivePlanner()
         self.dialogue = RuleBasedDialogue()
         self.tracker = SimpleTracker()
+        self.motion_tracker = MotionTracker()
 
         settings = get_settings()
         device = settings.device
@@ -53,16 +65,24 @@ class Orchestrator:
         self._device = device
         self._face_match_threshold = settings.face_match_threshold
         self._max_faces = settings.max_faces_per_frame
+        self._pose_backend = settings.pose_backend
+        self._pose_min_confidence = settings.pose_min_confidence
+        self._enable_annotations = settings.enable_annotations
+        self._artifact_dir = settings.artifact_dir
 
         # Perception backends (lazy-loaded)
         self._detector: FaceDetector | None = None
         self._recognizer: FaceRecognizer | None = None
+        self._pose_estimator: PoseEstimator | None = None
 
         # Cached enrolled embeddings (refreshed on enroll)
         self._enrolled_embeddings: list[FaceEmbeddingRecord] = []
 
         # Track previous state per session for observation writing
         self._prev_user_ids: dict[UUID, UUID | None] = {}
+        self._prev_posture: dict[UUID, PostureLabel] = {}
+        self._prev_engagement: dict[UUID, EngagementLevel] = {}
+        self._prev_pose_visible: dict[UUID, bool] = {}
 
     def _ensure_detector(self) -> FaceDetector:
         if self._detector is None:
@@ -83,6 +103,29 @@ class Orchestrator:
         if self._recognizer is None:
             self._recognizer = CosineRecognizer()
         return self._recognizer
+
+    def _ensure_pose_estimator(self) -> PoseEstimator:
+        if self._pose_estimator is None:
+            if self._pose_backend == "mediapipe":
+                try:
+                    from baymax.perception.mediapipe_pose import MediaPipePoseEstimator
+
+                    est = MediaPipePoseEstimator(
+                        min_detection_confidence=self._pose_min_confidence,
+                    )
+                    est.load_model()
+                    self._pose_estimator = est
+                    logger.info("MediaPipePoseEstimator loaded")
+                except Exception:
+                    logger.warning(
+                        "Failed to load MediaPipePoseEstimator, falling back to stub",
+                        exc_info=True,
+                    )
+                    self._pose_estimator = StubPoseEstimator()
+            else:
+                logger.info("Pose backend '%s' not supported, using stub", self._pose_backend)
+                self._pose_estimator = StubPoseEstimator()
+        return self._pose_estimator
 
     async def initialize(self) -> None:
         """Initialize the orchestrator and its dependencies."""
@@ -172,14 +215,16 @@ class Orchestrator:
     async def analyze_frame(
         self, session_id: UUID, frame: np.ndarray
     ) -> FrameAnalysisResult:
-        """Run detection + recognition + tracking on a frame and update state.
+        """Run detection + recognition + pose + engagement on a frame and update state.
 
-        Returns a FrameAnalysisResult with recognized/unknown faces and observations.
+        Returns a FrameAnalysisResult with recognized/unknown faces, pose, engagement,
+        and observations.
         """
         t0 = time.time()
 
         detector = self._ensure_detector()
         recognizer = self._ensure_recognizer()
+        pose_estimator = self._ensure_pose_estimator()
 
         # 1. Detect faces
         detections = detector.detect(frame)
@@ -236,13 +281,34 @@ class Orchestrator:
                     best_match_score=score if score > 0 else None,
                 ))
 
-        # 4. Update interaction state
+        # 4. Pose estimation
+        pose_result: PoseResult = pose_estimator.estimate(frame)
+
+        # 5. Compute body-state heuristics
+        posture = compute_posture(pose_result)
+        lean = compute_lean(pose_result)
+        motion = self.motion_tracker.update(pose_result)
+        face_visible = len(detections) > 0
+        face_recognized = len(recognized) > 0
+
+        engagement_result = compute_engagement(
+            posture=posture,
+            lean=lean,
+            motion=motion,
+            face_visible=face_visible,
+            face_recognized=face_recognized,
+            pose_visible=pose_result.pose_present,
+        )
+
+        # 6. Update interaction state (face recognition)
         summary_parts = []
         if recognized:
             names = [r.user_display_name or str(r.user_id)[:8] for r in recognized]
             summary_parts.append(f"Recognized: {', '.join(names)}")
         if unknown:
             summary_parts.append(f"Unknown faces: {len(unknown)}")
+        if pose_result.pose_present:
+            summary_parts.append(f"Posture: {posture}, Lean: {lean}")
         frame_summary = "; ".join(summary_parts) if summary_parts else "No faces detected"
 
         self.state_manager.update_recognition(
@@ -255,17 +321,28 @@ class Orchestrator:
             frame_summary=frame_summary,
         )
 
-        # 5. Write meaningful observations
-        observations_written = await self._write_observations(
+        # 7. Update body-state in state
+        self.state_manager.update_body_state(session_id, engagement_result)
+
+        # 8. Write meaningful observations (face + body-state)
+        obs_count = await self._write_observations(
             session_id=session_id,
             recognized=recognized,
             unknown=unknown,
             primary_user_id=primary_user_id,
             primary_confidence=primary_confidence,
         )
+        obs_count += await self._write_body_state_observations(
+            session_id=session_id,
+            engagement_result=engagement_result,
+            user_id=primary_user_id,
+        )
 
-        # Update previous user for this session
+        # Update previous state for this session
         self._prev_user_ids[session_id] = primary_user_id
+        self._prev_posture[session_id] = posture
+        self._prev_engagement[session_id] = engagement_result.level
+        self._prev_pose_visible[session_id] = pose_result.pose_present
 
         latency_ms = (time.time() - t0) * 1000
 
@@ -276,8 +353,10 @@ class Orchestrator:
             faces_detected=len(detections),
             recognized_faces=recognized,
             unknown_faces=unknown,
+            pose_result=pose_result if pose_result.pose_present else None,
+            engagement=engagement_result,
             state=state.model_dump(mode="json"),
-            observations_written=observations_written,
+            observations_written=obs_count,
             latency_ms=round(latency_ms, 1),
         )
 
@@ -345,6 +424,97 @@ class Orchestrator:
                 event_type="known_to_unknown",
                 content="Previously recognized user is no longer matched.",
                 confidence=0.0,
+                evidence_refs=[f"session:{session_id}"],
+            )
+            await self.store.store_observation(obs)
+            count += 1
+
+        return count
+
+    async def _write_body_state_observations(
+        self,
+        session_id: UUID,
+        engagement_result: EngagementResult,
+        user_id: UUID | None,
+    ) -> int:
+        """Write body-state observations only on meaningful transitions.
+
+        Meaningful events:
+        - pose_first_seen: first time pose is detected in this session
+        - pose_lost: pose was visible but is no longer detected
+        - posture_change: posture label changed
+        - engagement_change: engagement level changed
+        """
+        count = 0
+        prev_pose_visible = self._prev_pose_visible.get(session_id, False)
+        prev_posture = self._prev_posture.get(session_id, PostureLabel.UNKNOWN)
+        prev_engagement = self._prev_engagement.get(session_id, EngagementLevel.MEDIUM)
+
+        # Pose first seen
+        if not prev_pose_visible and engagement_result.pose_visible:
+            obs = BodyStateObservation(
+                session_id=session_id,
+                user_id=user_id,
+                event_type="pose_first_seen",
+                content=(
+                    f"Body pose detected for the first time."
+                    f" Posture: {engagement_result.posture},"
+                    f" lean: {engagement_result.lean}."
+                ),
+                confidence=0.8,
+                evidence_refs=[f"session:{session_id}"],
+            )
+            await self.store.store_observation(obs)
+            count += 1
+            return count  # Don't double-report on same frame
+
+        # Pose lost
+        if prev_pose_visible and not engagement_result.pose_visible:
+            obs = BodyStateObservation(
+                session_id=session_id,
+                user_id=user_id,
+                event_type="pose_lost",
+                content="Body pose is no longer detected.",
+                confidence=0.8,
+                evidence_refs=[f"session:{session_id}"],
+            )
+            await self.store.store_observation(obs)
+            count += 1
+            return count
+
+        if not engagement_result.pose_visible:
+            return count
+
+        # Posture change
+        if (
+            engagement_result.posture != PostureLabel.UNKNOWN
+            and prev_posture != PostureLabel.UNKNOWN
+            and engagement_result.posture != prev_posture
+        ):
+            obs = BodyStateObservation(
+                session_id=session_id,
+                user_id=user_id,
+                event_type="posture_change",
+                content=(
+                    f"Posture changed from {prev_posture} to {engagement_result.posture}."
+                ),
+                confidence=0.7,
+                evidence_refs=[f"session:{session_id}"],
+            )
+            await self.store.store_observation(obs)
+            count += 1
+
+        # Engagement change
+        if engagement_result.level != prev_engagement:
+            obs = BodyStateObservation(
+                session_id=session_id,
+                user_id=user_id,
+                event_type="engagement_change",
+                content=(
+                    f"Engagement changed from {prev_engagement} to {engagement_result.level}"
+                    f" (score: {engagement_result.score:.2f})."
+                ),
+                confidence=0.7,
                 evidence_refs=[f"session:{session_id}"],
             )
             await self.store.store_observation(obs)

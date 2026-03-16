@@ -73,11 +73,44 @@ The system writes observations to memory only on meaningful events:
 | `user_switch` | The primary recognized user changes within a session |
 | `known_to_unknown` | A previously recognized user is no longer detected |
 
+## Pose Estimation
+
+| Property | Value |
+|----------|-------|
+| **Model** | MediaPipe Pose (legacy `mp.solutions.pose`) |
+| **Library** | `mediapipe` |
+| **Input** | RGB image (any resolution) |
+| **Output** | 33 2D landmarks with visibility scores |
+| **Min detection confidence** | 0.5 (configurable via `BAYMAX_POSE_MIN_CONFIDENCE`) |
+| **Mode** | Static image mode (no temporal smoothing) |
+| **Backend** | Configurable via `BAYMAX_POSE_BACKEND` (`mediapipe` or `stub`) |
+
+MediaPipe Pose uses a two-stage pipeline: a lightweight body detector followed by a landmark regression network that predicts 33 keypoints (nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles, etc.). Each landmark has normalized (x, y) coordinates and a visibility score.
+
+## Body-State Heuristics
+
+| Heuristic | Algorithm | Thresholds |
+|-----------|-----------|------------|
+| **Posture** | Nose-to-shoulder ratio vs torso height | Slouch < 0.38, Recline < 0.15 |
+| **Lean** | Nose offset relative to shoulder-hip midline | Forward < -0.03, Backward > 0.04 |
+| **Motion** | Average landmark displacement across frames | High >= 0.04, Medium >= 0.015 |
+| **Engagement** | Weighted score from all signals | High >= 0.65, Medium >= 0.35 |
+
+All heuristics are documented in detail in `docs/ENGAGEMENT_HEURISTICS.md`.
+
+### Body-State Observation Events
+
+| Event Type | Trigger |
+|------------|---------|
+| `pose_first_seen` | First time body pose is detected in a session |
+| `pose_lost` | Body pose was visible but is no longer detected |
+| `posture_change` | Posture label changed (e.g. upright -> slouched) |
+| `engagement_change` | Engagement level changed (e.g. medium -> high) |
+
 ## Stubbed Components
 
 These remain unimplemented and return hardcoded values:
 
-- **Engagement estimation**: Returns `EngagementLevel.MEDIUM`
 - **Emotion estimation**: Returns `EmotionLabel.NEUTRAL`
 - **LanceDB vector store**: Interface exists, in-memory stub in use
 - **Memory consolidation**: Returns empty
