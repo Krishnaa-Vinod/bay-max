@@ -1,0 +1,238 @@
+{
+  "iteration": "001",
+  "branch_name": "bootstrap/iteration-001",
+  "latest_commit_sha": "PENDING",
+  "status": "completed",
+  "summary": "Successfully bootstrapped the Bay-Max repository with full modular monolith architecture. All 8 tasks completed. 32 tests pass, lint clean, FastAPI server with 8 endpoints functional, Gradio demo shell created.",
+  "tasks_completed": [
+    {
+      "id": "T001",
+      "title": "Bootstrap repository",
+      "evidence": [
+        "pyproject.toml",
+        ".gitignore",
+        "README.md",
+        ".env.example",
+        "src/baymax/__init__.py"
+      ]
+    },
+    {
+      "id": "T002",
+      "title": "Create project instructions for AI developers",
+      "evidence": [
+        ".github/copilot-instructions.md",
+        ".github/instructions/backend.instructions.md",
+        ".github/instructions/docs.instructions.md",
+        ".github/instructions/tests.instructions.md",
+        ".github/pull_request_template.md",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Implement core schemas and settings",
+      "evidence": [
+        "src/baymax/core/enums.py",
+        "src/baymax/config/settings.py",
+        "src/baymax/schemas/user.py",
+        "src/baymax/schemas/session.py",
+        "src/baymax/schemas/perception.py",
+        "src/baymax/schemas/memory.py",
+        "src/baymax/schemas/response.py"
+      ]
+    },
+    {
+      "id": "T004",
+      "title": "Implement memory and orchestration skeleton",
+      "evidence": [
+        "src/baymax/capture/interfaces.py",
+        "src/baymax/perception/interfaces.py",
+        "src/baymax/state/models.py",
+        "src/baymax/state/manager.py",
+        "src/baymax/memory/interfaces.py",
+        "src/baymax/memory/store_sqlite.py",
+        "src/baymax/memory/vector_store.py",
+        "src/baymax/memory/salience.py",
+        "src/baymax/memory/retrieve.py",
+        "src/baymax/memory/consolidate.py",
+        "src/baymax/planner/interfaces.py",
+        "src/baymax/planner/supportive_planner.py",
+        "src/baymax/dialogue/interfaces.py",
+        "src/baymax/dialogue/rule_based.py",
+        "src/baymax/orchestrator/service.py"
+      ]
+    },
+    {
+      "id": "T005",
+      "title": "Implement API and demo shell",
+      "evidence": [
+        "apps/api/main.py",
+        "apps/demo/gradio_app.py"
+      ]
+    },
+    {
+      "id": "T006",
+      "title": "Write architecture and project memory docs",
+      "evidence": [
+        "docs/PROJECT_BRIEF.md",
+        "docs/ARCHITECTURE.md",
+        "docs/ROADMAP.md",
+        "docs/BACKLOG.md",
+        "docs/PROJECT_MEMORY.md",
+        "docs/CHANGELOG.md",
+        "docs/project_state.json",
+        "docs/adr/ADR-0001-modular-monolith.md",
+        "docs/adr/ADR-0002-storage-and-data-paths.md",
+        "docs/adr/ADR-0003-vision-first-mvp.md"
+      ]
+    },
+    {
+      "id": "T007",
+      "title": "Add developer workflow and tests",
+      "evidence": [
+        "Makefile",
+        "tests/test_health.py",
+        "tests/test_memory_models.py",
+        "tests/test_project_state_schema.py",
+        ".github/workflows/ci.yml",
+        "scripts/setup_sol.sh",
+        "scripts/run_api.sh",
+        "scripts/run_demo.sh"
+      ]
+    },
+    {
+      "id": "T008",
+      "title": "Commit, push, and report",
+      "evidence": [
+        "reports/iteration-001.md",
+        "reports/iteration-001.json"
+      ]
+    }
+  ],
+  "tasks_partial": [],
+  "tasks_not_done": [],
+  "files_created": [
+    ".env.example",
+    ".github/copilot-instructions.md",
+    ".github/instructions/backend.instructions.md",
+    ".github/instructions/docs.instructions.md",
+    ".github/instructions/tests.instructions.md",
+    ".github/pull_request_template.md",
+    ".github/workflows/ci.yml",
+    ".gitignore",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Makefile",
+    "README.md",
+    "apps/api/main.py",
+    "apps/demo/gradio_app.py",
+    "docs/ARCHITECTURE.md",
+    "docs/BACKLOG.md",
+    "docs/CHANGELOG.md",
+    "docs/PROJECT_BRIEF.md",
+    "docs/PROJECT_MEMORY.md",
+    "docs/ROADMAP.md",
+    "docs/adr/ADR-0001-modular-monolith.md",
+    "docs/adr/ADR-0002-storage-and-data-paths.md",
+    "docs/adr/ADR-0003-vision-first-mvp.md",
+    "docs/project_state.json",
+    "pyproject.toml",
+    "reports/iteration-001.json",
+    "reports/iteration-001.md",
+    "scripts/run_api.sh",
+    "scripts/run_demo.sh",
+    "scripts/setup_sol.sh",
+    "src/baymax/__init__.py",
+    "src/baymax/capture/__init__.py",
+    "src/baymax/capture/interfaces.py",
+    "src/baymax/config/__init__.py",
+    "src/baymax/config/settings.py",
+    "src/baymax/core/__init__.py",
+    "src/baymax/core/enums.py",
+    "src/baymax/dialogue/__init__.py",
+    "src/baymax/dialogue/interfaces.py",
+    "src/baymax/dialogue/rule_based.py",
+    "src/baymax/memory/__init__.py",
+    "src/baymax/memory/consolidate.py",
+    "src/baymax/memory/interfaces.py",
+    "src/baymax/memory/retrieve.py",
+    "src/baymax/memory/salience.py",
+    "src/baymax/memory/store_sqlite.py",
+    "src/baymax/memory/vector_store.py",
+    "src/baymax/orchestrator/__init__.py",
+    "src/baymax/orchestrator/service.py",
+    "src/baymax/perception/__init__.py",
+    "src/baymax/perception/interfaces.py",
+    "src/baymax/planner/__init__.py",
+    "src/baymax/planner/interfaces.py",
+    "src/baymax/planner/supportive_planner.py",
+    "src/baymax/schemas/__init__.py",
+    "src/baymax/schemas/memory.py",
+    "src/baymax/schemas/perception.py",
+    "src/baymax/schemas/response.py",
+    "src/baymax/schemas/session.py",
+    "src/baymax/schemas/user.py",
+    "src/baymax/state/__init__.py",
+    "src/baymax/state/manager.py",
+    "src/baymax/state/models.py",
+    "tests/__init__.py",
+    "tests/test_health.py",
+    "tests/test_memory_models.py",
+    "tests/test_project_state_schema.py"
+  ],
+  "files_modified": [],
+  "commands_run": [
+    "git clone https://github.com/Krishnaa-Vinod/bay-max.git .",
+    "git checkout -b bootstrap/iteration-001",
+    "python -m venv .venv && pip install -e '.[dev]'",
+    "python -c 'import baymax; print(baymax.__version__)'",
+    "uvicorn apps.api.main:app --host 127.0.0.1 --port 8200",
+    "curl -s http://127.0.0.1:8200/healthz",
+    "curl -s -X POST http://127.0.0.1:8200/v1/users ...",
+    "curl -s -X POST http://127.0.0.1:8200/v1/sessions ...",
+    "curl -s http://127.0.0.1:8200/v1/sessions/{id}/state",
+    "curl -s -X POST http://127.0.0.1:8200/v1/memory/query ...",
+    "curl -s -X POST http://127.0.0.1:8200/v1/respond ...",
+    "curl -s -X POST http://127.0.0.1:8200/v1/users/{id}/enroll/face",
+    "ruff check src/ apps/ tests/ --fix --unsafe-fixes",
+    "pytest tests/ -v"
+  ],
+  "tests_run": [
+    {
+      "command": "pytest tests/ -v",
+      "result": "passed",
+      "notes": "32 passed, 0 failed, 17 warnings (datetime.utcnow deprecation)"
+    },
+    {
+      "command": "ruff check src/ apps/ tests/",
+      "result": "passed",
+      "notes": "All checks passed after auto-fix"
+    }
+  ],
+  "known_issues": [
+    "SQLite store uses synchronous sqlite3 wrapped in async methods",
+    "Perception stubs return hardcoded values",
+    "Vector store stub uses naive dot product similarity",
+    "datetime.utcnow() deprecation warnings from Pydantic"
+  ],
+  "deviations_from_prompt": [],
+  "risks": [
+    "Sync SQLite wrapper in async context could cause blocking under load",
+    "No real perception means system cannot actually recognize users",
+    "Rule-based dialogue is limited in variety and personalization"
+  ],
+  "open_questions": [
+    "Which face detection model to use? (MediaPipe vs RetinaFace vs other)",
+    "Which vector store? (FAISS vs LanceDB vs ChromaDB)",
+    "Local LLM vs API LLM for dialogue generation?",
+    "Should we add a text input modality alongside vision?"
+  ],
+  "next_recommended_tasks": [
+    "Implement real face detection using MediaPipe or RetinaFace",
+    "Add vector store with FAISS or LanceDB for semantic memory search",
+    "Replace rule-based dialogue with LLM-based generation",
+    "Migrate SQLite store to fully async aiosqlite",
+    "Add memory consolidation logic (episodic to semantic)"
+  ]
+}
