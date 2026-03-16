@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.pytype/
+.ruff_cache/
+
+# Models, data, caches (must not be committed)
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+*.pkl
+*.pickle
+models/
+data/
+cache/
+*.sqlite
+*.db
+
+# Scratch and temporary
+/scratch/
+tmp/
+temp/
+*.tmp
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Bay-Max specific
+baymax.db
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+!tests/fixtures/*.json
