@@ -3,6 +3,8 @@
 ## Branch
 `feature/iteration-005-grounded-local-dialogue`
 
+## Latest Commit SHA
+`c978b2f`
 ## Summary
 
 Iteration 005 extends Bay-Max from a rule-based response system to a memory-aware, grounded local dialogue system. The key changes are:

@@ -1,7 +1,7 @@
 {
   "iteration": "005",
   "branch_name": "feature/iteration-005-grounded-local-dialogue",
-  "latest_commit_sha": "TBD",
+  "latest_commit_sha": "c978b2f",
   "status": "completed",
   "summary": "Iteration 005 adds a grounded local dialogue system to Bay-Max. Three dialogue backends are implemented (rule_based, ollama, transformers) with a shared provider interface, plan-then-verbalize prompt builder, safety gating on input and output, and graceful fallback. The /v1/respond endpoint now returns backend, model_name, fallback_used, and safety_flags. A new GET /v1/dialogue/backends endpoint exposes configuration. All 194 automated tests pass. Five smoke-test cases pass with rule_based backend. Ollama and Transformers backends are implemented but not exercised with real models in this environment.",
   "dialogue_backends": [
