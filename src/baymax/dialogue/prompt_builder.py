@@ -33,9 +33,15 @@ _STRATEGY_INSTRUCTIONS: dict[ResponseStrategy, str] = {
         "Do not offer solutions unless asked. Simply be present."
     ),
     ResponseStrategy.RECALL: (
-        "You have retrieved relevant memories about this user. "
-        "Weave in one or two specific remembered details naturally — "
-        "but only facts you actually have. Do not fabricate details you do not have."
+        "The user is asking what you remember about them. "
+        "You MUST mention at least one specific detail from the "
+        "'Memories about this user' section below. "
+        "Quote or paraphrase a concrete fact "
+        "(e.g. a hobby, a project name, a preference). "
+        "Do not respond generically — your response must prove "
+        "you actually recall something. "
+        "Only state facts you actually have. "
+        "Do not fabricate details you do not have."
     ),
     ResponseStrategy.SUGGEST: (
         "The user appears tired or under strain. "
@@ -118,10 +124,17 @@ def build_grounded_user_prompt(ctx: GroundedPromptContext) -> str:
     )
     parts.append(f"Response guidance: {strategy_instr}")
 
-    parts.append(
-        "Now write a single supportive response following the guidance above. "
-        "Be natural and warm. Do not repeat the instructions."
-    )
+    if ctx.memory_refs:
+        parts.append(
+            "Now write a single supportive response following the guidance above. "
+            "You MUST reference at least one specific detail from the memories listed above. "
+            "Be natural and warm. Do not repeat the instructions."
+        )
+    else:
+        parts.append(
+            "Now write a single supportive response following the guidance above. "
+            "Be natural and warm. Do not repeat the instructions."
+        )
 
     return "\n\n".join(parts)
 

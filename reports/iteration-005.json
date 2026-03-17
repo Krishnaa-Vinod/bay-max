@@ -1,9 +1,9 @@
 {
   "iteration": "005",
   "branch_name": "feature/iteration-005-grounded-local-dialogue",
-  "latest_commit_sha": "c978b2f",
-  "status": "completed",
-  "summary": "Iteration 005 adds a grounded local dialogue system to Bay-Max. Three dialogue backends are implemented (rule_based, ollama, transformers) with a shared provider interface, plan-then-verbalize prompt builder, safety gating on input and output, and graceful fallback. The /v1/respond endpoint now returns backend, model_name, fallback_used, and safety_flags. A new GET /v1/dialogue/backends endpoint exposes configuration. All 194 automated tests pass. Five smoke-test cases pass with rule_based backend. The Transformers backend was subsequently verified with Qwen/Qwen2.5-1.5B-Instruct on a NVIDIA A100-SXM4-80GB GPU: all 6 real-model smoke tests (ST001-ST006) passed. LanceDB vector retrieval with all-MiniLM-L6-v2 embedding was confirmed active. The Ollama backend remains unverified as the Ollama server is not installed in this environment.",
+  "latest_commit_sha": "c978b2f + verification sweep hotfixes",
+  "status": "verified",
+  "summary": "Iteration 005 adds a grounded local dialogue system to Bay-Max. Three dialogue backends are implemented (rule_based, ollama, transformers) with a shared provider interface, plan-then-verbalize prompt builder, safety gating on input and output, and graceful fallback. A full verification sweep (VT001-VT020) was executed with 17 passed, 0 failed, 3 not_run. The critical grounded recall test (ST002) was strengthened to require explicit memory verbalization — model now responds with specific remembered details (mentions_session_a=True). LanceDB vector retrieval with all-MiniLM-L6-v2 is confirmed active. All 194 automated tests pass.",
   "dialogue_backends": [
     {
       "backend": "rule_based",
@@ -204,7 +204,7 @@
     {
       "case": "Transformers two-session memory recall — ST002",
       "result": "passed",
-      "notes": "memory_refs=1 via LanceDB (score=0.504). backend=transformers, fallback=False. mentions_session_a=False — model retrieved memories but responded generically (small model limitation)."
+      "notes": "memory_refs=1 via LanceDB (score=0.504). strategy=recall. backend=transformers, fallback=False. mentions_session_a=True. Response explicitly verbalizes Session A content: warm greetings, Bay-Max companion project, classical music from 1960s. Rendered prompt saved in debug metadata."
     },
     {
       "case": "Memory summary after consolidation — ST003",
@@ -259,8 +259,11 @@
     "HF_HOME and TRANSFORMERS_CACHE both set to /scratch/kvinod/bay-max/models/ via .env"
   ],
   "artifact_output_locations": [
-    "./artifacts/smoke_test_005.json (gitignored)",
-    "./artifacts/real_model_smoke.json (gitignored)"
+    "./artifacts/verification_005/manifest.json (gitignored)",
+    "./artifacts/verification_005/summary.md (gitignored)",
+    "./artifacts/verification_005/sweep_results.json (gitignored)",
+    "./artifacts/verification_005/dialogue/smoke_test_005.json (gitignored)",
+    "./artifacts/verification_005/dialogue/real_model_smoke.json (gitignored)"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — aiosqlite migration pending",
@@ -274,12 +277,42 @@
   ],
   "deviations_from_prompt": [
     "Ollama backend not smoke-tested with real server — Ollama CLI not installed in this environment. Reported honestly as not_run.",
-    "Transformers backend grounded recall verified: model retrieved memories (LanceDB, score=0.504) but did not explicitly verbalize Session A content — small model (1.5B) limitation, documented honestly.",
-    "Test count for test_project_state_schema.py is now 7 (was 6) because project_state.json now has 17 endpoints — still passes the >=8 check",
+    "Grounded recall gap (mentions_session_a=False) FIXED during verification sweep. Strengthened RECALL prompt + added recall intent detection in planner. Model now verbalizes recalled facts.",
+    "Face recognition tests (VT004, VT005) not_run — no real face images in environment. Unit tests cover CosineRecognizer.",
+    "Gradio demo (VT020) not_run — headless SSH environment.",
     "dialogue extras in pyproject.toml include 'accelerate' for device_map='auto' support"
   ],
+  "verification_sweep": {
+    "date": "2026-03-16",
+    "total_tests": 20,
+    "passed": 17,
+    "failed": 0,
+    "not_run": 3,
+    "not_run_blockers": [
+      "VT004/VT005: No real face images in environment",
+      "VT020: Headless SSH, no display for Gradio"
+    ],
+    "hotfixes_applied": [
+      "Strengthened RECALL prompt instruction in prompt_builder.py",
+      "Added recall intent detection in supportive_planner.py",
+      "Strengthened ST002 criteria to require mentions_session_a=True",
+      "Added rendered_messages to TransformersDialogueProvider debug metadata"
+    ],
+    "critical_test_st002": {
+      "result": "passed",
+      "mentions_session_a": true,
+      "strategy": "recall",
+      "memory_refs_count": 1,
+      "response_text": "Bay-Max remembers that you mentioned enjoying warm greetings in the morning and building a companion AI project called Bay-Max for elderly care. Your favorite music from the 1960s includes classical pieces. How can I support you today?"
+    },
+    "artifacts": [
+      "artifacts/verification_005/manifest.json",
+      "artifacts/verification_005/summary.md",
+      "artifacts/verification_005/sweep_results.json",
+      "artifacts/verification_005/dialogue/real_model_smoke.json"
+    ]
+  },
   "risks": [
-    "Qwen/Qwen2.5-1.5B-Instruct responds generically — memory grounding confirmed via memory_refs but small model may not verbalize recalled facts",
     "Ollama HTTP probing in is_available() adds a small latency bump on first check",
     "Safety pattern matching may miss paraphrased or novel unsafe requests",
     "LanceDB not exercised in automated unit tests — StubVectorStore still the default for test isolation"

@@ -1,0 +1,261 @@
+{
+  "prompt_version": "2026-03-17.iteration-005-verification-sweep",
+  "agent_role": "You are the verification lead for Bay-Max. Your job is to comprehensively test all implemented features from iterations 001-005, fix any test harness gaps that prevent honest verification, store proof artifacts for every major feature, update reports/docs truthfully, commit, and push.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-005-grounded-local-dialogue",
+    "working_branch": "feature/iteration-005-grounded-local-dialogue"
+  },
+  "primary_goal": "Produce an auditable proof bundle showing what Bay-Max actually does and does not do as of iteration 005, with end-to-end evidence stored under artifacts/ and summarized in updated reports.",
+  "hard_rules": [
+    "Do not mark a feature as passed unless there is an artifact or test output proving it.",
+    "Do not let smoke tests pass on weak criteria; strengthen them where necessary.",
+    "Do not fake screenshots, model runs, commit hashes, timings, or artifact contents.",
+    "Keep artifacts out of git if large or machine-specific, but store summaries/manifests in git so the supervisor can audit them.",
+    "If a feature cannot be tested in this environment, record not_run with the exact blocker and save partial evidence if possible."
+  ],
+  "docs_must_be_updated": [
+    "README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/ROADMAP.md",
+    "docs/PROJECT_MEMORY.md",
+    "docs/CHANGELOG.md",
+    "docs/project_state.json",
+    "docs/LOCAL_TESTING.md",
+    "reports/iteration-005.md",
+    "reports/iteration-005.json"
+  ],
+  "artifact_policy": {
+    "artifact_root": "./artifacts/verification_005/",
+    "must_create": [
+      "artifacts/verification_005/manifest.json",
+      "artifacts/verification_005/summary.md",
+      "artifacts/verification_005/api/",
+      "artifacts/verification_005/demo/",
+      "artifacts/verification_005/perception/",
+      "artifacts/verification_005/memory/",
+      "artifacts/verification_005/dialogue/",
+      "artifacts/verification_005/safety/",
+      "artifacts/verification_005/logs/"
+    ],
+    "must_record_for_each_test": [
+      "test_id",
+      "feature_area",
+      "environment",
+      "backend",
+      "inputs",
+      "commands_run",
+      "raw_output_location",
+      "artifact_files",
+      "result",
+      "notes"
+    ],
+    "recommended_formats": [
+      "json for machine-readable results",
+      "png for screenshots or annotated images",
+      "txt or log for stdout/stderr",
+      "md for human-readable summaries"
+    ]
+  },
+  "verification_scope": {
+    "must_test": [
+      "project install and environment setup",
+      "API startup and GET /healthz",
+      "user creation and retrieval",
+      "face enrollment from real image",
+      "frame analysis with recognized face",
+      "frame analysis with non-matching face or no face",
+      "session state updates after frame analysis",
+      "pose/body-state output where available",
+      "typed conversation turn storage",
+      "session consolidation",
+      "memory query / retrieval",
+      "memory summary endpoint",
+      "memory correction flow",
+      "dialogue backends endpoint",
+      "respond endpoint in rule_based mode",
+      "respond endpoint in real local-model mode if environment allows",
+      "safety refusal behavior",
+      "backend failure fallback",
+      "LanceDB retrieval with real embedder/backend if environment allows",
+      "Gradio demo local/manual happy path if environment allows"
+    ],
+    "must_regress": [
+      "turn_count and session state logic",
+      "face recognition confidence threshold behavior",
+      "memory_refs returned by /respond",
+      "response does not fabricate memory when none exists",
+      "diagnosis-style requests are redirected safely"
+    ]
+  },
+  "specific_known_issue_to_verify": {
+    "name": "Grounded recall actually uses memory",
+    "requirements": [
+      "Strengthen ST002 so it only passes if the response text clearly mentions at least one specific detail from a prior session when memory_refs is non-empty and the user asks a recall question.",
+      "Record the chosen strategy and whether recall intent was detected.",
+      "Store the rendered prompt/messages for the grounded-recall case when debug mode is enabled.",
+      "If the current code does not satisfy this, fix it before finalizing the verification sweep."
+    ]
+  },
+  "required_test_matrix": [
+    {
+      "id": "VT001",
+      "feature": "API startup",
+      "proof": "server log, /healthz response json"
+    },
+    {
+      "id": "VT002",
+      "feature": "User create/get",
+      "proof": "API request/response artifacts"
+    },
+    {
+      "id": "VT003",
+      "feature": "Face enrollment",
+      "proof": "request json/meta + resulting enrollment record + optional annotated face crop artifact"
+    },
+    {
+      "id": "VT004",
+      "feature": "Face recognition same user",
+      "proof": "frame analysis response + recognized user id + optional annotated frame"
+    },
+    {
+      "id": "VT005",
+      "feature": "Face recognition unknown user or no-match",
+      "proof": "frame analysis response showing unknown or low-confidence result"
+    },
+    {
+      "id": "VT006",
+      "feature": "Pose/body-state analysis",
+      "proof": "frame analysis/state artifact showing posture/lean/engagement fields"
+    },
+    {
+      "id": "VT007",
+      "feature": "Session state evolution",
+      "proof": "before/after state snapshots"
+    },
+    {
+      "id": "VT008",
+      "feature": "Typed turns stored",
+      "proof": "turn creation responses and persisted session summary evidence"
+    },
+    {
+      "id": "VT009",
+      "feature": "Session consolidation",
+      "proof": "consolidation response and created memory counts"
+    },
+    {
+      "id": "VT010",
+      "feature": "Memory summary",
+      "proof": "GET /v1/users/{user_id}/memory/summary response"
+    },
+    {
+      "id": "VT011",
+      "feature": "Memory correction",
+      "proof": "before/after fact status artifacts"
+    },
+    {
+      "id": "VT012",
+      "feature": "Semantic retrieval",
+      "proof": "query response with hits and backend details"
+    },
+    {
+      "id": "VT013",
+      "feature": "Rule-based respond",
+      "proof": "/v1/respond artifact"
+    },
+    {
+      "id": "VT014",
+      "feature": "Grounded recall with real local model",
+      "proof": "real-model smoke artifact showing mentions_session_a=true, rendered prompt/messages, response text, memory_refs"
+    },
+    {
+      "id": "VT015",
+      "feature": "No-memory graceful response",
+      "proof": "respond artifact with no fabrication"
+    },
+    {
+      "id": "VT016",
+      "feature": "Safety refusal",
+      "proof": "respond artifact with safety_flags and safe redirect text"
+    },
+    {
+      "id": "VT017",
+      "feature": "Backend failure fallback",
+      "proof": "artifact showing fallback_used=true or fallback provider used"
+    },
+    {
+      "id": "VT018",
+      "feature": "Dialogue backends endpoint",
+      "proof": "GET /v1/dialogue/backends response"
+    },
+    {
+      "id": "VT019",
+      "feature": "LanceDB real round-trip",
+      "proof": "artifact showing actual LanceDB backend and real embedding model if environment allows; otherwise not_run with blocker"
+    },
+    {
+      "id": "VT020",
+      "feature": "Gradio/demo manual flow",
+      "proof": "screenshots or logs proving local demo interaction if environment allows"
+    }
+  ],
+  "test_execution_requirements": {
+    "automated": [
+      "Run python -m pytest tests/ -q",
+      "Run python -m ruff check src/ apps/ tests/ scripts/",
+      "Add or update automated tests where the current suite allows a false positive, especially for grounded recall"
+    ],
+    "manual": [
+      "Run the existing smoke flow in rule_based mode",
+      "Run the smoke flow in transformers mode with a real local model if available on Sol",
+      "Use real local images for face enrollment and recognition if available in the environment",
+      "Save every manual test result under artifacts/verification_005/ with case ids and timestamps"
+    ]
+  },
+  "artifact_manifest_schema": {
+    "run_at": "ISO-8601 string",
+    "branch": "string",
+    "commit_sha": "string",
+    "environment": {
+      "platform": "string",
+      "python": "string",
+      "gpu": "string",
+      "active_backends": ["string"]
+    },
+    "tests": [
+      {
+        "id": "string",
+        "feature": "string",
+        "result": "passed|failed|ambiguous|not_run",
+        "artifact_files": ["string"],
+        "notes": "string"
+      }
+    ],
+    "overall": {
+      "passed": "integer",
+      "failed": "integer",
+      "ambiguous": "integer",
+      "not_run": "integer"
+    }
+  },
+  "report_updates_required": [
+    "Update iteration-005.md and iteration-005.json so manual_smoke_tests and api_endpoints_verified reflect the actual new evidence, not the older partial report.",
+    "Add a section called 'Verification Sweep Evidence' with links/paths to artifacts.",
+    "Explicitly distinguish mocked/unit coverage from real end-to-end proof.",
+    "List every feature that remains unverified after the sweep and why."
+  ],
+  "commands_to_run": [
+    "python -m pytest tests/ -q",
+    "python -m ruff check src/ apps/ tests/ scripts/",
+    "python scripts/dialogue_smoke.py",
+    "BAYMAX_DIALOGUE_BACKEND=transformers BAYMAX_HF_CHAT_MODEL=Qwen/Qwen2.5-1.5B-Instruct BAYMAX_ENABLE_DIALOGUE_DEBUG=true python scripts/dialogue_smoke.py --real-model"
+  ],
+  "definition_of_done": [
+    "A full artifact manifest exists under artifacts/verification_005/.",
+    "Each major feature from iterations 001-005 has proof or an explicit not_run blocker.",
+    "Grounded recall no longer passes on weak criteria.",
+    "Updated reports reflect the real evidence honestly.",
+    "All automated tests pass.",
+    "Any hotfixes needed for truthful testing are committed and pushed."
+  ]
+}

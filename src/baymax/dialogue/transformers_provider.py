@@ -212,6 +212,12 @@ class TransformersDialogueProvider(DialogueProvider):
 
         import json
 
+        meta: dict[str, str] = {}
+        if debug:
+            meta["debug"] = json.dumps(debug.model_dump(mode="json"))
+        if self._enable_debug:
+            meta["rendered_messages"] = json.dumps(messages)
+
         return SupportiveResponse(
             session_id=state.session_id,
             user_id=state.user_id,
@@ -221,5 +227,5 @@ class TransformersDialogueProvider(DialogueProvider):
             model_name=self._model_name,
             fallback_used=False,
             safety_flags=safety_flags,
-            metadata={"debug": json.dumps(debug.model_dump(mode="json")) if debug else ""},
+            metadata=meta,
         )

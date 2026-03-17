@@ -762,6 +762,7 @@ class Orchestrator:
                             user_id=user_id or UUID("00000000-0000-0000-0000-000000000000"),
                             query=context,
                         ),
+                        context=context,
                     ),
                     message=redirect_text,
                     backend=self.dialogue.backend_name,
@@ -812,7 +813,7 @@ class Orchestrator:
                 logger.warning("Failed to fetch recent turns for prompt", exc_info=True)
 
         # Plan strategy
-        strategy = self.planner.plan(state, memories)
+        strategy = self.planner.plan(state, memories, context=context)
 
         # Build grounded prompt context (Iteration 005)
         prompt_context = build_prompt_context(
