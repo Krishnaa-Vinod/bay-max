@@ -65,6 +65,7 @@ Thumbs.db
 
 # Bay-Max specific
 baymax.db
+artifacts/
 *.mp4
 *.avi
 *.mov

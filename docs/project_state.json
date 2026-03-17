@@ -1,6 +1,6 @@
 {
-  "iteration": "005",
-  "branch_name": "feature/iteration-005-grounded-local-dialogue",
+  "iteration": "006",
+  "branch_name": "feature/iteration-006-live-webcam-continuity",
   "status": "completed",
   "last_updated": "2026-03-16",
   "modules_implemented": [
@@ -12,7 +12,8 @@
     "planner",
     "dialogue",
     "orchestrator",
-    "perception"
+    "perception",
+    "live"
   ],
   "modules_stubbed": [
     "capture",
@@ -36,7 +37,9 @@
     "GET /v1/memory/summary/{user_id}",
     "POST /v1/memory/search",
     "POST /v1/memory/correct",
-    "GET /v1/dialogue/backends"
+    "GET /v1/dialogue/backends",
+    "GET /v1/live/status",
+    "POST /v1/live/control"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — not migrated to aiosqlite",
@@ -47,23 +50,26 @@
     "Semantic fact extraction uses simple keyword heuristics (not LLM-based)",
     "Ollama backend not smoke-tested with real model — Ollama server not installed in this environment",
     "LanceDB real backend not tested in automated tests (stub used)",
-    "Safety pattern matching is substring-based — may miss paraphrased unsafe requests"
+    "Safety pattern matching is substring-based — may miss paraphrased unsafe requests",
+    "Live webcam mode implemented but not exercised on this headless machine (Sol has no camera); replay mode verified via automated tests",
+    "OpenCV imshow overlay will fail silently on headless machines — this is expected and handled gracefully",
+    "LiveRuntime asyncio loop not tested end-to-end in automated tests (integration test uses unit-level flow simulation)"
   ],
   "next_tasks": [
-    "Run real-model smoke test with Ollama backend once Ollama is installed",
     "Migrate SQLite store to fully async aiosqlite",
     "Implement emotion estimation from facial expressions",
     "Add LLM-based semantic fact extraction during consolidation",
     "Add salience decay over time for episodic memories",
-    "Add webcam live-stream support via capture module",
+    "Run real webcam live session on a machine with a camera",
     "Migrate to MediaPipe Tasks API for pose estimation",
     "Add dialogue streaming support (token-by-token)",
-    "Evaluate larger model (3B-7B) to improve memory verbalization in grounded recall"
+    "Evaluate larger model (3B-7B) to improve memory verbalization",
+    "Add Gradio live inspection tab for live-mode state"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP",
-    "api_version": "0.4.0"
+    "scope": "vision-first empathetic companion MVP — live webcam continuity",
+    "api_version": "0.5.0"
   }
 }

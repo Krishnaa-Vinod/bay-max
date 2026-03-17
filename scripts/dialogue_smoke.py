@@ -205,18 +205,29 @@ async def run_smoke_tests(real_model: bool = False) -> tuple[list[dict], dict]:
         )
 
         if real_model:
-            if has_memory_refs and is_real_backend and not fallback_was_used:
+            real_ok = (
+                has_memory_refs and is_real_backend
+                and not fallback_was_used
+            )
+            if real_ok and mentions_session_a:
                 recall_result = "passed"
                 print(f"   PASS  ({latency:.0f}ms) — {note}")
+            elif real_ok and not mentions_session_a:
+                recall_result = "failed"
+                print(
+                    f"   FAIL  ({latency:.0f}ms) — memory_refs present "
+                    f"but response lacks recalled content. "
+                    f"mentions_session_a={mentions_session_a}"
+                )
             elif has_memory_refs and fallback_was_used:
-                recall_result = "partial"
-                print(f"   PARTIAL ({latency:.0f}ms) — memory_refs present but fallback used")
+                recall_result = "failed"
+                print(f"   FAIL ({latency:.0f}ms) — memory_refs present but fallback used")
             elif not has_memory_refs:
                 recall_result = "failed"
                 print(f"   FAIL  ({latency:.0f}ms) — no memory_refs returned")
             else:
-                recall_result = "partial"
-                print(f"   PARTIAL ({latency:.0f}ms) — rule_based used instead of real model")
+                recall_result = "failed"
+                print(f"   FAIL ({latency:.0f}ms) — rule_based used instead of real model")
         else:
             if has_memory_refs:
                 recall_result = "passed"
@@ -227,6 +238,11 @@ async def run_smoke_tests(real_model: bool = False) -> tuple[list[dict], dict]:
                     f"no memory_refs (may be stub vector store)"
                 )
                 recall_result = "ambiguous"
+
+        # Extract rendered messages from response metadata (debug mode)
+        rendered_messages = None
+        if response_b.metadata and response_b.metadata.get("rendered_messages"):
+            rendered_messages = response_b.metadata["rendered_messages"]
 
         results.append({
             "id": "ST002",
@@ -239,6 +255,12 @@ async def run_smoke_tests(real_model: bool = False) -> tuple[list[dict], dict]:
             "consolidation_episodic": consolidation.episodic_memories_created,
             "consolidation_semantic": consolidation.semantic_facts_created,
             "mentions_session_a": mentions_session_a,
+            "rendered_messages": rendered_messages,
+            "strategy": (
+                response_b.strategy.value
+                if hasattr(response_b.strategy, "value")
+                else str(response_b.strategy)
+            ),
             "latency_ms": round(latency, 1),
             "timestamp": datetime.utcnow().isoformat(),
         })

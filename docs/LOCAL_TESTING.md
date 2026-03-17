@@ -155,6 +155,98 @@ BAYMAX_DIALOGUE_BACKEND=transformers \
 
 Outputs: `./artifacts/smoke_test_005.json`
 
+## Live Mode Testing (Iteration 006)
+
+### Environment Variables for Live Mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BAYMAX_LIVE_SOURCE` | `webcam` | Frame source: `webcam` or `replay` |
+| `BAYMAX_LIVE_CAMERA_INDEX` | `0` | Webcam device index |
+| `BAYMAX_PREVIEW_FPS` | `8` | Frame read rate (preview loop) |
+| `BAYMAX_ANALYSIS_INTERVAL_SEC` | `2.0` | Seconds between full analyses |
+| `BAYMAX_PRESENCE_MIN_CONSECUTIVE_FRAMES` | `2` | Frames needed to confirm presence |
+| `BAYMAX_ABSENCE_TIMEOUT_SEC` | `30.0` | Seconds before session pauses on absence |
+| `BAYMAX_SESSION_RESUME_WINDOW_SEC` | `300.0` | Seconds within which same user resumes |
+| `BAYMAX_PROACTIVE_MIN_INTERVAL_SEC` | `30.0` | Per-event-type cooldown |
+| `BAYMAX_ANY_RESPONSE_MIN_INTERVAL_SEC` | `10.0` | Global any-response cooldown |
+| `BAYMAX_QUIET_COMPANIONSHIP_INTERVAL_SEC` | `300.0` | Quiet presence interval before prompt |
+| `BAYMAX_EVENT_MIN_STABILITY_SEC` | `4.0` | Stability window for posture/engagement events |
+| `BAYMAX_ENABLE_LIVE_OVERLAY` | `true` | Draw HUD on frame (disable for headless) |
+| `BAYMAX_ENABLE_ARTIFACT_LOGGING` | `true` | Write JSONL event/response logs |
+| `BAYMAX_LIVE_ARTIFACT_DIR` | `./artifacts/live_run_006` | Artifact output directory |
+| `BAYMAX_LIVE_MAX_RUN_SEC` | `0` | Max run duration (0 = unlimited) |
+| `BAYMAX_LIVE_VIDEO_REPLAY_PATH` | `` | Path to video file or frame folder for replay |
+
+### Webcam Live Mode
+
+```bash
+make live-webcam
+# or
+python scripts/live_companion.py
+```
+
+This starts the continuous webcam loop. Press Ctrl-C to stop cleanly. Artifacts are written to `./artifacts/live_run_006/`.
+
+### Replay Mode (Headless / No Webcam)
+
+```bash
+# Replay from a folder of images (sorted alphabetically)
+REPLAY_PATH=/path/to/frames make live-replay
+# or
+python scripts/live_companion.py --replay /path/to/frames --no-overlay
+
+# Replay from a video file
+python scripts/live_companion.py --replay /path/to/video.mp4 --no-overlay
+```
+
+### Limiting Run Duration
+
+```bash
+# Stop after 60 seconds
+python scripts/live_companion.py --max-run-sec 60
+
+# Stop after 100 frames
+python scripts/live_companion.py --max-frames 100 --no-overlay
+```
+
+### Inspecting Live State via API
+
+While the live runner is active, query the API:
+
+```bash
+# Start API in background first:
+make run-api &
+
+# Then in another terminal:
+curl http://localhost:8000/v1/live/status
+```
+
+### Artifact Inspection
+
+After any live or replay run, inspect artifacts in `./artifacts/live_run_006/`:
+
+```
+events.jsonl          - All companion events (arrivals, departures, etc.)
+responses.jsonl       - All proactive responses with trigger_reason and memory_refs
+session_timeline.json - Session lifecycle transitions
+manifest.json         - Run summary metadata
+summary.md            - Human-readable run summary
+snapshots/            - Annotated JPEG frames at key events (if camera available)
+```
+
+### Smoke Test Checklist (Iteration 006)
+
+1. `make test` passes (256 tests)
+2. `make lint` passes (0 errors)
+3. `python scripts/live_companion.py --replay path/to/frames --max-frames 50 --no-overlay` completes
+4. `artifacts/live_run_006/events.jsonl` exists and is readable after replay
+5. `artifacts/live_run_006/manifest.json` has valid JSON
+6. `curl http://localhost:8000/v1/live/status` returns `{"live_mode_active": false}` (no active runtime)
+7. `POST /v1/live/control {"action": "stop"}` returns `{"status": "ok", "message": "Live mode not active"}`
+
+---
+
 ## Troubleshooting
 
 - **MediaPipe import error**: Ensure `mediapipe>=0.10.0` is installed. On some HPC systems, you may need to install from a wheel.

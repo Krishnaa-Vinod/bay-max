@@ -1,0 +1,603 @@
+{
+  "prompt_version": "2026-03-17.iteration-006",
+  "agent_role": "You are the lead implementation agent for the Bay-Max repository. Your job is to extend the current perception+memory+grounded-dialogue MVP into a live webcam continuity MVP. You must add continuous webcam processing, automatic session management, proactive event-driven responses with cooldowns, a live local overlay/runner, artifact logging, tests, docs, and an honest verification report. Commit and push your work.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-005-grounded-local-dialogue",
+    "working_branch": "feature/iteration-006-live-webcam-continuity"
+  },
+  "iteration_context": {
+    "previous_iteration_status": "Iteration 005 verified: 17/20 verification tests passed, 0 failed, 3 not_run due to environment blockers. Grounded recall with the transformers backend passed after hotfixes. LanceDB round-trip verified.",
+    "current_goal": "Turn Bay-Max from an upload-driven prototype into a continuous live local companion that can watch a webcam stream, auto-start/resume/pause sessions, detect meaningful events, respond proactively with memory-grounded text, and log proof artifacts."
+  },
+  "hard_requirements": {
+    "docs_must_be_updated_every_iteration": [
+      "README.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/PROJECT_MEMORY.md",
+      "docs/CHANGELOG.md",
+      "docs/project_state.json",
+      "docs/MODEL_STACK.md",
+      "docs/LOCAL_TESTING.md"
+    ],
+    "new_docs_required": [
+      "docs/LIVE_MODE_ARCHITECTURE.md",
+      "docs/EVENT_ENGINE.md"
+    ],
+    "docs_must_match_code": true,
+    "local_first": true,
+    "no_paid_or_closed_runtime_apis": true,
+    "no_new_model_classes_required": true,
+    "text_output_only": true,
+    "no_audio_output_yet": true,
+    "artifact_proof_required": true
+  },
+  "scope": {
+    "in_scope": [
+      "continuous webcam capture loop",
+      "configurable frame throttling for preview vs analysis",
+      "automatic session start, pause, resume, and end based on presence/absence",
+      "event engine over identity/body-state transitions",
+      "proactive response scheduler with cooldowns",
+      "live local overlay showing state and last response",
+      "continuous local runner script for webcam mode",
+      "artifact logging for live sessions and verification",
+      "manual local verification workflow",
+      "automated tests for event, cooldown, and session logic"
+    ],
+    "out_of_scope": [
+      "voice output or TTS",
+      "audio or speech recognition",
+      "new perception model families",
+      "emotion classification from face",
+      "robot hardware",
+      "doctor report ingestion",
+      "wearables",
+      "medical diagnosis",
+      "cloud inference APIs",
+      "paid APIs",
+      "multi-person social reasoning beyond simple handling",
+      "mobile deployment"
+    ]
+  },
+  "design_decisions": [
+    "Keep existing face, pose, memory, and grounded dialogue stacks. Do not destabilize them.",
+    "Add a runtime loop/orchestrator layer rather than changing core model behavior first.",
+    "Separate preview FPS from analysis cadence. Do not run heavy inference on every frame.",
+    "Use event-driven proactive responses, not per-frame chatting.",
+    "Prefer local runner script + OpenCV overlay for the primary live mode. Gradio live integration is optional/secondary.",
+    "Log every important event, response, and session transition into artifacts as proof.",
+    "If live webcam is unavailable, provide a local video-file replay mode using the same pipeline."
+  ],
+  "required_env_vars": [
+    "BAYMAX_LIVE_SOURCE",
+    "BAYMAX_LIVE_CAMERA_INDEX",
+    "BAYMAX_PREVIEW_FPS",
+    "BAYMAX_ANALYSIS_INTERVAL_SEC",
+    "BAYMAX_PRESENCE_MIN_CONSECUTIVE_FRAMES",
+    "BAYMAX_ABSENCE_TIMEOUT_SEC",
+    "BAYMAX_SESSION_RESUME_WINDOW_SEC",
+    "BAYMAX_PROACTIVE_MIN_INTERVAL_SEC",
+    "BAYMAX_ANY_RESPONSE_MIN_INTERVAL_SEC",
+    "BAYMAX_QUIET_COMPANIONSHIP_INTERVAL_SEC",
+    "BAYMAX_EVENT_MIN_STABILITY_SEC",
+    "BAYMAX_ENABLE_LIVE_OVERLAY",
+    "BAYMAX_ENABLE_ARTIFACT_LOGGING",
+    "BAYMAX_LIVE_ARTIFACT_DIR",
+    "BAYMAX_LIVE_MAX_RUN_SEC",
+    "BAYMAX_LIVE_VIDEO_REPLAY_PATH"
+  ],
+  "required_env_defaults": {
+    "BAYMAX_LIVE_SOURCE": "webcam",
+    "BAYMAX_LIVE_CAMERA_INDEX": "0",
+    "BAYMAX_PREVIEW_FPS": "8",
+    "BAYMAX_ANALYSIS_INTERVAL_SEC": "2.0",
+    "BAYMAX_PRESENCE_MIN_CONSECUTIVE_FRAMES": "2",
+    "BAYMAX_ABSENCE_TIMEOUT_SEC": "30",
+    "BAYMAX_SESSION_RESUME_WINDOW_SEC": "300",
+    "BAYMAX_PROACTIVE_MIN_INTERVAL_SEC": "30",
+    "BAYMAX_ANY_RESPONSE_MIN_INTERVAL_SEC": "10",
+    "BAYMAX_QUIET_COMPANIONSHIP_INTERVAL_SEC": "300",
+    "BAYMAX_EVENT_MIN_STABILITY_SEC": "4",
+    "BAYMAX_ENABLE_LIVE_OVERLAY": "true",
+    "BAYMAX_ENABLE_ARTIFACT_LOGGING": "true",
+    "BAYMAX_LIVE_ARTIFACT_DIR": "./artifacts/live_run_006",
+    "BAYMAX_LIVE_MAX_RUN_SEC": "0",
+    "BAYMAX_LIVE_VIDEO_REPLAY_PATH": ""
+  },
+  "required_repo_changes": [
+    "Add docs/LIVE_MODE_ARCHITECTURE.md",
+    "Add docs/EVENT_ENGINE.md",
+    "Update docs/LOCAL_TESTING.md with exact live-mode commands for webcam and video replay",
+    "Update docs/MODEL_STACK.md only if runtime/backend details changed",
+    "Update reports/iteration-006.md and reports/iteration-006.json",
+    "Add artifact manifest/summary templates for live verification"
+  ],
+  "required_code_changes": [
+    "Add a live runtime module under src/baymax/live/ or equivalent with a clear separation of concerns.",
+    "Implement a webcam/video-frame source abstraction that supports webcam and local video replay.",
+    "Implement a session supervisor that can start, pause, resume, and end sessions based on presence/absence.",
+    "Implement an event engine that detects arrival, departure, recognition gained/lost, posture change, engagement change, quiet-presence interval, and unknown-user presence.",
+    "Implement a proactive response scheduler with cooldowns and suppression rules.",
+    "Integrate the existing planner + memory + dialogue stack into proactive event responses.",
+    "Add a live overlay renderer that can draw identity, confidence, posture, engagement, active session status, last event, last response, backend, and memory count/debug info when enabled.",
+    "Add artifact logging for live runs: event timeline, session transitions, responses, and selected annotated frames/screenshots.",
+    "Add a CLI runner such as scripts/live_companion.py for webcam mode and optional replay mode.",
+    "Optionally add a lightweight demo tab or endpoint to inspect live state, but do not make Gradio the only live path."
+  ],
+  "api_changes": [
+    {
+      "method": "GET",
+      "path": "/v1/live/status",
+      "purpose": "Return current live runtime status if the live runtime is active.",
+      "must_return": [
+        "live_mode_active",
+        "source",
+        "session_status",
+        "current_user_id",
+        "current_user_display_name",
+        "last_event",
+        "last_response_text",
+        "last_response_at"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/live/control",
+      "purpose": "Optional local control endpoint to start/stop live mode or switch replay source.",
+      "must_return": [
+        "status",
+        "message"
+      ]
+    }
+  ],
+  "schema_requirements": {
+    "must_add_or_extend_models": [
+      "LiveRuntimeStatus",
+      "LiveFrameResult",
+      "SessionLifecycleEvent",
+      "CompanionEvent",
+      "ProactiveDecision",
+      "CooldownState",
+      "LiveArtifactRef",
+      "LiveRunSummary"
+    ],
+    "must_include_fields": [
+      "timestamps",
+      "session_id",
+      "user_id where known",
+      "event_type",
+      "trigger_reason",
+      "suppressed flag where relevant",
+      "cooldown_remaining_sec where relevant",
+      "artifact refs where relevant"
+    ]
+  },
+  "event_engine_requirements": {
+    "must_detect": [
+      "person_arrived",
+      "recognized_user_arrived",
+      "unknown_user_arrived",
+      "person_departed",
+      "session_paused",
+      "session_resumed",
+      "recognition_gained",
+      "recognition_lost",
+      "posture_changed",
+      "engagement_changed",
+      "quiet_companionship_due"
+    ],
+    "must_not_fire_noisy_events": [
+      "duplicate arrival greetings every frame",
+      "rapid oscillation from tiny posture jitter",
+      "multiple responses inside cooldown windows"
+    ],
+    "guidance": [
+      "Use stability windows and hysteresis where needed.",
+      "Prefer event suppression over chat spam.",
+      "Unknown should be handled honestly and quietly unless configured otherwise."
+    ]
+  },
+  "proactive_response_policy": [
+    "Arrival of a recognized user may trigger one warm greeting if cooldown allows.",
+    "Unknown users should not receive personalized memory-based language.",
+    "Quiet companionship prompts should be infrequent and gentle.",
+    "Engagement drop or posture change prompts should require stability and cooldown clearance.",
+    "Do not respond again if the same event repeats inside its suppression/cooldown window.",
+    "All proactive responses must still pass existing safety checks and use grounded memory when relevant."
+  ],
+  "overlay_requirements": [
+    "Show camera frame with face box/identity where available.",
+    "Show session status (idle/active/paused).",
+    "Show posture, engagement, and identity confidence when available.",
+    "Show last event and last response in a compact way.",
+    "Support debug mode to show backend, strategy, and memory_refs_count.",
+    "Allow overlay to be disabled for headless or automated runs."
+  ],
+  "artifact_logging_requirements": {
+    "must_create": [
+      "artifacts/live_run_006/manifest.json",
+      "artifacts/live_run_006/summary.md",
+      "artifacts/live_run_006/events.jsonl",
+      "artifacts/live_run_006/responses.jsonl",
+      "artifacts/live_run_006/session_timeline.json",
+      "artifacts/verification_006/manifest.json",
+      "artifacts/verification_006/summary.md"
+    ],
+    "should_capture": [
+      "annotated frame snapshots at key events",
+      "a short replay log of event transitions",
+      "manual verification notes",
+      "backend/model info used for responses"
+    ],
+    "policy": [
+      "Keep artifacts outside git by default if machine-specific or large.",
+      "Commit only small summaries/manifests if appropriate; otherwise keep them generated and documented.",
+      "Do not store private images in git."
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T601",
+      "title": "Audit iteration-005 state and design live runtime integration",
+      "actions": [
+        "Review current perception, memory, dialogue, and demo/runtime code paths.",
+        "Document where the live loop should integrate without breaking existing APIs.",
+        "Fix any obvious local-run documentation drift before adding the new runtime."
+      ],
+      "acceptance_criteria": [
+        "A short architecture note is added to the report or docs describing the live integration points.",
+        "No unnecessary refactor of stable iteration-005 subsystems."
+      ]
+    },
+    {
+      "id": "T602",
+      "title": "Implement frame source and live runner foundations",
+      "actions": [
+        "Add webcam source support using OpenCV or equivalent local capture.",
+        "Add local video replay mode using the same frame-processing path.",
+        "Add a CLI runner script such as scripts/live_companion.py with clear flags/env integration."
+      ],
+      "acceptance_criteria": [
+        "Local webcam mode can start and stop cleanly.",
+        "Local replay mode can process a short local video file without code changes."
+      ]
+    },
+    {
+      "id": "T603",
+      "title": "Implement automatic session lifecycle management",
+      "actions": [
+        "Start a session when presence criteria are met.",
+        "Pause on absence timeout.",
+        "Resume the prior session when the same user returns within the resume window, otherwise start a new session.",
+        "Trigger consolidation on end or long pause as appropriate."
+      ],
+      "acceptance_criteria": [
+        "Arrival, pause, resume, and end transitions are visible in logs/artifacts.",
+        "Session handling works in replay and/or manual webcam tests."
+      ]
+    },
+    {
+      "id": "T604",
+      "title": "Implement event engine and cooldown scheduler",
+      "actions": [
+        "Detect meaningful transition events from live state.",
+        "Implement cooldowns and suppression rules.",
+        "Return explicit suppression reasons when an event does not trigger a response."
+      ],
+      "acceptance_criteria": [
+        "Repeated identical events do not spam responses.",
+        "Cooldown state is inspectable in logs or debug state."
+      ]
+    },
+    {
+      "id": "T605",
+      "title": "Wire proactive grounded responses into live mode",
+      "actions": [
+        "Use the existing memory-grounded /respond path or equivalent internal call for proactive events.",
+        "Ensure recognized users receive memory-aware greetings when appropriate.",
+        "Ensure unknown users do not receive invented personalization."
+      ],
+      "acceptance_criteria": [
+        "At least one live/replay scenario produces a memory-grounded greeting for a known user.",
+        "At least one unknown-user scenario produces a safe generic response or no proactive response."
+      ]
+    },
+    {
+      "id": "T606",
+      "title": "Add live overlay and local UX",
+      "actions": [
+        "Render local overlay with status, identity, body-state, and last response.",
+        "Support a headless mode where overlays are disabled but logs still run.",
+        "Optionally add a Gradio inspection path, but do not make it the only live path."
+      ],
+      "acceptance_criteria": [
+        "A local user can see the system state change live or via replay.",
+        "Headless mode can still run verification and produce artifacts."
+      ]
+    },
+    {
+      "id": "T607",
+      "title": "Add artifact logging and proof capture",
+      "actions": [
+        "Log session transitions, events, responses, cooldown suppressions, and key snapshots.",
+        "Create a manifest and summary for live runs and verification runs.",
+        "Ensure artifact paths are configurable and documented."
+      ],
+      "acceptance_criteria": [
+        "Artifacts are generated for manual or replay verification.",
+        "A reviewer can audit what happened after a run from the artifact files alone."
+      ]
+    },
+    {
+      "id": "T608",
+      "title": "Automated tests, manual verification, docs, report, commit, and push",
+      "actions": [
+        "Add automated tests for session supervisor, event engine, cooldown logic, and live status data models.",
+        "Use replay/headless-friendly tests wherever possible.",
+        "Run lint and tests.",
+        "Perform manual local verification on webcam or local replay and store proof artifacts.",
+        "Update all required docs and project state files.",
+        "Write reports/iteration-006.md and reports/iteration-006.json.",
+        "Commit and push the branch."
+      ],
+      "acceptance_criteria": [
+        "Automated tests pass.",
+        "Manual verification results are reported honestly.",
+        "Artifacts are stored in the documented locations.",
+        "Docs match implementation.",
+        "Branch is pushed."
+      ]
+    }
+  ],
+  "manual_verification_requirements": {
+    "target_environment": "local laptop/workstation preferred; replay mode allowed on headless or remote systems",
+    "must_support": [
+      "webcam live run",
+      "local video replay run",
+      "known-user recognized arrival",
+      "unknown-user or no-match behavior",
+      "absence timeout / session pause",
+      "resume or new-session behavior",
+      "cooldown proof",
+      "artifact inspection after the run"
+    ],
+    "must_add": [
+      "exact commands in docs/LOCAL_TESTING.md",
+      "a replay-friendly script mode for environments without webcam UI",
+      "artifact manifest and summary for verification_006"
+    ]
+  },
+  "verification_matrix": [
+    {
+      "id": "VT601",
+      "feature": "Live runner startup",
+      "requirement": "Runner starts cleanly in webcam or replay mode and writes initial status/log files."
+    },
+    {
+      "id": "VT602",
+      "feature": "Known-user arrival greeting",
+      "requirement": "Recognized returning user triggers one memory-grounded greeting when cooldown allows."
+    },
+    {
+      "id": "VT603",
+      "feature": "Unknown-user handling",
+      "requirement": "Unknown user does not receive invented personalization; system stays generic or quiet."
+    },
+    {
+      "id": "VT604",
+      "feature": "Session auto-start",
+      "requirement": "Presence criteria trigger session start automatically without manual API calls."
+    },
+    {
+      "id": "VT605",
+      "feature": "Session pause/end",
+      "requirement": "Absence timeout pauses or ends session and logs transition."
+    },
+    {
+      "id": "VT606",
+      "feature": "Session resume/new session",
+      "requirement": "Return within resume window resumes; otherwise a new session starts."
+    },
+    {
+      "id": "VT607",
+      "feature": "Cooldown enforcement",
+      "requirement": "Repeated events do not create repeated responses inside cooldown windows."
+    },
+    {
+      "id": "VT608",
+      "feature": "Quiet companionship prompt",
+      "requirement": "After a configured quiet interval, one gentle companionship prompt may fire."
+    },
+    {
+      "id": "VT609",
+      "feature": "Engagement-change event",
+      "requirement": "A stable engagement/posture change can trigger a check-in or is honestly suppressed with reason."
+    },
+    {
+      "id": "VT610",
+      "feature": "Overlay correctness",
+      "requirement": "Overlay/debug state shows identity, posture, engagement, last event, and last response."
+    },
+    {
+      "id": "VT611",
+      "feature": "Live status endpoint",
+      "requirement": "GET /v1/live/status returns current runtime state when active."
+    },
+    {
+      "id": "VT612",
+      "feature": "Memory-grounded proactive response",
+      "requirement": "A live proactive response uses retrieved memory_refs and stores proof in artifacts."
+    },
+    {
+      "id": "VT613",
+      "feature": "No-memory graceful behavior",
+      "requirement": "Fresh or low-memory users do not trigger fabricated recall."
+    },
+    {
+      "id": "VT614",
+      "feature": "Safety in live mode",
+      "requirement": "Any diagnosis-style user turn in live mode still yields safe redirect behavior."
+    },
+    {
+      "id": "VT615",
+      "feature": "Artifact proof completeness",
+      "requirement": "Manifest, summary, event log, response log, and selected snapshots exist and are readable."
+    },
+    {
+      "id": "VT616",
+      "feature": "Replay-mode parity",
+      "requirement": "Replay mode exercises the same core pipeline and produces comparable artifacts."
+    }
+  ],
+  "testing_requirements": {
+    "must_have_automated_tests": [
+      "session lifecycle transitions",
+      "event engine stability/suppression",
+      "cooldown scheduler",
+      "known vs unknown proactive decision path",
+      "live status schema and endpoint",
+      "artifact manifest schema",
+      "project_state.json validity"
+    ],
+    "must_have_manual_or_replay_verification": [
+      "known-user arrival greeting",
+      "absence pause/end",
+      "cooldown suppression proof",
+      "memory-grounded proactive response",
+      "unknown-user behavior",
+      "artifact inspection"
+    ],
+    "test_honesty_rules": [
+      "Do not claim webcam mode works unless it was exercised on a real local machine, or honestly mark webcam-specific cases not_run and provide replay results.",
+      "Do not claim overlay rendering works unless a local or replay artifact proves it.",
+      "Keep automated tests and manual/replay verification clearly separated in the report."
+    ]
+  },
+  "report_requirements": {
+    "markdown_path": "reports/iteration-006.md",
+    "json_path": "reports/iteration-006.json",
+    "must_include": [
+      "branch_name",
+      "latest_commit_sha",
+      "summary",
+      "live_runtime_components",
+      "tasks_completed",
+      "tasks_partial",
+      "tasks_not_done",
+      "files_created",
+      "files_modified",
+      "commands_run",
+      "automated_tests_run",
+      "automated_test_results",
+      "manual_verification_results",
+      "api_endpoints_verified",
+      "known_issues",
+      "config_defaults_used",
+      "artifact_output_locations",
+      "deviations_from_prompt",
+      "next_recommended_tasks",
+      "risks",
+      "open_questions",
+      "doc_parity_check"
+    ]
+  },
+  "iteration_report_json_schema": {
+    "iteration": "006",
+    "branch_name": "string",
+    "latest_commit_sha": "string",
+    "status": "completed|partial|blocked|verified",
+    "summary": "string",
+    "live_runtime_components": [
+      {
+        "component": "string",
+        "status": "implemented|partial|not_implemented",
+        "notes": "string"
+      }
+    ],
+    "tasks_completed": [
+      {
+        "id": "string",
+        "title": "string",
+        "evidence": ["string"]
+      }
+    ],
+    "tasks_partial": [
+      {
+        "id": "string",
+        "reason": "string",
+        "remaining_work": ["string"]
+      }
+    ],
+    "tasks_not_done": [
+      {
+        "id": "string",
+        "reason": "string"
+      }
+    ],
+    "files_created": ["string"],
+    "files_modified": ["string"],
+    "commands_run": ["string"],
+    "automated_tests_run": [
+      {
+        "command": "string",
+        "result": "passed|failed",
+        "notes": "string"
+      }
+    ],
+    "manual_verification_results": [
+      {
+        "id": "string",
+        "case": "string",
+        "result": "passed|failed|ambiguous|not_run",
+        "notes": "string",
+        "artifact_files": ["string"]
+      }
+    ],
+    "api_endpoints_verified": [
+      {
+        "path": "string",
+        "result": "passed|failed|partial",
+        "notes": "string"
+      }
+    ],
+    "config_defaults_used": {
+      "preview_fps": "string",
+      "analysis_interval_sec": "string",
+      "absence_timeout_sec": "string",
+      "proactive_min_interval_sec": "string",
+      "quiet_companionship_interval_sec": "string"
+    },
+    "artifact_output_locations": ["string"],
+    "known_issues": ["string"],
+    "deviations_from_prompt": ["string"],
+    "risks": ["string"],
+    "open_questions": ["string"],
+    "next_recommended_tasks": ["string"],
+    "doc_parity_check": {
+      "readme_matches_install_flow": "true|false",
+      "roadmap_matches_iteration_status": "true|false",
+      "architecture_matches_code": "true|false",
+      "notes": "string"
+    }
+  },
+  "honesty_rules": [
+    "Do not state that live webcam behavior works unless it was exercised locally or clearly distinguish replay-only verification.",
+    "Do not fake push status, commit hashes, model outputs, screenshots, or artifact files.",
+    "If any event type is implemented but not verified, say so explicitly.",
+    "If scope had to be reduced, document exactly what was reduced and why."
+  ],
+  "definition_of_done": [
+    "Branch is pushed.",
+    "Architecture and core docs are updated and match the code.",
+    "A local live runner exists for webcam and/or replay mode.",
+    "Automatic session lifecycle works and is logged.",
+    "Event-driven proactive responses with cooldowns are implemented.",
+    "At least one memory-grounded live/replay response is verified.",
+    "Artifacts prove the run behavior.",
+    "Automated tests pass.",
+    "Manual or replay verification results are reported honestly.",
+    "Iteration report exists in markdown and JSON."
+  ]
+}

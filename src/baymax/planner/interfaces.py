@@ -12,7 +12,10 @@ class ResponsePlanner(ABC):
 
     @abstractmethod
     def plan(
-        self, state: InteractionState, memories: MemoryQueryResult
+        self,
+        state: InteractionState,
+        memories: MemoryQueryResult,
+        context: str = "",
     ) -> ResponseStrategy:
         """Choose a response strategy given current state and retrieved memories."""
         ...

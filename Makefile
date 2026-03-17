@@ -1,4 +1,4 @@
-.PHONY: help install install-vector install-dialogue install-all lint test run-api run-demo smoke-test real-model-test clean
+.PHONY: help install install-vector install-dialogue install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay clean
 
 help:
 	@echo "Bay-Max development commands:"
@@ -12,6 +12,8 @@ help:
 	@echo "  make run-demo          - Start Gradio demo on port 7860"
 	@echo "  make smoke-test        - Run local dialogue smoke-test script"
 	@echo "  make real-model-test   - Run real-model smoke-test (requires LLM backend in .env)"
+	@echo "  make live-webcam       - Start live companion in webcam mode"
+	@echo "  make live-replay       - Start live companion in replay mode (set REPLAY_PATH)"
 	@echo "  make clean             - Remove build artifacts and caches"
 
 install:
@@ -43,6 +45,12 @@ smoke-test:
 
 real-model-test:
 	python scripts/dialogue_smoke.py --real-model
+
+live-webcam:
+	python scripts/live_companion.py
+
+live-replay:
+	python scripts/live_companion.py --replay $(REPLAY_PATH) --no-overlay
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

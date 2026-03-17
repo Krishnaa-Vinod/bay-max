@@ -1,0 +1,68 @@
+{
+  "iteration": "006",
+  "verification_type": "automated_and_replay",
+  "environment": {
+    "machine": "Sol (NVIDIA HPC cluster node)",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "display": "none (headless)",
+    "webcam": "none",
+    "python": "3.12",
+    "platform": "Linux 4.18.0-553.77.1.el8_10.x86_64"
+  },
+  "branch": "feature/iteration-006-live-webcam-continuity",
+  "commit": "cc1de97",
+  "date": "2026-03-16",
+  "automated_tests": {
+    "command": "pytest tests/ -v --tb=short",
+    "total_passed": 256,
+    "total_failed": 0,
+    "total_errors": 0,
+    "warnings": 342,
+    "new_tests_added": 62,
+    "test_classes": [
+      {"name": "TestLiveSchemas", "tests": 12, "result": "passed"},
+      {"name": "TestSessionSupervisor", "tests": 9, "result": "passed"},
+      {"name": "TestEventEngine", "tests": 9, "result": "passed"},
+      {"name": "TestProactiveScheduler", "tests": 9, "result": "passed"},
+      {"name": "TestLiveSettings", "tests": 1, "result": "passed"},
+      {"name": "TestLiveAPIEndpoints", "tests": 4, "result": "passed"},
+      {"name": "TestArtifactLogger", "tests": 6, "result": "passed"},
+      {"name": "TestFrameSource", "tests": 3, "result": "passed"},
+      {"name": "TestLiveIntegration", "tests": 4, "result": "passed"},
+      {"name": "TestProjectState", "tests": 1, "result": "passed"}
+    ]
+  },
+  "lint": {
+    "command": "ruff check src/ apps/ tests/ scripts/",
+    "result": "All checks passed"
+  },
+  "verification_matrix": [
+    {"id": "VT601", "case": "Live runner startup", "result": "not_run", "reason": "No webcam on headless Sol"},
+    {"id": "VT602", "case": "Known-user arrival greeting", "result": "passed", "method": "automated"},
+    {"id": "VT603", "case": "Unknown-user handling", "result": "passed", "method": "automated"},
+    {"id": "VT604", "case": "Session auto-start", "result": "passed", "method": "automated"},
+    {"id": "VT605", "case": "Session pause/end", "result": "passed", "method": "automated"},
+    {"id": "VT606", "case": "Session resume/new session", "result": "passed", "method": "automated"},
+    {"id": "VT607", "case": "Cooldown enforcement", "result": "passed", "method": "automated"},
+    {"id": "VT608", "case": "Quiet companionship prompt", "result": "passed", "method": "automated"},
+    {"id": "VT609", "case": "Engagement-change event", "result": "passed", "method": "automated"},
+    {"id": "VT610", "case": "Overlay correctness", "result": "not_run", "reason": "No display on headless Sol"},
+    {"id": "VT611", "case": "Live status endpoint", "result": "passed", "method": "automated"},
+    {"id": "VT612", "case": "Memory-grounded proactive response", "result": "passed", "method": "automated"},
+    {"id": "VT613", "case": "No-memory graceful behavior", "result": "passed", "method": "automated"},
+    {"id": "VT614", "case": "Safety in live mode", "result": "passed", "method": "automated"},
+    {"id": "VT615", "case": "Artifact proof completeness", "result": "passed", "method": "automated"},
+    {"id": "VT616", "case": "Replay-mode parity", "result": "passed", "method": "automated"}
+  ],
+  "totals": {
+    "passed": 14,
+    "failed": 0,
+    "not_run": 2,
+    "pass_rate": "87.5%"
+  },
+  "files_produced": [
+    "artifacts/verification_006/manifest.json",
+    "artifacts/verification_006/summary.md"
+  ],
+  "notes": "Verification performed on headless Sol GPU node. Webcam-specific tests (VT601, VT610) marked not_run due to lack of camera and display. All logic verified via automated replay-path tests."
+}

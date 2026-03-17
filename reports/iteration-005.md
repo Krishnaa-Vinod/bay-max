@@ -4,7 +4,7 @@
 `feature/iteration-005-grounded-local-dialogue`
 
 ## Latest Commit SHA
-`c978b2f`
+`c978b2f` (initial), verification sweep hotfixes applied on top
 ## Summary
 
 Iteration 005 extends Bay-Max from a rule-based response system to a memory-aware, grounded local dialogue system. The key changes are:
@@ -142,14 +142,44 @@ Environment: Qwen/Qwen2.5-1.5B-Instruct on NVIDIA A100-SXM4-80GB (bfloat16), Lan
 
 | ID | Case | Result | Notes |
 |----|------|--------|-------|
-| ST001 | Transformers baseline greeting | **PASSED** | 4476ms. backend=transformers. Proper greeting generated. |
-| ST002 | Two-session memory recall | **PASSED** | memory_refs=1 (LanceDB, score=0.504). backend=transformers, fallback=False. Model retrieved memories but responded generically — documented honestly as `mentions_session_a=False`. |
+| ST001 | Transformers baseline greeting | **PASSED** | ~3700ms. backend=transformers. Proper greeting generated. |
+| ST002 | Two-session memory recall | **PASSED** | memory_refs=1 (LanceDB, score=0.504). strategy=recall. **mentions_session_a=True** — model now explicitly verbalizes remembered content. |
 | ST003 | Memory summary after consolidation | **PASSED** | episodic_count=1, semantic_count=0 after consolidation. |
 | ST004 | Safety flag detection | **PASSED** | safety_flags=['diagnosis_request:diagnose me'] before LLM call. |
 | ST005 | Backend failure fallback | **PASSED** | Empty ollama_model triggers ValueError; factory falls back to rule_based. |
 | ST006 | LanceDB vector store verification | **PASSED** | type(vs)=LanceDBVectorStore confirmed. 1 semantic hit (score=0.504). |
 
 | Ollama (real model) | **NOT RUN** | Ollama CLI not installed in this environment. Backend implemented and unit-tested via mocks. |
+
+### Verification Sweep Evidence (VT001-VT020)
+
+A full verification sweep was executed covering all major features from iterations 001-005.
+See `artifacts/verification_005/manifest.json` and `artifacts/verification_005/summary.md`.
+
+| Category | Passed | Not Run | Notes |
+|----------|--------|---------|-------|
+| API endpoints | 4 | 0 | healthz, user CRUD, state, turns |
+| Perception | 2 | 2 | Body-state + enrollment passed; face recognition requires real images |
+| Memory | 4 | 0 | Consolidation, summary, correction, semantic retrieval |
+| Dialogue | 5 | 0 | Rule-based, grounded recall, no-memory, fallback, backends |
+| Safety | 1 | 0 | Diagnosis refusal |
+| Demo | 0 | 1 | Headless environment |
+| **Total** | **17** | **3** | |
+
+#### Hotfixes Applied During Verification Sweep
+
+1. **Strengthened RECALL prompt**: Changed prompt_builder.py RECALL instruction to require explicit memory mention.
+2. **Recall intent detection**: SupportivePlanner now detects recall keywords and returns RECALL strategy even on first turn.
+3. **Strengthened ST002 criteria**: Real-model mode requires `mentions_session_a=True` to pass.
+4. **Debug metadata**: TransformersDialogueProvider saves rendered_messages in response metadata.
+
+#### ST002 Proof (critical test)
+
+- **Response text**: "Bay-Max remembers that you mentioned enjoying warm greetings in the morning and building a companion AI project called Bay-Max for elderly care. Your favorite music from the 1960s includes classical pieces. How can I support you today?"
+- **Strategy**: `recall`
+- **Memory refs**: 1 (LanceDB retrieval, score=0.504)
+- **Rendered prompt saved**: Yes (in `artifacts/verification_005/dialogue/real_model_smoke.json`)
+- **mentions_session_a**: `true`
 
 ## API Endpoints Verified
 
@@ -178,8 +208,15 @@ No models were downloaded during initial implementation. Real-model verification
 
 ## Artifact Output Locations
 
-- `./artifacts/smoke_test_005.json` — rule_based smoke test results (gitignored)
-- `./artifacts/real_model_smoke.json` — real-model ST001-ST006 results (gitignored)
+- `./artifacts/verification_005/manifest.json` — full verification manifest (gitignored)
+- `./artifacts/verification_005/summary.md` — human-readable verification summary (gitignored)
+- `./artifacts/verification_005/sweep_results.json` — VT001-VT020 results (gitignored)
+- `./artifacts/verification_005/dialogue/smoke_test_005.json` — rule-based smoke results (gitignored)
+- `./artifacts/verification_005/dialogue/real_model_smoke.json` — real-model ST001-ST006 results (gitignored)
+- `./artifacts/verification_005/api/` — API verification artifacts (gitignored)
+- `./artifacts/verification_005/perception/` — perception artifacts (gitignored)
+- `./artifacts/verification_005/memory/` — memory artifacts (gitignored)
+- `./artifacts/verification_005/safety/` — safety artifacts (gitignored)
 
 ## Known Issues
 
@@ -195,13 +232,14 @@ No models were downloaded during initial implementation. Real-model verification
 ## Deviations from Prompt
 
 1. Ollama backend not smoke-tested with real server — Ollama CLI not installed in this environment. Reported honestly as `not_run`.
-2. Transformers backend grounded recall verified: model retrieved memories (LanceDB, score=0.504) but did not explicitly verbalize Session A content — small model (1.5B) limitation, documented honestly as `mentions_session_a=False`.
+2. ~~Transformers backend grounded recall verified: model retrieved memories but did not explicitly verbalize Session A content~~ — **Fixed during verification sweep.** Strengthened RECALL prompt and added recall intent detection. Model now explicitly verbalizes remembered content (`mentions_session_a=True`).
 3. `test_project_state_schema.py` already tests `>=8 endpoints`; now the project has 17 endpoints — test still passes.
 4. `dialogue` extras in pyproject.toml include `accelerate` for device_map="auto" support.
+5. Face recognition tests (VT004, VT005) not run — no real face images in environment. Unit tests cover CosineRecognizer logic.
+6. Gradio demo (VT020) not run — headless SSH environment.
 
 ## Risks
 
-- Qwen/Qwen2.5-1.5B-Instruct responds generically — memory grounding confirmed via memory_refs but small model may not verbalize recalled facts
 - Ollama HTTP probing in `is_available()` adds a small latency bump on first check
 - Safety pattern matching may miss paraphrased or novel unsafe requests
 - LanceDB not exercised in automated unit tests — StubVectorStore still the default for test isolation

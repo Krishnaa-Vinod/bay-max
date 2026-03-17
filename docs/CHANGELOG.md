@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.0] - 2026-03-16 (Iteration 006)
+
+### Added
+- New `src/baymax/live/` package: `frame_source`, `session_supervisor`, `event_engine`, `proactive_scheduler`, `overlay`, `artifact_logger`, `runtime`, `schemas`
+- `OpenCVFrameSource`: webcam and video-file frame reader with FPS throttling (BGR→RGB)
+- `FolderFrameSource`: sorted-image-folder replay source for headless testing
+- `SessionSupervisor`: state machine managing session start, pause, resume, end based on presence/absence thresholds
+- `EventEngine`: companion event detection (person_arrived, person_departed, recognized/unknown arrival, recognition gained/lost, posture/engagement change with stability gating, quiet_companionship_due)
+- `ProactiveScheduler`: dual-layer cooldown system (global any-response interval + per-event-type interval) with suppression reasons
+- `LiveRuntime`: async orchestrator loop wiring frame source → perception → session lifecycle → events → proactive responses → artifact logging
+- `render_overlay()`: headless-safe HUD renderer using NumPy draws (session state, identity, posture, engagement, last event, last response, debug info)
+- `ArtifactLogger`: JSONL event log, JSONL response log, session timeline JSON, manifest JSON, summary Markdown
+- `scripts/live_companion.py`: CLI runner with `--replay`, `--max-frames`, `--max-run-sec`, `--no-overlay`, `--debug`, `--artifact-dir` flags
+- `GET /v1/live/status`: returns `LiveRuntimeStatus` when live runtime is active
+- `POST /v1/live/control`: accepts `start`/`stop` actions; start must be done via CLI runner
+- 16 new environment variables under `BAYMAX_LIVE_*` (see `.env.example`)
+- New Pydantic v2 schemas: `LiveRuntimeStatus`, `LiveFrameResult`, `SessionLifecycleEvent`, `CompanionEvent`, `ProactiveDecision`, `CooldownState`, `LiveArtifactRef`, `LiveRunSummary`
+- New docs: `docs/LIVE_MODE_ARCHITECTURE.md`, `docs/EVENT_ENGINE.md`
+- Makefile targets: `live-webcam`, `live-replay`
+- 62 new tests (256 total)
+
+### Changed
+- API version bumped from 0.4.0 to 0.5.0
+- `apps/api/main.py`: added live runtime integration hooks and live endpoints
+- All required docs updated: README, ROADMAP, ARCHITECTURE, LOCAL_TESTING, PROJECT_MEMORY, CHANGELOG
+
 ## [0.4.0] - 2026-03-16 (Iteration 005)
 
 ### Added

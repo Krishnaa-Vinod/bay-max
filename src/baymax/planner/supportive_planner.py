@@ -9,9 +9,23 @@ from baymax.state.models import InteractionState
 class SupportivePlanner(ResponsePlanner):
     """Rule-based planner that chooses supportive response strategies."""
 
+    _RECALL_KEYWORDS = [
+        "remember", "recall", "memory", "memories",
+        "last time", "previously", "before",
+    ]
+
     def plan(
-        self, state: InteractionState, memories: MemoryQueryResult
+        self,
+        state: InteractionState,
+        memories: MemoryQueryResult,
+        context: str = "",
     ) -> ResponseStrategy:
+        # Detect explicit recall intent from user context
+        if context and memories.total_count > 0:
+            lower = context.lower()
+            if any(kw in lower for kw in self._RECALL_KEYWORDS):
+                return ResponseStrategy.RECALL
+
         # First interaction: greet
         if state.turn_count == 0:
             return ResponseStrategy.GREET

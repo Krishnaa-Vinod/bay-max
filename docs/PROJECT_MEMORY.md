@@ -3,44 +3,50 @@
 This file provides continuity context for AI agents working on the Bay-Max project. Update this file after completing significant work.
 
 ## Last Updated
-2026-03-16 (Iteration 005)
+2026-03-16 (Iteration 006)
 
 ## Current State
-- **Iteration**: 005 (Grounded Local Dialogue)
-- **Branch**: feature/iteration-005-grounded-local-dialogue
+- **Iteration**: 006 (Live Webcam Continuity)
+- **Branch**: feature/iteration-006-live-webcam-continuity
 - **Status**: Complete
 
 ## What Exists
 - Full modular monolith structure under `src/baymax/`
-- 8 modules: capture, perception, state, memory, planner, dialogue, orchestrator, config
+- 9 modules: capture(stub), perception, state, memory, planner, dialogue, orchestrator, config, **live**
 - Real face detection via facenet-pytorch MTCNN
 - Real face embeddings via InceptionResnetV1 (vggface2, 512-d vectors)
 - Cosine similarity face recognition against enrolled embeddings
 - Simple IoU + cosine face tracker for frame-to-frame continuity
-- Pose estimation via MediaPipe Pose (33 landmarks, backend-agnostic interface)
+- Pose estimation via MediaPipe Pose (33 landmarks, legacy mp.solutions.pose API)
 - Body-state heuristics: posture, lean, motion classification from landmarks
 - Engagement scoring (weighted 0.0-1.0 from face, pose, posture, lean, motion signals)
 - Temporal smoothing for engagement and posture (majority-vote over configurable window)
 - Body-state observations written to memory on meaningful transitions
 - Annotated debug frame output (face boxes, pose skeleton, engagement labels)
-- Local test CLI (`scripts/local_test.py`) for headless image analysis and frame replay
-- **Text embedding adapter** with `TextEmbedder` ABC, `SentenceTransformerEmbedder` (all-MiniLM-L6-v2, 384-d), and `StubTextEmbedder`
-- **LanceDB vector store** for semantic memory search (with `StubVectorStore` fallback)
-- **Typed conversation turns** (`ChatTurn` with `TurnRole` user/system) for pre-audio dialogue
-- **Session consolidation pipeline**: turns + observations → session summary → episodic memories → candidate semantic facts
-- **Memory-aware responses**: top-k semantic search populates `memory_refs` and `state_summary` in `SupportiveResponse`
-- **Memory inspection**: `MemorySummaryResponse` with counts, session summaries, recent episodic, confirmed facts
-- **Memory correction**: confirm, reject, or update semantic facts via `CorrectionAction`
-- SQLite tables: users, face_enrollments, face_embeddings, sessions, episodic_memories, semantic_facts, recognition_observations, body_state_observations, chat_turns, session_summaries
-- Pydantic v2 schemas: full set including ChatTurn, SessionSummary, ConsolidationResult, MemoryHit, MemoryCorrectionRequest/Result, MemorySummaryResponse
-- FastAPI backend with 17 endpoints (version 0.4.0)
-- Gradio demo with 8 tabs (Setup, Enroll Face, Frame Analysis, Chat, Interact, Consolidate, Memory, Backends)
-- 194 tests all passing, ruff lint clean
+- Text embedding adapter (SentenceTransformerEmbedder, all-MiniLM-L6-v2, 384-d)
+- LanceDB vector store for semantic memory search
+- Typed conversation turns (ChatTurn, TurnRole) for pre-audio dialogue
+- Session consolidation pipeline: turns + observations → episodic → semantic → vector search
+- Memory-aware responses: top-k semantic search populates memory_refs in SupportiveResponse
+- Memory correction: confirm, reject, or update semantic facts
+- Plan-then-verbalize dialogue pattern with safety gating
+- Ollama and Transformers local dialogue backends with rule-based fallback
+- **[NEW] Live runtime module** (`src/baymax/live/`):
+  - `OpenCVFrameSource` / `FolderFrameSource` for webcam and replay
+  - `SessionSupervisor`: presence-based session lifecycle (start/pause/resume/end)
+  - `EventEngine`: companion event detection with stability gating and jitter prevention
+  - `ProactiveScheduler`: dual-layer cooldown (global + per-event-type)
+  - `LiveRuntime`: async orchestrator loop
+  - `render_overlay()`: headless-safe HUD renderer
+  - `ArtifactLogger`: JSONL event/response logs, timeline, manifest, summary
+- FastAPI backend with 19 endpoints (version 0.5.0)
+- CLI runner `scripts/live_companion.py` for webcam and folder/video replay
+- 256 tests all passing, ruff lint clean
 
 ## What Is Stubbed
-- Frame source / webcam capture (returns empty)
+- Frame source / webcam capture via `capture` module (still returns empty; live mode uses `live/frame_source.py` directly)
 - Emotion estimator (returns hardcoded values)
-- Dialogue LLM backends not verified with real models in this environment
+- Live webcam not exercised on this headless machine — replay/folder mode verified via automated tests
 
 ## Key Decisions Made
 - Modular monolith over microservices (ADR-0001)
@@ -63,6 +69,11 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - TransformersDialogueProvider as secondary backend, lazy model loading (Iteration 005)
 - Safety gating on both user input and LLM output; rule-based fallback on backend failure (Iteration 005)
 - All backends configurable via env vars; rule_based is default (Iteration 005)
+- **Live mode uses `live/frame_source.py` directly rather than the stub `capture` module** (Iteration 006)
+- Separate preview FPS from analysis cadence to avoid running heavy inference every frame (Iteration 006)
+- Event-driven proactive responses, not per-frame chatting — cooldowns prevent spam (Iteration 006)
+- Stability delay in EventEngine prevents jitter-triggered events for posture/engagement (Iteration 006)
+- Headless-safe design throughout: cv2.imshow wrapped in try/except, NumPy overlay, folder replay (Iteration 006)
 
 ## Model Stack
 - **Face Detection**: MTCNN (facenet-pytorch) - multi-task cascaded CNN
@@ -84,15 +95,16 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - LanceDB vector store requires separate install (pip install baymax[vector])
 - Semantic fact extraction uses simple heuristics, not LLM-based
 - Local LLM backends not verified with real models on this machine (environment lacks Ollama/models)
+- Live webcam mode implemented but not exercised on this headless machine (Sol); replay mode verified
 
 ## For Next Agent
 1. Read this file and `docs/project_state.json` first
-2. Check `docs/BACKLOG.md` for pending work
-3. Dialogue backend is configurable via `BAYMAX_DIALOGUE_BACKEND` (rule_based/ollama/transformers)
-4. The highest-impact next steps are: run a real local-LLM manual smoke test, migrate to aiosqlite, add emotion estimation, LLM-based fact extraction
-5. All dialogue modules are in `src/baymax/dialogue/` with clean interfaces
-6. The `scripts/dialogue_smoke.py` script covers all 5 manual test cases
-7. All modules use interfaces; implement concrete classes without changing the interface contracts
-8. Memory pipeline is fully functional: turns → consolidation → episodic/semantic → vector search → memory-aware responses
-9. Install dialogue dependencies with `pip install -e ".[dialogue]"` for Transformers support
+2. The live runtime is in `src/baymax/live/` — start with `runtime.py` for the orchestration loop
+3. Replay mode uses `FolderFrameSource` or `OpenCVFrameSource(str)` — webcam uses `OpenCVFrameSource(int)`
+4. Live mode is launched via `scripts/live_companion.py` — see `make live-webcam` and `make live-replay`
+5. Session lifecycle logic is in `live/session_supervisor.py`; event detection in `live/event_engine.py`
+6. Proactive response decisions are in `live/proactive_scheduler.py`
+7. Artifacts are written to `BAYMAX_LIVE_ARTIFACT_DIR` (default: `./artifacts/live_run_006`)
+8. API endpoints `/v1/live/status` and `/v1/live/control` are in `apps/api/main.py`
+9. All live settings have `BAYMAX_LIVE_*` env var prefixes (see `.env.example`)
 10. The default backend is always `rule_based`; LLM backends require explicit configuration

@@ -10,6 +10,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 from baymax.core.enums import TurnRole
+from baymax.live.schemas import LiveRuntimeStatus
 from baymax.orchestrator.service import Orchestrator
 from baymax.schemas.memory import (
     ChatTurn,
@@ -33,6 +34,15 @@ from baymax.state.models import InteractionState
 
 orchestrator = Orchestrator()
 
+# Live runtime reference (set externally when live mode is active)
+_live_runtime = None
+
+
+def set_live_runtime(runtime):
+    """Set the live runtime reference for status queries."""
+    global _live_runtime
+    _live_runtime = runtime
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,7 +54,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -288,3 +298,34 @@ async def correct_memory(request: MemoryCorrectionRequest) -> MemoryCorrectionRe
         return await orchestrator.correct_memory(request)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+# --- Iteration 006: Live Runtime ---
+
+
+@app.get("/v1/live/status", response_model=LiveRuntimeStatus)
+async def get_live_status() -> LiveRuntimeStatus:
+    """Return current live runtime status."""
+    if _live_runtime is None:
+        return LiveRuntimeStatus(live_mode_active=False)
+    return _live_runtime.status
+
+
+class LiveControlRequest(BaseModel):
+    """Request to control live mode."""
+
+    action: str = Field(description="Action: start | stop")
+    source: str | None = Field(default=None, description="Override source path for replay")
+
+
+@app.post("/v1/live/control")
+async def live_control(request: LiveControlRequest) -> dict[str, str]:
+    """Control live mode (start/stop)."""
+    if request.action == "stop":
+        if _live_runtime is not None:
+            _live_runtime.stop()
+            return {"status": "ok", "message": "Stop requested"}
+        return {"status": "ok", "message": "Live mode not active"}
+    elif request.action == "start":
+        return {"status": "error", "message": "Live mode must be started via CLI runner"}
+    return {"status": "error", "message": f"Unknown action: {request.action}"}
