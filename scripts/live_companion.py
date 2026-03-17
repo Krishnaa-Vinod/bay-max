@@ -78,6 +78,22 @@ def main():
         default="baymax_live.db",
         help="SQLite database path",
     )
+    parser.add_argument(
+        "--no-tts",
+        action="store_true",
+        help="Disable TTS speech output",
+    )
+    parser.add_argument(
+        "--tts-backend",
+        type=str,
+        default=None,
+        help="TTS backend: kokoro | piper | null",
+    )
+    parser.add_argument(
+        "--no-playback",
+        action="store_true",
+        help="Disable audio playback (WAV files still generated)",
+    )
     args = parser.parse_args()
 
     # Set up logging
@@ -100,6 +116,12 @@ def main():
         os.environ["BAYMAX_LIVE_ARTIFACT_DIR"] = args.artifact_dir
     if args.max_run_sec > 0:
         os.environ["BAYMAX_LIVE_MAX_RUN_SEC"] = str(args.max_run_sec)
+    if args.no_tts:
+        os.environ["BAYMAX_TTS_ENABLED"] = "false"
+    if args.tts_backend:
+        os.environ["BAYMAX_TTS_BACKEND"] = args.tts_backend
+    if args.no_playback:
+        os.environ["BAYMAX_ENABLE_AUDIO_PLAYBACK"] = "false"
 
     from baymax.live.runtime import LiveRuntime
 
@@ -115,6 +137,9 @@ def main():
     print(f"  Artifact dir: {runtime.artifact_logger.artifact_dir}")
     print(f"  Max frames: {args.max_frames or 'unlimited'}")
     print(f"  Overlay: {'disabled' if args.no_overlay else 'enabled'}")
+    tts_status = "disabled" if args.no_tts else (args.tts_backend or "kokoro")
+    print(f"  TTS: {tts_status}")
+    print(f"  Playback: {'disabled' if args.no_playback else 'enabled'}")
     print("=" * 60)
     print()
 

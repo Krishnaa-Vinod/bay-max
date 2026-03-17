@@ -1,11 +1,12 @@
-.PHONY: help install install-vector install-dialogue install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay clean
+.PHONY: help install install-vector install-dialogue install-tts install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts verify-007 clean
 
 help:
 	@echo "Bay-Max development commands:"
 	@echo "  make install           - Install dev dependencies only (no vision/vector/dialogue)"
 	@echo "  make install-vector    - Install dev + vector (LanceDB + embeddings)"
 	@echo "  make install-dialogue  - Install dev + dialogue (Transformers)"
-	@echo "  make install-all       - Install dev + vision + vector + dialogue"
+	@echo "  make install-tts       - Install dev + TTS (Kokoro + sounddevice)"
+	@echo "  make install-all       - Install everything"
 	@echo "  make lint              - Run ruff linter"
 	@echo "  make test              - Run pytest test suite"
 	@echo "  make run-api           - Start FastAPI server on port 8000"
@@ -13,7 +14,9 @@ help:
 	@echo "  make smoke-test        - Run local dialogue smoke-test script"
 	@echo "  make real-model-test   - Run real-model smoke-test (requires LLM backend in .env)"
 	@echo "  make live-webcam       - Start live companion in webcam mode"
+	@echo "  make live-webcam-tts   - Start live companion with TTS enabled"
 	@echo "  make live-replay       - Start live companion in replay mode (set REPLAY_PATH)"
+	@echo "  make verify-007        - Run iteration 007 local verification"
 	@echo "  make clean             - Remove build artifacts and caches"
 
 install:
@@ -24,6 +27,9 @@ install-vector:
 
 install-dialogue:
 	pip install -e ".[dev,dialogue]"
+
+install-tts:
+	pip install -e ".[dev,tts]"
 
 install-all:
 	pip install -e ".[all]"
@@ -49,8 +55,14 @@ real-model-test:
 live-webcam:
 	python scripts/live_companion.py
 
+live-webcam-tts:
+	python scripts/live_companion.py --tts-backend kokoro
+
 live-replay:
 	python scripts/live_companion.py --replay $(REPLAY_PATH) --no-overlay
+
+verify-007:
+	python scripts/verify_007.py --tts-only
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

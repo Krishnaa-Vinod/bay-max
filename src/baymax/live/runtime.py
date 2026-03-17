@@ -23,6 +23,8 @@ from baymax.live.schemas import (
 )
 from baymax.live.session_supervisor import SessionSupervisor
 from baymax.orchestrator.service import Orchestrator
+from baymax.tts.provider import get_tts_provider
+from baymax.tts.speech_service import SpeechService
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,27 @@ class LiveRuntime:
             enabled=settings.enable_artifact_logging,
         )
 
+        # Speech service (TTS)
+        if settings.tts_enabled:
+            tts_provider = get_tts_provider(
+                backend=settings.tts_backend,
+                voice=settings.tts_voice,
+                device=settings.tts_device,
+                model_dir=settings.model_dir,
+                sample_rate=settings.tts_rate,
+            )
+        else:
+            from baymax.tts.provider import NullTTSProvider
+
+            tts_provider = NullTTSProvider()
+
+        self._speech_service = SpeechService(
+            provider=tts_provider,
+            output_dir=settings.tts_output_dir,
+            enable_playback=settings.enable_audio_playback,
+            audio_backend=settings.audio_backend,
+        )
+
         # Runtime state
         self._status = LiveRuntimeStatus()
         self._running = False
@@ -82,7 +105,9 @@ class LiveRuntime:
 
         # Overlay settings
         self._enable_overlay = settings.enable_live_overlay
-        self._debug_overlay = settings.enable_dialogue_debug
+        self._debug_overlay = getattr(
+            settings, "enable_live_debug_hud", False
+        )
         self._last_memory_refs_count = 0
 
     @property
@@ -105,6 +130,10 @@ class LiveRuntime:
     @property
     def artifact_logger(self) -> ArtifactLogger:
         return self._artifact_logger
+
+    @property
+    def speech_service(self) -> SpeechService:
+        return self._speech_service
 
     async def run(
         self,
@@ -466,6 +495,49 @@ class LiveRuntime:
                 response.message[:80],
             )
 
+            # Synthesize and play speech
+            try:
+                speech_result = await self._speech_service.synthesize_and_play(
+                    text=response.message,
+                    session_id=str(session_id) if session_id else None,
+                    trigger_event=event.event_type.value,
+                )
+                if speech_result.success:
+                    self._artifact_logger.log_speech_event(
+                        text=response.message,
+                        backend=speech_result.backend,
+                        voice=speech_result.voice,
+                        wav_path=speech_result.wav_path,
+                        success=True,
+                        session_id=(
+                            str(session_id) if session_id else None
+                        ),
+                        trigger_event=event.event_type.value,
+                    )
+                    logger.info(
+                        "Speech synthesized: %s",
+                        speech_result.wav_path or "(null backend)",
+                    )
+                else:
+                    self._artifact_logger.log_speech_event(
+                        text=response.message,
+                        backend=speech_result.backend,
+                        voice=speech_result.voice,
+                        wav_path=None,
+                        success=False,
+                        error=speech_result.error,
+                        session_id=(
+                            str(session_id) if session_id else None
+                        ),
+                        trigger_event=event.event_type.value,
+                    )
+                    logger.warning(
+                        "Speech synthesis failed: %s",
+                        speech_result.error,
+                    )
+            except Exception as e:
+                logger.warning("TTS error (non-fatal): %s", e)
+
         except Exception as e:
             logger.error("Failed to generate proactive response: %s", e)
             self._errors.append(f"Response generation error: {e}")
@@ -518,6 +590,13 @@ class LiveRuntime:
             last = self._event_engine.events[-1]
             self._status.last_event = last.event_type.value
             self._status.last_event_at = last.timestamp
+
+        # Speech status
+        qs = self._speech_service.queue_status()
+        self._status.last_spoken_text = qs.last_spoken_text
+        self._status.speech_queue_depth = qs.queue_depth
+        self._status.tts_backend = self._speech_service.provider.name()
+        self._status.tts_voice = self._settings.tts_voice
 
     def _request_stop(self) -> None:
         """Request a clean stop."""

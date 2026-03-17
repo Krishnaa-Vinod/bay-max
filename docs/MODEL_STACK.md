@@ -112,7 +112,7 @@ All heuristics are documented in detail in `docs/ENGAGEMENT_HEURISTICS.md`.
 These remain unimplemented and return hardcoded values:
 
 - **Emotion estimation**: Returns `EmotionLabel.NEUTRAL`
-- **Frame source / webcam capture**: Returns empty frames
+- **STT / speech-to-text input**: Not yet implemented
 
 ---
 
@@ -183,4 +183,56 @@ BAYMAX_HF_DTYPE=auto  # auto | float16 | bfloat16 | float32
 | `BAYMAX_ENABLE_RULE_BASED_FALLBACK` | `true` | Fall back to rule_based on backend failure |
 | `BAYMAX_ENABLE_SAFE_HEALTH_MODE` | `true` | Block diagnosis-style requests |
 | `BAYMAX_ENABLE_DIALOGUE_DEBUG` | `false` | Include debug trace in response |
+
+---
+
+## TTS / Spoken Output (Iteration 007)
+
+### Kokoro (Default)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `kokoro` (default) |
+| **Model** | Kokoro-82M |
+| **Library** | `kokoro` |
+| **License** | Apache 2.0 |
+| **Sample rate** | 24000 Hz |
+| **Default voice** | `af_heart` |
+| **Input** | Text string |
+| **Output** | WAV file |
+
+Kokoro-82M is a lightweight open-weight TTS model with natural-sounding speech. Weights are downloaded on first use and cached locally.
+
+### Piper (Placeholder)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `piper` |
+| **Status** | Placeholder |
+| **Requires** | `piper-tts` + ONNX voice model |
+
+Piper backend is defined but not yet fully implemented. Requires separate installation of `piper-tts` and an ONNX voice model.
+
+### Null (Silent)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `null` |
+| **Status** | Always available |
+| **Output** | No audio |
+
+The null backend produces no audio output. Used as fallback when no TTS engine is available or when speech is not desired.
+
+### TTS Backend Selection
+
+```bash
+# Kokoro (default)
+BAYMAX_TTS_BACKEND=kokoro
+
+# Null (silent, no audio)
+BAYMAX_TTS_BACKEND=null
+
+# Piper (placeholder)
+BAYMAX_TTS_BACKEND=piper
+```
 

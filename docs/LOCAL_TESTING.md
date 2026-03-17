@@ -247,6 +247,74 @@ snapshots/            - Annotated JPEG frames at key events (if camera available
 
 ---
 
+## TTS / Spoken Output Testing (Iteration 007)
+
+### Environment Variables for TTS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BAYMAX_TTS_BACKEND` | `kokoro` | TTS backend: `kokoro`, `piper`, or `null` |
+| `BAYMAX_TTS_VOICE` | `af_heart` | Voice ID for TTS synthesis |
+| `BAYMAX_TTS_SAMPLE_RATE` | `24000` | Audio sample rate in Hz |
+| `BAYMAX_TTS_OUTPUT_DIR` | `./artifacts/tts_output` | Directory for generated WAV files |
+| `BAYMAX_TTS_ENABLE_PLAYBACK` | `true` | Play audio through speakers |
+| `BAYMAX_TTS_QUEUE_MAX_SIZE` | `10` | Maximum queued utterances |
+| `BAYMAX_TTS_SPEED` | `1.0` | Speech speed multiplier |
+| `BAYMAX_ENABLE_TTS` | `true` | Enable/disable TTS globally |
+
+### Installing TTS Dependencies
+
+```bash
+pip install -e ".[tts]"
+```
+
+This installs `kokoro`, `sounddevice`, and `soundfile` for speech synthesis and audio playback.
+
+### Testing TTS Standalone
+
+```bash
+# Test TTS synthesis only (no webcam)
+python scripts/verify_007.py --tts-only
+```
+
+### Testing Live Mode with TTS
+
+```bash
+# Webcam + TTS (spoken proactive responses)
+make live-webcam-tts
+# or
+python scripts/live_companion.py --tts
+
+# Replay mode with TTS
+python scripts/live_companion.py --replay /path/to/frames --tts --no-overlay
+```
+
+### Makefile Targets
+
+```bash
+make live-webcam-tts   # Webcam + TTS enabled
+make verify-007        # Run iteration 007 verification script
+```
+
+### Smoke Test Checklist (Iteration 007)
+
+1. `make test` passes (296 tests)
+2. `make lint` passes (0 errors)
+3. `pip install -e ".[tts]"` completes without errors
+4. `python scripts/verify_007.py --tts-only` generates a WAV file
+5. `curl http://localhost:8000/v1/tts/backends` returns JSON with `available_backends`, `active_backend`
+6. `BAYMAX_TTS_BACKEND=null make run-api` starts without TTS errors
+7. `python scripts/verify_007.py` runs full webcam + TTS verification
+
+### TTS Troubleshooting
+
+- **PortAudio not found**: Install PortAudio system package (`apt install portaudio19-dev` on Debian/Ubuntu, `yum install portaudio-devel` on RHEL/CentOS)
+- **No audio output on headless machine**: Set `BAYMAX_TTS_ENABLE_PLAYBACK=false` to skip playback; WAV files are still generated
+- **Kokoro import error**: Ensure `pip install -e ".[tts]"` was run; Kokoro requires Python 3.11+
+- **Piper not available**: Piper backend is a placeholder; use `kokoro` or `null` instead
+
+---
+
 ## Troubleshooting
 
 - **MediaPipe import error**: Ensure `mediapipe>=0.10.0` is installed. On some HPC systems, you may need to install from a wheel.

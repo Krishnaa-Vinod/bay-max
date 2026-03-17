@@ -70,13 +70,26 @@
 - [x] New docs: LIVE_MODE_ARCHITECTURE.md, EVENT_ENGINE.md
 - [x] 62 new tests (256 total)
 
+## Iteration 007 - Webcam + TTS (Completed)
+- [x] TTS provider abstraction (TTSProvider interface + factory)
+- [x] Kokoro TTS backend (KokoroTTSProvider, Kokoro-82M, Apache-2.0)
+- [x] Piper TTS backend (PiperTTSProvider, placeholder)
+- [x] NullTTSProvider (silent fallback)
+- [x] SpeechService with queued playback
+- [x] LiveRuntime TTS integration (proactive responses spoken aloud)
+- [x] GET /v1/tts/backends endpoint
+- [x] LiveRuntimeStatus extended with speech fields
+- [x] Verification script (scripts/verify_007.py)
+- [x] New docs: TTS_ARCHITECTURE.md, LIVE_VERIFICATION_GUIDE.md
+- [x] 40 new tests (296 total)
+
 ## Future Iterations
 - Async SQLite migration (aiosqlite throughout)
 - Emotion recognition from facial expressions
 - Multi-session user journey tracking
 - Salience-decay over time for episodic memory
 - Conversation history and context window management
-- Audio integration (Whisper STT, TTS)
+- Audio integration (Whisper STT — speech-to-text input)
 - MediaPipe Tasks API migration for pose estimation
 - LLM-based semantic fact extraction during consolidation
 - Gradio live inspection tab for live-mode state

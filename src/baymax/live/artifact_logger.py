@@ -34,6 +34,7 @@ class ArtifactLogger:
         self._enabled = enabled
         self._events_path = os.path.join(artifact_dir, "events.jsonl")
         self._responses_path = os.path.join(artifact_dir, "responses.jsonl")
+        self._speech_path = os.path.join(artifact_dir, "speech.jsonl")
         self._session_timeline_path = os.path.join(artifact_dir, "session_timeline.json")
         self._manifest_path = os.path.join(artifact_dir, "manifest.json")
         self._summary_path = os.path.join(artifact_dir, "summary.md")
@@ -95,6 +96,35 @@ class ArtifactLogger:
             "backend": backend,
         }
         with open(self._responses_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def log_speech_event(
+        self,
+        text: str,
+        backend: str = "",
+        voice: str = "",
+        wav_path: str | None = None,
+        success: bool = True,
+        error: str | None = None,
+        session_id: str | None = None,
+        trigger_event: str | None = None,
+    ) -> None:
+        """Log a speech synthesis/playback event to speech.jsonl."""
+        if not self._enabled:
+            return
+        entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "event_type": "speech_synthesized" if success else "speech_failed",
+            "text": text,
+            "backend": backend,
+            "voice": voice,
+            "wav_path": wav_path,
+            "success": success,
+            "error": error,
+            "session_id": session_id,
+            "trigger_event": trigger_event,
+        }
+        with open(self._speech_path, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
     def log_session_event(self, event: SessionLifecycleEvent) -> None:

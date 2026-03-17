@@ -9,6 +9,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from baymax.config.settings import get_settings
 from baymax.core.enums import TurnRole
 from baymax.live.schemas import LiveRuntimeStatus
 from baymax.orchestrator.service import Orchestrator
@@ -54,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -329,3 +330,32 @@ async def live_control(request: LiveControlRequest) -> dict[str, str]:
     elif request.action == "start":
         return {"status": "error", "message": "Live mode must be started via CLI runner"}
     return {"status": "error", "message": f"Unknown action: {request.action}"}
+
+
+# --- Iteration 007: TTS / Spoken Output ---
+
+
+class TTSBackendsResponse(BaseModel):
+    """Response for TTS backends endpoint."""
+
+    available_backends: list[str]
+    active_backend: str
+    active_voice: str
+    audio_playback_enabled: bool
+    sample_rate: int
+    tts_enabled: bool
+
+
+@app.get("/v1/tts/backends", response_model=TTSBackendsResponse)
+async def get_tts_backends() -> TTSBackendsResponse:
+    """Return available and configured TTS backends."""
+    settings = get_settings()
+    available = ["null", "kokoro", "piper"]
+    return TTSBackendsResponse(
+        available_backends=available,
+        active_backend=settings.tts_backend,
+        active_voice=settings.tts_voice,
+        audio_playback_enabled=settings.enable_audio_playback,
+        sample_rate=settings.tts_rate,
+        tts_enabled=settings.tts_enabled,
+    )

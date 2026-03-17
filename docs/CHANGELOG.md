@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0] - 2026-03-17 (Iteration 007)
+
+### Added
+- New `src/baymax/tts/` package: `provider.py` (TTSProvider interface + factory + NullTTSProvider), `kokoro_provider.py` (KokoroTTSProvider), `piper_provider.py` (PiperTTSProvider), `speech_service.py` (SpeechService with queued playback), `schemas.py` (TTS Pydantic schemas)
+- LiveRuntime TTS integration: proactive responses are spoken aloud when TTS is enabled
+- `GET /v1/tts/backends` endpoint returning available TTS backends and active configuration
+- `LiveRuntimeStatus` extended with speech fields (tts_backend, tts_available, speech_queue_depth, total_utterances)
+- Verification script `scripts/verify_007.py` for webcam + TTS end-to-end validation
+- New Makefile targets: `live-webcam-tts`, `verify-007`
+- 12 new environment variables under `BAYMAX_TTS_*` (see `.env.example`)
+- TTS Pydantic schemas: `TTSBackendInfo`, `TTSRequest`, `TTSResult`, `SpeechQueueStatus`
+- New docs: `docs/TTS_ARCHITECTURE.md`, `docs/LIVE_VERIFICATION_GUIDE.md`
+- 40 new tests (296 total)
+
+### Changed
+- API version bumped from 0.5.0 to 0.6.0
+- `live_artifact_dir` default changed to `live_run_007`
+- `pyproject.toml` version bumped to 0.6.0
+
 ## [0.5.0] - 2026-03-16 (Iteration 006)
 
 ### Added

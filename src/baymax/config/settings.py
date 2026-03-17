@@ -113,10 +113,32 @@ class BaymaxSettings(BaseSettings):
 
     # Live overlay and artifacts
     enable_live_overlay: bool = True
+    enable_live_debug_hud: bool = True
     enable_artifact_logging: bool = True
-    live_artifact_dir: str = "./artifacts/live_run_006"
+    live_artifact_dir: str = "./artifacts/live_run_007"
     live_max_run_sec: float = 0.0  # 0 = unlimited
     live_video_replay_path: str = ""
+
+    # --- Iteration 007: TTS / Spoken Output settings ---
+
+    # TTS backend: "null" | "kokoro" | "piper"
+    tts_backend: str = "kokoro"
+    tts_voice: str = "af_heart"
+    tts_rate: int = 24000
+    tts_enabled: bool = True
+    tts_device: str = "auto"
+    tts_output_dir: str = "./artifacts/tts"
+
+    # Audio playback
+    enable_audio_playback: bool = True
+    audio_backend: str = "sounddevice"
+
+    # Kokoro-specific
+    kokoro_voice: str = "af_heart"
+
+    # Piper-specific
+    piper_model_path: str = ""
+    piper_config_path: str = ""
 
 
 def get_settings() -> BaymaxSettings:

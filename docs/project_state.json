@@ -1,8 +1,8 @@
 {
-  "iteration": "006",
-  "branch_name": "feature/iteration-006-live-webcam-continuity",
+  "iteration": "007",
+  "branch_name": "feature/iteration-007-webcam-verification-tts",
   "status": "completed",
-  "last_updated": "2026-03-16",
+  "last_updated": "2026-03-17",
   "modules_implemented": [
     "config",
     "core",
@@ -13,7 +13,8 @@
     "dialogue",
     "orchestrator",
     "perception",
-    "live"
+    "live",
+    "tts"
   ],
   "modules_stubbed": [
     "capture",
@@ -39,7 +40,8 @@
     "POST /v1/memory/correct",
     "GET /v1/dialogue/backends",
     "GET /v1/live/status",
-    "POST /v1/live/control"
+    "POST /v1/live/control",
+    "GET /v1/tts/backends"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — not migrated to aiosqlite",
@@ -53,7 +55,9 @@
     "Safety pattern matching is substring-based — may miss paraphrased unsafe requests",
     "Live webcam mode implemented but not exercised on this headless machine (Sol has no camera); replay mode verified via automated tests",
     "OpenCV imshow overlay will fail silently on headless machines — this is expected and handled gracefully",
-    "LiveRuntime asyncio loop not tested end-to-end in automated tests (integration test uses unit-level flow simulation)"
+    "LiveRuntime asyncio loop not tested end-to-end in automated tests (integration test uses unit-level flow simulation)",
+    "PortAudio may not be installed on headless machines (required for TTS audio playback via sounddevice)",
+    "Piper TTS backend is a placeholder — not yet fully implemented"
   ],
   "next_tasks": [
     "Migrate SQLite store to fully async aiosqlite",
@@ -64,12 +68,14 @@
     "Migrate to MediaPipe Tasks API for pose estimation",
     "Add dialogue streaming support (token-by-token)",
     "Evaluate larger model (3B-7B) to improve memory verbalization",
-    "Add Gradio live inspection tab for live-mode state"
+    "Add Gradio live inspection tab for live-mode state",
+    "Implement Whisper STT for speech-to-text input",
+    "Complete Piper TTS backend implementation"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP — live webcam continuity",
-    "api_version": "0.5.0"
+    "scope": "vision-first empathetic companion MVP — live webcam continuity + TTS spoken output",
+    "api_version": "0.6.0"
   }
 }

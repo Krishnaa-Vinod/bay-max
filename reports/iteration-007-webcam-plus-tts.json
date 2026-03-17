@@ -1,0 +1,539 @@
+{
+  "prompt_version": "2026-03-17.iteration-007",
+  "agent_role": "You are the lead implementation agent for the Bay-Max repository. Your job is to turn the replay-verified live continuity system into a real locally verifiable webcam companion with spoken output. You must preserve the existing live runtime, add real local TTS, add laptop-first webcam verification tooling, improve live UI/inspection, store proof artifacts, update all docs, run tests, write an honest report, commit, and push.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-006-live-webcam-continuity",
+    "working_branch": "feature/iteration-007-webcam-verification-tts"
+  },
+  "iteration_context": {
+    "previous_iteration_status": "Iteration 006 completed the live continuity runtime and replay-path verification. Real webcam startup and overlay visual verification were not run on Sol due to headless environment.",
+    "current_goal": "Verify Bay-Max on a real local webcam and add spoken local TTS output so the companion can greet and respond aloud."
+  },
+  "hard_requirements": {
+    "docs_must_be_updated_every_iteration": [
+      "README.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/PROJECT_MEMORY.md",
+      "docs/CHANGELOG.md",
+      "docs/project_state.json",
+      "docs/MODEL_STACK.md",
+      "docs/LOCAL_TESTING.md"
+    ],
+    "new_docs_required": [
+      "docs/TTS_ARCHITECTURE.md",
+      "docs/LIVE_VERIFICATION_GUIDE.md"
+    ],
+    "docs_must_match_code": true,
+    "local_webcam_verification_required": true,
+    "store_artifact_proof_for_manual_tests": true
+  },
+  "scope": {
+    "in_scope": [
+      "real local webcam verification workflow",
+      "spoken TTS output for proactive and requested responses",
+      "TTS backend abstraction",
+      "at least one real free local TTS backend",
+      "speech playback queue and cooldown-safe delivery",
+      "live debug/inspection improvements",
+      "artifact capture for live webcam runs",
+      "manual verification scripts and docs",
+      "report normalization and doc parity cleanup"
+    ],
+    "out_of_scope": [
+      "ASR / microphone transcription",
+      "Whisper",
+      "SpeechBrain",
+      "doctor report ingestion",
+      "wearables",
+      "robotics",
+      "medical diagnosis",
+      "cloud or paid APIs",
+      "emotion model additions",
+      "multi-user conversation management"
+    ]
+  },
+  "design_decisions": [
+    "Keep the current live runtime, event engine, session supervisor, and grounded dialogue stack intact.",
+    "Add TTS as a separate output layer after response generation, not inside the planner.",
+    "Use a speech queue so multiple triggers do not overlap or interrupt each other chaotically.",
+    "Respect existing proactive cooldowns before speech generation.",
+    "Prefer laptop-first usability and manual verification over adding more models.",
+    "All TTS and playback must work locally without a paid service."
+  ],
+  "model_policy": {
+    "default_tts_backend": {
+      "backend": "kokoro",
+      "reason": "Kokoro-82M is open-weight, Apache-licensed, lightweight, and explicitly positioned for deployment in personal and production projects."
+    },
+    "fallback_tts_backend": {
+      "backend": "piper",
+      "reason": "Piper is a fast local neural TTS system with MIT licensing and is a good low-friction fallback for offline speech synthesis."
+    },
+    "optional_heavier_backend": {
+      "backend": "coqui_tts",
+      "reason": "Coqui TTS supports many models/languages but is heavier; treat it as optional and not the default runtime."
+    },
+    "not_allowed": [
+      "ElevenLabs API as the default runtime",
+      "any paid-only TTS API",
+      "closed hosted speech backends as the only supported path"
+    ]
+  },
+  "engineering_requirements": [
+    "Preserve the modular monolith architecture.",
+    "Do not break the current face, pose, memory, live runtime, or grounded dialogue flows.",
+    "Keep TTS provider selection configurable via environment variables.",
+    "Keep model downloads, voice packs, caches, artifacts, and local databases out of git.",
+    "Use environment variables for backend selection, model/voice selection, device, and artifact paths.",
+    "Do not make clinical or diagnostic claims in code, docs, tests, prompts, speech text, or UI.",
+    "Manual testing must be possible on a local laptop with webcam and speakers."
+  ],
+  "required_env_vars": [
+    "BAYMAX_TTS_BACKEND",
+    "BAYMAX_TTS_VOICE",
+    "BAYMAX_TTS_RATE",
+    "BAYMAX_TTS_ENABLED",
+    "BAYMAX_TTS_DEVICE",
+    "BAYMAX_TTS_OUTPUT_DIR",
+    "BAYMAX_ENABLE_AUDIO_PLAYBACK",
+    "BAYMAX_AUDIO_BACKEND",
+    "BAYMAX_KOKORO_VOICE",
+    "BAYMAX_PIPER_MODEL_PATH",
+    "BAYMAX_PIPER_CONFIG_PATH",
+    "BAYMAX_ENABLE_LIVE_OVERLAY",
+    "BAYMAX_ENABLE_LIVE_DEBUG_HUD"
+  ],
+  "required_env_defaults": {
+    "BAYMAX_TTS_BACKEND": "kokoro",
+    "BAYMAX_TTS_VOICE": "af_heart",
+    "BAYMAX_TTS_RATE": "24000",
+    "BAYMAX_TTS_ENABLED": "true",
+    "BAYMAX_TTS_DEVICE": "auto",
+    "BAYMAX_TTS_OUTPUT_DIR": "./artifacts/tts",
+    "BAYMAX_ENABLE_AUDIO_PLAYBACK": "true",
+    "BAYMAX_AUDIO_BACKEND": "sounddevice",
+    "BAYMAX_KOKORO_VOICE": "af_heart",
+    "BAYMAX_ENABLE_LIVE_OVERLAY": "true",
+    "BAYMAX_ENABLE_LIVE_DEBUG_HUD": "true"
+  },
+  "required_repo_changes": [
+    "Update README quick start for local webcam + TTS setup.",
+    "Update docs/ARCHITECTURE.md to show the new TTS/output layer and live verification flow.",
+    "Update docs/MODEL_STACK.md with the chosen TTS backend(s) and why.",
+    "Add docs/TTS_ARCHITECTURE.md.",
+    "Add docs/LIVE_VERIFICATION_GUIDE.md.",
+    "Update docs/LOCAL_TESTING.md with exact webcam + speaker test commands.",
+    "Add iteration-007 reports.",
+    "Normalize any stale report wording or status drift carried over from iteration-006."
+  ],
+  "required_code_changes": [
+    "Add a TTS provider interface with at least: NullTTSProvider, KokoroTTSProvider, PiperTTSProvider, and optional CoquiTTSProvider if feasible.",
+    "Add a speech synthesis service that converts response text into WAV audio and optionally plays it locally.",
+    "Add a speech queue/player so proactive responses do not overlap.",
+    "Integrate TTS into the live runtime so selected responses are spoken aloud after text generation.",
+    "Respect proactive cooldowns and suppress duplicate speech.",
+    "Add debug/status fields showing last spoken text, TTS backend, voice, playback state, and queue size.",
+    "Add a simple live inspection improvement: either a Gradio live tab or a local status/debug endpoint expansion showing speech state. If Gradio is too fragile, prefer API + artifact proof.",
+    "Add artifact logging for spoken outputs, including generated WAV file refs and speech events.",
+    "Add a local manual verification script for webcam + TTS runs, storing artifacts in a dedicated verification folder."
+  ],
+  "schema_requirements": {
+    "must_add_or_extend_models": [
+      "TTSBackendInfo",
+      "SpeechEvent",
+      "SpeechSynthesisResult",
+      "SpeechQueueStatus",
+      "LiveVerificationRun",
+      "TTSSmokeTestResult"
+    ],
+    "must_include_fields": [
+      "backend",
+      "voice",
+      "sample_rate",
+      "wav_path or artifact ref",
+      "playback_started_at",
+      "playback_finished_at",
+      "queue_depth",
+      "success or failure reason"
+    ]
+  },
+  "api_changes": [
+    {
+      "method": "GET",
+      "path": "/v1/tts/backends",
+      "purpose": "Return available/configured TTS backends and active voice settings.",
+      "must_return": [
+        "available_backends",
+        "active_backend",
+        "active_voice",
+        "audio_playback_enabled"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/live/status",
+      "purpose": "Extend live status with speech queue and last spoken response details.",
+      "must_return": [
+        "live_mode_active",
+        "current_state",
+        "last_event",
+        "last_response",
+        "last_spoken_text",
+        "speech_queue_depth",
+        "tts_backend",
+        "tts_voice"
+      ]
+    }
+  ],
+  "runtime_requirements": [
+    "Webcam mode must work on a local machine with an actual camera.",
+    "At least one real local spoken-output run must be performed on a non-headless machine if possible.",
+    "If the environment lacks speakers or playback permissions, save WAV files and report playback as not_run rather than faking it.",
+    "Speech generation must never block the live loop indefinitely; use background queueing or bounded async work."
+  ],
+  "tasks": [
+    {
+      "id": "T701",
+      "title": "Audit iteration-006 live runtime and local verification gaps",
+      "actions": [
+        "Review iteration-006 reports, verification artifacts, README, LOCAL_TESTING, and live runtime code.",
+        "List the exact gaps to close in iteration-007: real webcam verification, spoken output, doc/report normalization.",
+        "Keep changes targeted; do not refactor unrelated systems."
+      ],
+      "acceptance_criteria": [
+        "A short design note or doc update explains what iteration-007 is closing from iteration-006.",
+        "No unnecessary architectural churn."
+      ]
+    },
+    {
+      "id": "T702",
+      "title": "Add TTS provider abstraction and configuration",
+      "actions": [
+        "Create a clean TTS provider interface.",
+        "Implement NullTTSProvider for silent mode and testing.",
+        "Add config/settings for backend, voice, playback, and output dir.",
+        "Keep provider selection environment-driven."
+      ],
+      "acceptance_criteria": [
+        "TTS backend can be selected via settings or env vars.",
+        "Silent/null mode remains available for headless or CI runs."
+      ]
+    },
+    {
+      "id": "T703",
+      "title": "Implement at least one real free local TTS backend",
+      "actions": [
+        "Implement KokoroTTSProvider as the default real local backend.",
+        "Implement PiperTTSProvider as a fallback if feasible.",
+        "Optionally add CoquiTTSProvider behind the same interface if installation burden is acceptable.",
+        "Return generated WAV path and synthesis metadata."
+      ],
+      "acceptance_criteria": [
+        "At least one real local TTS backend synthesizes WAV audio successfully.",
+        "Backend init and failure handling are honest and clear."
+      ]
+    },
+    {
+      "id": "T704",
+      "title": "Add speech queue and live-runtime integration",
+      "actions": [
+        "Create a bounded speech queue/player service.",
+        "Integrate it into LiveRuntime after grounded response generation.",
+        "Prevent overlapping playback and duplicate speech during cooldown windows.",
+        "Log speech events and generated audio artifact paths."
+      ],
+      "acceptance_criteria": [
+        "Live runtime can speak generated responses aloud or save them for playback.",
+        "Queue depth, playback status, and last spoken text are inspectable."
+      ]
+    },
+    {
+      "id": "T705",
+      "title": "Improve live local inspection and status",
+      "actions": [
+        "Extend /v1/live/status with speech information.",
+        "Add GET /v1/tts/backends.",
+        "Add either a minimal Gradio live tab or a strong debug status path showing speech state and last response. Prefer the simpler robust option.",
+        "Ensure local users can inspect what was said and why."
+      ],
+      "acceptance_criteria": [
+        "A tester can inspect live speech state locally.",
+        "The active TTS backend and voice are visible."
+      ]
+    },
+    {
+      "id": "T706",
+      "title": "Create local webcam verification workflow and proof artifacts",
+      "actions": [
+        "Add a local verification script for webcam or short local recording runs.",
+        "Capture artifact proof including event log, response log, speech log, generated WAV files, selected snapshots, manifest, and summary.",
+        "Store all proof under artifacts/verification_007/."
+      ],
+      "acceptance_criteria": [
+        "A human tester can run one command or a short sequence and produce a verification bundle.",
+        "Artifacts clearly show whether greeting, recognition, proactive response, and speech occurred."
+      ]
+    },
+    {
+      "id": "T707",
+      "title": "Run automated tests and honest manual local tests",
+      "actions": [
+        "Add automated tests for TTS backends, speech queue behavior, status endpoints, artifact logging, and safe fallback behavior.",
+        "Mock heavy speech synthesis in unit tests where appropriate.",
+        "Run lint and tests.",
+        "Perform manual local verification on a machine with webcam and speakers if available. If not available in the coding environment, provide exact instructions and mark local-only checks not_run."
+      ],
+      "acceptance_criteria": [
+        "Automated tests pass.",
+        "Manual local results are reported honestly with proof artifacts."
+      ]
+    },
+    {
+      "id": "T708",
+      "title": "Docs, reports, commit, and push",
+      "actions": [
+        "Update all required docs and project state files.",
+        "Write reports/iteration-007.md and reports/iteration-007.json.",
+        "Write artifacts/verification_007/manifest.json and artifacts/verification_007/summary.md.",
+        "Commit and push the branch."
+      ],
+      "acceptance_criteria": [
+        "Branch is pushed.",
+        "Docs match code and actual verification results.",
+        "Reports and artifact summaries exist."
+      ]
+    }
+  ],
+  "manual_smoke_test_plan": [
+    {
+      "id": "VT701",
+      "case": "Real webcam startup",
+      "steps": [
+        "Run scripts/live_companion.py on a local machine with webcam enabled.",
+        "Confirm the runner starts, captures frames, and logs a live session artifact bundle."
+      ]
+    },
+    {
+      "id": "VT702",
+      "case": "Known-user live greeting with speech",
+      "steps": [
+        "Use an enrolled user.",
+        "Walk into frame and wait for the first proactive greeting.",
+        "Confirm Bay-Max recognizes the user and produces both text and spoken output.",
+        "Verify memory-grounded content when relevant."
+      ]
+    },
+    {
+      "id": "VT703",
+      "case": "Unknown-user no-fabrication path",
+      "steps": [
+        "Present an unknown face or disable recognition match.",
+        "Confirm the system does not use personalized memory or fake a known identity.",
+        "Confirm spoken output, if any, is generic and safe."
+      ]
+    },
+    {
+      "id": "VT704",
+      "case": "Cooldown suppression with speech",
+      "steps": [
+        "Trigger two eligible events close together.",
+        "Confirm Bay-Max does not speak twice too rapidly.",
+        "Verify suppression is logged in artifacts."
+      ]
+    },
+    {
+      "id": "VT705",
+      "case": "Leave and resume session",
+      "steps": [
+        "Enter frame, trigger a greeting, leave until pause/end threshold, then return within resume window.",
+        "Confirm session lifecycle transitions are correct and logged.",
+        "Confirm speech is not repeated excessively on quick return."
+      ]
+    },
+    {
+      "id": "VT706",
+      "case": "Quiet companionship spoken prompt",
+      "steps": [
+        "Stay present quietly long enough to trigger the companionship timer, or lower the interval for testing.",
+        "Confirm the system issues one gentle spoken/text prompt and logs it."
+      ]
+    },
+    {
+      "id": "VT707",
+      "case": "TTS backend failure fallback",
+      "steps": [
+        "Misconfigure the active TTS backend or voice.",
+        "Confirm the system degrades gracefully: text still works, error is logged, and no crash occurs."
+      ]
+    },
+    {
+      "id": "VT708",
+      "case": "Artifact proof completeness",
+      "steps": [
+        "Inspect artifacts/verification_007/manifest.json and summary.md.",
+        "Confirm they reference event logs, response logs, speech logs, and generated audio files or not_run reasons."
+      ]
+    },
+    {
+      "id": "VT709",
+      "case": "Overlay/debug status visual check",
+      "steps": [
+        "Run with overlay/debug HUD enabled on a display-capable machine.",
+        "Confirm identity, posture, engagement, last event, last response, and speech state are visible or inspectable."
+      ]
+    },
+    {
+      "id": "VT710",
+      "case": "Safety in spoken mode",
+      "steps": [
+        "Trigger a diagnosis-style request through the existing typed turn path while live mode is active.",
+        "Confirm the returned/spoken response stays within the existing safety guardrails."
+      ]
+    }
+  ],
+  "testing_requirements": {
+    "must_have_automated_tests": [
+      "TTS provider selection",
+      "WAV synthesis result schema",
+      "speech queue ordering and non-overlap behavior",
+      "live status speech fields",
+      "GET /v1/tts/backends",
+      "artifact logging for speech events",
+      "graceful TTS backend failure",
+      "project_state.json validity"
+    ],
+    "must_have_manual_tests": [
+      "real webcam startup on local machine",
+      "known-user greeting with spoken output",
+      "cooldown suppression with speech",
+      "artifact proof inspection"
+    ],
+    "test_honesty_rules": [
+      "Do not claim real webcam or speaker playback worked unless it was run on a machine with those devices.",
+      "If only WAV generation was tested and not actual playback, say so explicitly.",
+      "Keep automated tests and manual tests clearly separated in the report."
+    ]
+  },
+  "report_requirements": {
+    "markdown_path": "reports/iteration-007.md",
+    "json_path": "reports/iteration-007.json",
+    "must_include": [
+      "branch_name",
+      "latest_commit_sha",
+      "summary",
+      "tts_backends",
+      "tasks_completed",
+      "tasks_partial",
+      "tasks_not_done",
+      "files_created",
+      "files_modified",
+      "commands_run",
+      "automated_tests_run",
+      "automated_test_results",
+      "manual_smoke_tests",
+      "api_endpoints_verified",
+      "known_issues",
+      "config_defaults_used",
+      "model_download_locations",
+      "artifact_output_locations",
+      "deviations_from_prompt",
+      "next_recommended_tasks",
+      "risks",
+      "open_questions",
+      "doc_parity_check"
+    ]
+  },
+  "iteration_report_json_schema": {
+    "iteration": "007",
+    "branch_name": "string",
+    "latest_commit_sha": "string",
+    "status": "completed|partial|blocked",
+    "summary": "string",
+    "tts_backends": [
+      {
+        "backend": "string",
+        "status": "implemented|partial|not_implemented",
+        "voice_or_model": "string",
+        "notes": "string"
+      }
+    ],
+    "tasks_completed": [
+      {
+        "id": "string",
+        "title": "string",
+        "evidence": ["string"]
+      }
+    ],
+    "tasks_partial": [
+      {
+        "id": "string",
+        "reason": "string",
+        "remaining_work": ["string"]
+      }
+    ],
+    "tasks_not_done": [
+      {
+        "id": "string",
+        "reason": "string"
+      }
+    ],
+    "files_created": ["string"],
+    "files_modified": ["string"],
+    "commands_run": ["string"],
+    "automated_tests_run": [
+      {
+        "command": "string",
+        "result": "passed|failed",
+        "notes": "string"
+      }
+    ],
+    "manual_smoke_tests": [
+      {
+        "id": "string",
+        "case": "string",
+        "result": "passed|failed|ambiguous|not_run",
+        "notes": "string",
+        "artifact_files": ["string"]
+      }
+    ],
+    "api_endpoints_verified": [
+      {
+        "path": "string",
+        "result": "passed|failed|partial",
+        "notes": "string"
+      }
+    ],
+    "config_defaults_used": {
+      "tts_backend": "string",
+      "tts_voice": "string",
+      "audio_backend": "string",
+      "playback_enabled": "string"
+    },
+    "model_download_locations": ["string"],
+    "artifact_output_locations": ["string"],
+    "known_issues": ["string"],
+    "deviations_from_prompt": ["string"],
+    "risks": ["string"],
+    "open_questions": ["string"],
+    "next_recommended_tasks": ["string"],
+    "doc_parity_check": {
+      "readme_matches_install_flow": "true|false",
+      "roadmap_matches_iteration_status": "true|false",
+      "architecture_matches_code": "true|false",
+      "notes": "string"
+    }
+  },
+  "definition_of_done": [
+    "Branch is pushed.",
+    "At least one real free local TTS backend is implemented.",
+    "Live runtime can generate spoken output or honest WAV-only artifacts without crashing.",
+    "Local webcam verification workflow exists and is documented.",
+    "Speech state is inspectable via status or demo tooling.",
+    "Artifacts/verification_007 contains manifest and summary plus proof files or honest not_run reasons.",
+    "Automated tests pass.",
+    "Manual local webcam/TTS results are reported honestly.",
+    "Architecture and core docs are updated and match the code."
+  ]
+}

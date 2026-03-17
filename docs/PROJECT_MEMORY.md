@@ -3,16 +3,16 @@
 This file provides continuity context for AI agents working on the Bay-Max project. Update this file after completing significant work.
 
 ## Last Updated
-2026-03-16 (Iteration 006)
+2026-03-17 (Iteration 007)
 
 ## Current State
-- **Iteration**: 006 (Live Webcam Continuity)
-- **Branch**: feature/iteration-006-live-webcam-continuity
+- **Iteration**: 007 (Webcam + TTS)
+- **Branch**: feature/iteration-007-webcam-verification-tts
 - **Status**: Complete
 
 ## What Exists
 - Full modular monolith structure under `src/baymax/`
-- 9 modules: capture(stub), perception, state, memory, planner, dialogue, orchestrator, config, **live**
+- 10 modules: capture(stub), perception, state, memory, planner, dialogue, orchestrator, config, live, **tts**
 - Real face detection via facenet-pytorch MTCNN
 - Real face embeddings via InceptionResnetV1 (vggface2, 512-d vectors)
 - Cosine similarity face recognition against enrolled embeddings
@@ -39,9 +39,14 @@ This file provides continuity context for AI agents working on the Bay-Max proje
   - `LiveRuntime`: async orchestrator loop
   - `render_overlay()`: headless-safe HUD renderer
   - `ArtifactLogger`: JSONL event/response logs, timeline, manifest, summary
-- FastAPI backend with 19 endpoints (version 0.5.0)
+- **[NEW] TTS module** (`src/baymax/tts/`):
+  - Kokoro TTS default backend (KokoroTTSProvider, Kokoro-82M, Apache-2.0)
+  - SpeechService with queued playback
+  - LiveRuntime TTS integration (proactive responses spoken aloud)
+  - PiperTTSProvider (placeholder), NullTTSProvider (silent fallback)
+- FastAPI backend with 20 endpoints (version 0.6.0)
 - CLI runner `scripts/live_companion.py` for webcam and folder/video replay
-- 256 tests all passing, ruff lint clean
+- 296 tests all passing, ruff lint clean
 
 ## What Is Stubbed
 - Frame source / webcam capture via `capture` module (still returns empty; live mode uses `live/frame_source.py` directly)
@@ -74,6 +79,7 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - Event-driven proactive responses, not per-frame chatting — cooldowns prevent spam (Iteration 006)
 - Stability delay in EventEngine prevents jitter-triggered events for posture/engagement (Iteration 006)
 - Headless-safe design throughout: cv2.imshow wrapped in try/except, NumPy overlay, folder replay (Iteration 006)
+- Kokoro-82M as default TTS backend (open-weight, Apache-2.0, lightweight) (Iteration 007)
 
 ## Model Stack
 - **Face Detection**: MTCNN (facenet-pytorch) - multi-task cascaded CNN
@@ -86,6 +92,7 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - **Vector Search**: LanceDB (local, serverless)
 - **Dialogue**: Configurable — rule_based (default), Ollama (local server), or Transformers (local model)
 - **Dialogue Safety**: Input check + output check for diagnosis-style requests
+- **TTS**: Kokoro-82M (Apache-2.0, 24kHz, af_heart voice default)
 
 ## Known Issues
 - SQLite store uses synchronous sqlite3 despite being wrapped in async
@@ -96,15 +103,22 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - Semantic fact extraction uses simple heuristics, not LLM-based
 - Local LLM backends not verified with real models on this machine (environment lacks Ollama/models)
 - Live webcam mode implemented but not exercised on this headless machine (Sol); replay mode verified
+- PortAudio may not be installed on headless machines (required for TTS audio playback)
+- Piper TTS backend is a placeholder (not yet fully implemented)
 
 ## For Next Agent
 1. Read this file and `docs/project_state.json` first
-2. The live runtime is in `src/baymax/live/` — start with `runtime.py` for the orchestration loop
-3. Replay mode uses `FolderFrameSource` or `OpenCVFrameSource(str)` — webcam uses `OpenCVFrameSource(int)`
-4. Live mode is launched via `scripts/live_companion.py` — see `make live-webcam` and `make live-replay`
+2. The live runtime is in `src/baymax/live/` -- start with `runtime.py` for the orchestration loop
+3. Replay mode uses `FolderFrameSource` or `OpenCVFrameSource(str)` -- webcam uses `OpenCVFrameSource(int)`
+4. Live mode is launched via `scripts/live_companion.py` -- see `make live-webcam` and `make live-replay`
 5. Session lifecycle logic is in `live/session_supervisor.py`; event detection in `live/event_engine.py`
 6. Proactive response decisions are in `live/proactive_scheduler.py`
-7. Artifacts are written to `BAYMAX_LIVE_ARTIFACT_DIR` (default: `./artifacts/live_run_006`)
+7. Artifacts are written to `BAYMAX_LIVE_ARTIFACT_DIR` (default: `./artifacts/live_run_007`)
 8. API endpoints `/v1/live/status` and `/v1/live/control` are in `apps/api/main.py`
 9. All live settings have `BAYMAX_LIVE_*` env var prefixes (see `.env.example`)
 10. The default backend is always `rule_based`; LLM backends require explicit configuration
+11. TTS module is in `src/baymax/tts/` -- `provider.py` has the interface and factory, `kokoro_provider.py` has the Kokoro backend
+12. SpeechService (`tts/speech_service.py`) manages queued playback; integrated into LiveRuntime
+13. `GET /v1/tts/backends` returns available TTS backends and active configuration
+14. TTS is enabled by default with Kokoro; set `BAYMAX_TTS_BACKEND=null` to disable
+15. Install TTS dependencies with `pip install -e ".[tts]"`

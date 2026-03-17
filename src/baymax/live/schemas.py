@@ -48,6 +48,11 @@ class LiveRuntimeStatus(BaseModel):
     frame_count: int = 0
     analysis_count: int = 0
     uptime_sec: float = 0.0
+    # Iteration 007 — speech state
+    last_spoken_text: str = ""
+    speech_queue_depth: int = 0
+    tts_backend: str = ""
+    tts_voice: str = ""
 
 
 class LiveFrameResult(BaseModel):
