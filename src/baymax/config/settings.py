@@ -178,6 +178,53 @@ class BaymaxSettings(BaseSettings):
     # Audio artifact directory
     audio_artifact_dir: str = "./artifacts/audio"
 
+    # --- Iteration 009: Affect Analysis / Facial Emotion Recognition ---
+
+    # Master enable for affect analysis
+    enable_affect: bool = True
+
+    # Affect backend: "null" | "mediapipe"
+    # Note: py-feat attempted but incompatible with Python 3.11 environment
+    affect_backend: str = "mediapipe"
+
+    # Device for affect analysis
+    affect_device: str = "auto"
+
+    # Sample every N frames for affect analysis (to control computational load)
+    affect_sample_every_n_frames: int = 10
+
+    # Minimum confidence to accept an affect analysis result
+    affect_confidence_threshold: float = 0.60
+
+    # Smoothing parameter for EMA (0=no smoothing, 1=keep previous)
+    affect_smoothing_alpha: float = 0.25
+
+    # Duration (seconds) state must be stable before considering for memory
+    affect_stability_duration_sec: float = 30.0
+
+    # Minimum confidence to write affect observations to memory
+    affect_memory_confidence_threshold: float = 0.65
+
+    # Enable affect-based planner bias
+    affect_bias_enabled: bool = True
+
+    # Minimum confidence to apply affect bias to response strategy
+    affect_bias_confidence_threshold: float = 0.60
+
+    # Valence thresholds for strategy adjustment
+    affect_negative_valence_threshold: float = -0.30
+    affect_positive_valence_threshold: float = 0.40
+
+    # Arousal thresholds for strategy adjustment
+    affect_low_arousal_threshold: float = 0.40
+    affect_high_arousal_threshold: float = 0.55
+
+    # Enable debug output for affect analysis
+    affect_debug: bool = False
+
+    # Directory for affect artifacts and timelines
+    affect_artifact_dir: str = "./artifacts/affect"
+
 
 def get_settings() -> BaymaxSettings:
     """Return a settings instance."""

@@ -128,6 +128,10 @@ def build_grounded_user_prompt(ctx: GroundedPromptContext) -> str:
     if ctx.context:
         parts.append(f"Additional context: {ctx.context}")
 
+    # Affect context (iteration 009) - only if confidence is sufficient
+    if hasattr(ctx, 'affect_context') and ctx.affect_context:
+        parts.append(f"Observation note (internal): {ctx.affect_context}")
+
     # Strategy instruction
     strategy_instr = _STRATEGY_INSTRUCTIONS.get(
         ctx.strategy,
@@ -165,6 +169,7 @@ def build_prompt_context(
     recent_turns: list[ChatTurn],
     context: str = "",
     top_k_memories: int = 5,
+    affect_bias_confidence_threshold: float = 0.6,
 ) -> GroundedPromptContext:
     """Assemble a GroundedPromptContext from orchestrator data.
 
@@ -175,6 +180,7 @@ def build_prompt_context(
         recent_turns: The most recent chat turns from SQLite.
         context: Optional free-form context string from the caller.
         top_k_memories: Number of memories to include.
+        affect_bias_confidence_threshold: Minimum confidence to include affect context.
 
     Returns:
         A fully-populated GroundedPromptContext ready for prompt building.
@@ -204,7 +210,30 @@ def build_prompt_context(
         for t in recent_turns
     ]
 
-    return GroundedPromptContext(
+    # Generate affect context if confidence is sufficient (iteration 009)
+    affect_context = ""
+    if (state.affect_enabled
+        and state.affect_confidence >= affect_bias_confidence_threshold):
+
+        # Create non-clinical affect observation
+        if state.valence <= -0.3 and state.arousal <= 0.4:
+            affect_context = "User appears subdued or thoughtful - adjust tone to be gentler and more validating"
+        elif state.valence <= -0.3 and state.arousal > 0.55:
+            affect_context = "User appears tense or concerned - focus on calming, empathetic presence"
+        elif state.valence >= 0.4 and state.arousal > 0.55:
+            affect_context = "User appears positive and energetic - can be naturally more engaging"
+        elif state.valence >= 0.4 and state.arousal <= 0.4:
+            affect_context = "User appears calm and content - maintain warm, peaceful tone"
+        elif state.arousal <= 0.2:
+            affect_context = "User appears very calm - match with gentle, quiet presence"
+        elif state.arousal > 0.6:
+            affect_context = "User appears alert and engaged - can match energy appropriately"
+        else:
+            # Don't add affect context for neutral/unclear patterns
+            pass
+
+    # Build context object
+    ctx = GroundedPromptContext(
         user_id=state.user_id,
         user_display_name=state.user_display_name,
         session_id=state.session_id,
@@ -216,3 +245,10 @@ def build_prompt_context(
         context=context,
         top_k_memories=top_k_memories,
     )
+
+    # Add affect context if available
+    if affect_context:
+        # Add to existing context object (somewhat hacky but works with current schema)
+        ctx.affect_context = affect_context
+
+    return ctx

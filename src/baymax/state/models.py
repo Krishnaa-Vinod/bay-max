@@ -41,3 +41,12 @@ class InteractionState(BaseModel):
     lean: LeanLabel = LeanLabel.UNKNOWN
     motion: MotionLevel = MotionLevel.UNKNOWN
     engagement_score: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    # --- Iteration 009: affect analysis fields ---
+    affect_enabled: bool = False
+    valence: float = Field(default=0.0, ge=-1.0, le=1.0, description="Smoothed valence (-1=negative, +1=positive)")
+    arousal: float = Field(default=0.0, ge=0.0, le=1.0, description="Smoothed arousal (0=calm, 1=activated)")
+    affect_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence in affect analysis")
+    affect_stable_duration_sec: float = Field(default=0.0, description="Duration affect has been stable")
+    affect_sample_count: int = Field(default=0, description="Number of affect samples processed")
+    last_affect_update: datetime | None = None

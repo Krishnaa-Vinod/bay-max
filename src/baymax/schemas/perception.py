@@ -209,3 +209,70 @@ class BodyStateObservation(BaseModel):
     content: str
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     evidence_refs: list[str] = Field(default_factory=list)
+
+
+# --- Iteration 009: Affect analysis models ---
+
+
+class AffectEvidence(BaseModel):
+    """Evidence supporting an emotion analysis result."""
+
+    landmark_indices: list[int] = Field(default_factory=list, description="Relevant facial landmark indices")
+    action_units: dict[str, float] = Field(default_factory=dict, description="Action unit activations (if available)")
+    blendshapes: dict[str, float] = Field(default_factory=dict, description="MediaPipe face blendshapes (if available)")
+    processing_method: str = Field(default="unknown", description="Backend method used")
+    processing_time_ms: float = Field(default=0.0, description="Analysis processing time")
+    frame_quality_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Face region quality")
+
+
+class EmotionResult(BaseModel):
+    """Result of facial affect analysis for a single frame or region."""
+
+    backend: str = Field(description="Backend used (null, mediapipe, etc.)")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Overall confidence in the analysis")
+    valence: float = Field(default=0.0, ge=-1.0, le=1.0, description="Valence dimension (-1=negative, +1=positive)")
+    arousal: float = Field(default=0.0, ge=0.0, le=1.0, description="Arousal dimension (0=calm, 1=activated)")
+    dominant_emotion_soft_label: str | None = Field(default=None, description="Soft label like 'appears calm' or 'seems energized' - not diagnostic")
+    evidence: AffectEvidence = Field(default_factory=AffectEvidence)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    success: bool = Field(default=False, description="Whether analysis completed successfully")
+
+
+class SmoothedAffectState(BaseModel):
+    """Smoothed affect state tracked over time."""
+
+    valence: float = Field(default=0.0, ge=-1.0, le=1.0, description="Smoothed valence")
+    arousal: float = Field(default=0.0, ge=0.0, le=1.0, description="Smoothed arousal")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence in current smoothed state")
+    stable_duration_sec: float = Field(default=0.0, description="How long state has been stable")
+    last_update: datetime = Field(default_factory=datetime.utcnow)
+    enabled: bool = Field(default=False, description="Whether affect analysis is enabled")
+    sample_count: int = Field(default=0, description="Number of samples contributing to this state")
+
+
+class AffectMemoryObservation(BaseModel):
+    """Session-level affect summary for memory consolidation."""
+
+    id: UUID = Field(default_factory=uuid4)
+    session_id: UUID
+    user_id: UUID | None = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    content: str = Field(description="Non-clinical description of observed affect patterns")
+    valence_summary: str = Field(description="Summary of valence patterns (e.g., 'generally positive', 'mixed')")
+    arousal_summary: str = Field(description="Summary of arousal patterns (e.g., 'calm throughout', 'energetic')")
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this summary")
+    duration_minutes: float = Field(description="Duration of the observation period")
+    stability_evidence: list[str] = Field(default_factory=list, description="Evidence for stability")
+
+
+class AffectTimelinePoint(BaseModel):
+    """Single point in an affect timeline for artifact logging."""
+
+    timestamp: datetime
+    valence: float = Field(ge=-1.0, le=1.0)
+    arousal: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    raw_valence: float | None = Field(default=None, ge=-1.0, le=1.0, description="Raw unsmoothed valence")
+    raw_arousal: float | None = Field(default=None, ge=0.0, le=1.0, description="Raw unsmoothed arousal")
+    backend: str = Field(default="unknown")
+    strategy_hint: str | None = Field(default=None, description="Any strategy adjustment noted")

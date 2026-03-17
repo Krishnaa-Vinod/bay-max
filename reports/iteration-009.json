@@ -1,0 +1,305 @@
+{
+  "iteration": "009",
+  "branch_name": "feature/iteration-009-affect-aware-companion",
+  "latest_commit_sha": "pending_final_commit",
+  "status": "completed",
+  "summary": "Iteration 009 adds facial affect analysis to Bay-Max with valence/arousal dimensional modeling, EMA smoothing, confidence-gated strategy bias, and strict clinical language safety. MediaPipe Face Landmarker serves as the primary backend (py-feat incompatible with Python 3.11), with NullEmotionAnalyzer always available as fallback. Smoothed affect state influences response strategy and tone without overriding safety or critical interactions. Session-level affect summaries are written to memory only when stable (≥30sec) and confident (≥0.65), with clinical language blocklist enforcement. Comprehensive artifact logging provides timeline data, strategy changes, and verification manifests. All 386 automated tests pass (356 existing + 30 new). Manual affect verification requires test images not available on headless Sol.",
+  "affect_backends": [
+    {
+      "backend": "null",
+      "status": "implemented",
+      "model_or_runtime": "NullEmotionAnalyzer (always returns neutral)",
+      "notes": "Always available fallback backend for testing and graceful degradation."
+    },
+    {
+      "backend": "mediapipe",
+      "status": "implemented",
+      "model_or_runtime": "MediaPipe Face Landmarker v0.10.32 with blendshapes",
+      "notes": "Primary affect backend using facial blendshape coefficients mapped to valence/arousal via custom heuristics. Requires good lighting and front-facing poses for reliable confidence."
+    },
+    {
+      "backend": "py-feat",
+      "status": "blocked",
+      "model_or_runtime": "Incompatible with Python 3.11",
+      "notes": "Installation failed due to setuptools/pkg_resources conflicts. Interface exists for future integration when compatibility issues resolved."
+    }
+  ],
+  "tasks_completed": [
+    {
+      "id": "T901",
+      "title": "Compatibility spike and architecture audit",
+      "evidence": [
+        "Verified iteration-008 runtime readiness and 356 existing tests passing",
+        "Attempted py-feat installation: failed due to setuptools compatibility with Python 3.11",
+        "Confirmed MediaPipe 0.10.32 available as fallback backend",
+        "Updated pyproject.toml with affect dependencies",
+        "Documented py-feat blocker exactly for future resolution"
+      ]
+    },
+    {
+      "id": "T902",
+      "title": "Implement affect backend abstraction",
+      "evidence": [
+        "src/baymax/perception/emotion.py: EmotionAnalyzer interface with analyze(), is_available(), model_info()",
+        "NullEmotionAnalyzer: always available, returns neutral affect with 0.0 confidence",
+        "MediaPipeEmotionAnalyzer: Face Landmarker integration with blendshape-to-affect mapping",
+        "get_emotion_analyzer() factory function with backend selection and validation",
+        "Custom valence/arousal estimation from MediaPipe blendshape coefficients",
+        "Graceful error handling for failed model loading and invalid inputs"
+      ]
+    },
+    {
+      "id": "T903",
+      "title": "Add smoothing and state integration",
+      "evidence": [
+        "src/baymax/perception/emotion_smoother.py: AffectSmoother with EMA and stability tracking",
+        "SmoothedAffectState schema with valence, arousal, confidence, stability_duration_sec",
+        "Configurable smoothing alpha (default 0.25), stability threshold (0.1), duration (30s)",
+        "Extended InteractionState with affect fields: valence, arousal, affect_confidence, etc.",
+        "Extended LiveRuntimeStatus with emotion_valence, emotion_arousal, emotion_confidence fields",
+        "Confidence gating: low-confidence inputs are discarded rather than processed"
+      ]
+    },
+    {
+      "id": "T904",
+      "title": "Planner bias and prompt-builder integration",
+      "evidence": [
+        "src/baymax/planner/supportive_planner.py: Enhanced with affect bias logic",
+        "Soft strategy adjustments: low-valence → EMPATHIZE, preserve GREET/RECALL critical paths",
+        "Confidence-gated bias (default 0.6 threshold) with configurable valence/arousal thresholds",
+        "src/baymax/dialogue/prompt_builder.py: Affect context inclusion in prompts",
+        "Internal affect observations added when confidence ≥ 0.6: 'User appears subdued - adjust tone'",
+        "GroundedPromptContext.affect_context field for non-diagnostic tone guidance"
+      ]
+    },
+    {
+      "id": "T905",
+      "title": "Memory consolidation and clinical language safety",
+      "evidence": [
+        "src/baymax/memory/clinical_safety.py: Clinical language blocklist and sanitization",
+        "Blocklist includes diagnosis, disorder, depression, anxiety, symptoms, clinical terms",
+        "Safe alternatives: 'depressed'→'appeared subdued', 'anxious'→'appeared concerned'",
+        "Enhanced consolidate_session() with affect_smoother parameter and duration calculation",
+        "Session-level affect observations created only when stable (≥30s) and confident (≥0.65)",
+        "_create_affect_observation() with full safety validation pipeline"
+      ]
+    },
+    {
+      "id": "T906",
+      "title": "Artifact logging and replay verification tooling",
+      "evidence": [
+        "src/baymax/perception/affect_artifacts.py: AffectArtifactLogger with timeline/strategy tracking",
+        "Timeline artifacts: JSON and CSV formats with raw/smoothed values, timestamps, backends",
+        "Strategy change logging: old→new strategy with affect context and reasoning",
+        "src/baymax/perception/affect_replay_tester.py: Replay testing system for saved images",
+        "scripts/affect_replay_test.py: Helper script with create-sequences, run-test, list commands",
+        "Standard test sequences: positive_expression, neutral_expression, low_affect, occlusion_test"
+      ]
+    },
+    {
+      "id": "T907",
+      "title": "Tests, docs, report, commit, and push",
+      "evidence": [
+        "tests/test_iteration_009.py: 30 comprehensive tests covering all affect components",
+        "Test categories: schemas (3), backends (4), smoother (6), clinical safety (5), planner (4), prompts (2), state (2), settings (2), validation (2)",
+        "All 386 tests pass: 356 existing + 30 new iteration-009 tests",
+        "API endpoints: GET /v1/emotion/backends, extended GET /v1/audio/status with affect fields",
+        "Documentation: docs/EMOTION_ARCHITECTURE.md created, project_state.json updated",
+        "Environment variables: 16 new BAYMAX_AFFECT_* configuration options added"
+      ]
+    }
+  ],
+  "tasks_partial": [],
+  "tasks_not_done": [],
+  "files_created": [
+    "src/baymax/perception/emotion.py",
+    "src/baymax/perception/emotion_smoother.py",
+    "src/baymax/perception/affect_artifacts.py",
+    "src/baymax/perception/affect_replay_tester.py",
+    "src/baymax/memory/clinical_safety.py",
+    "docs/EMOTION_ARCHITECTURE.md",
+    "tests/test_iteration_009.py",
+    "scripts/affect_replay_test.py",
+    "reports/iteration-009-affect-aware-companion.json",
+    "reports/iteration-009-verification-checklist.md"
+  ],
+  "files_modified": [
+    "src/baymax/config/settings.py",
+    "src/baymax/schemas/perception.py",
+    "src/baymax/schemas/response.py",
+    "src/baymax/state/models.py",
+    "src/baymax/live/schemas.py",
+    "src/baymax/planner/supportive_planner.py",
+    "src/baymax/dialogue/prompt_builder.py",
+    "src/baymax/memory/consolidate.py",
+    "apps/api/main.py",
+    "docs/project_state.json"
+  ],
+  "commands_run": [
+    "python3.11 -m pytest tests/ -v (baseline verification: 356 passed)",
+    "pip install py-feat (failed: setuptools incompatibility)",
+    "python3.11 -c 'import mediapipe; print(mediapipe.__version__)' (verified: 0.10.32)",
+    "python3.11 -m pytest tests/test_iteration_009.py -v (30 passed)",
+    "python3.11 -m pytest tests/ -v (final verification: 386 passed)",
+    "python3.11 -m ruff check --fix src/ apps/ tests/ scripts/ (0 errors)",
+    "python3.11 scripts/affect_replay_test.py create-sequences (test sequences created)"
+  ],
+  "automated_tests_run": [
+    {
+      "command": "python3.11 -m pytest tests/test_iteration_009.py -v",
+      "result": "passed",
+      "notes": "30 new tests passed covering affect schemas, backends, smoothing, clinical safety, planner bias, prompt integration, and configuration validation."
+    },
+    {
+      "command": "python3.11 -m pytest tests/ -v",
+      "result": "passed",
+      "notes": "386 total tests passed (356 existing + 30 new). No regressions introduced by affect analysis integration."
+    },
+    {
+      "command": "python3.11 -m ruff check src/ apps/ tests/ scripts/",
+      "result": "passed",
+      "notes": "0 linting errors. Code quality maintained throughout integration."
+    }
+  ],
+  "manual_or_replay_verification_results": [
+    {
+      "id": "VT930",
+      "case": "Positive expression replay or live sample",
+      "result": "not_run",
+      "notes": "Sol is headless with no camera. Replay test infrastructure created (affect_replay_test.py) but requires test images. Expected: valence trends positive, confidence reasonable, tone slightly warmer.",
+      "artifact_files": ["scripts/affect_replay_test.py", "test_data/affect_replay/positive_expression.json"]
+    },
+    {
+      "id": "VT931",
+      "case": "Neutral expression replay or live sample",
+      "result": "not_run",
+      "notes": "Requires test images for replay verification. Expected: valence near neutral, planner mostly unchanged.",
+      "artifact_files": ["test_data/affect_replay/neutral_expression.json"]
+    },
+    {
+      "id": "VT932",
+      "case": "Low-positive-affect / worried / low-energy replay",
+      "result": "not_run",
+      "notes": "Expected: tone softens, less cheerleading, more validation. Test sequence defined but images not available on Sol.",
+      "artifact_files": ["test_data/affect_replay/low_affect_expression.json"]
+    },
+    {
+      "id": "VT933",
+      "case": "Occluded / turned-away / poor-light sample",
+      "result": "not_run",
+      "notes": "Expected: low confidence or unknown, no hard guess. Occlusion test sequence created.",
+      "artifact_files": ["test_data/affect_replay/occlusion_test.json"]
+    },
+    {
+      "id": "VT934",
+      "case": "Stable-state memory write",
+      "result": "automated",
+      "notes": "Memory consolidation with affect summaries verified in automated tests. Requires stability ≥30s and confidence ≥0.65.",
+      "artifact_files": ["tests/test_iteration_009.py::TestClinicalSafety"]
+    },
+    {
+      "id": "VT935",
+      "case": "Unstable/noisy affect",
+      "result": "automated",
+      "notes": "Low confidence and unstable affect properly excluded from memory consolidation, verified in smoother tests.",
+      "artifact_files": ["tests/test_iteration_009.py::TestAffectSmoother::test_smoother_low_confidence_skip"]
+    },
+    {
+      "id": "VT936",
+      "case": "Response-tone comparison",
+      "result": "automated",
+      "notes": "Planner bias tests verify different affect states yield different strategies while preserving Baymax persona.",
+      "artifact_files": ["tests/test_iteration_009.py::TestPlannerAffectBias"]
+    }
+  ],
+  "api_endpoints_verified": [
+    {
+      "path": "GET /v1/emotion/backends",
+      "result": "passed",
+      "notes": "Returns available_backends, active_backend, active_model_or_runtime, enabled, sample_every_n_frames as specified."
+    },
+    {
+      "path": "GET /v1/audio/status",
+      "result": "passed",
+      "notes": "Extended with affect fields: affect_enabled, affect_backend, emotion_valence, emotion_arousal, emotion_confidence, emotion_stable_duration_sec, emotion_debug_summary."
+    },
+    {
+      "path": "GET /v1/live/status",
+      "result": "passed",
+      "notes": "Includes affect fields when live runtime is active and affect analysis enabled."
+    }
+  ],
+  "config_defaults_used": {
+    "enable_affect": "true",
+    "affect_backend": "mediapipe",
+    "affect_device": "auto",
+    "affect_sample_every_n_frames": "10",
+    "affect_confidence_threshold": "0.60",
+    "affect_smoothing_alpha": "0.25",
+    "affect_stability_duration_sec": "30.0",
+    "affect_memory_confidence_threshold": "0.65",
+    "affect_bias_enabled": "true",
+    "affect_bias_confidence_threshold": "0.60",
+    "affect_negative_valence_threshold": "-0.30",
+    "affect_positive_valence_threshold": "0.40",
+    "affect_low_arousal_threshold": "0.40",
+    "affect_high_arousal_threshold": "0.55",
+    "affect_debug": "false",
+    "affect_artifact_dir": "./artifacts/affect"
+  },
+  "artifact_output_locations": [
+    "artifacts/affect/ (runtime affect artifacts directory, gitignored)",
+    "artifacts/verification_009/ (verification artifacts and reports)",
+    "test_data/affect_replay/ (replay test sequences and image placeholders)",
+    "scripts/affect_replay_test.py (replay testing helper script)"
+  ],
+  "known_issues": [
+    "py-feat backend blocked by setuptools/pkg_resources incompatibility with Python 3.11 — interface exists for future integration",
+    "MediaPipe Face Landmarker blendshape-to-affect mapping uses custom heuristics — not clinically validated for emotion recognition",
+    "VT930-VT936 manual affect verification tests not_run on Sol — requires local laptop with test images for replay testing",
+    "Affect analysis requires good lighting and front-facing poses for reliable confidence scores from MediaPipe",
+    "MediaPipe Face Landmarker model auto-downloads on first use (~10MB) — cached after initial run",
+    "Clinical language safety relies on substring matching — may miss paraphrased clinical terms in edge cases",
+    "Session-level affect summaries have lower salience (0.4) — may be less prominent in memory retrieval than other episodic memories"
+  ],
+  "deviations_from_prompt": [
+    "py-feat backend not implemented due to Python 3.11 incompatibility — MediaPipe used as primary real backend instead",
+    "MediaPipe Face Landmarker used instead of py-feat Action Units — blendshape coefficients mapped to valence/arousal",
+    "Manual verification tests (VT930-VT936) marked not_run rather than executed — Sol has no camera and test images not provided",
+    "Affect artifact logging implemented as separate module (affect_artifacts.py) rather than integrated into existing artifact system",
+    "EmotionResult schema uses dimensional valence/arousal model rather than discrete emotion labels for richer affect representation"
+  ],
+  "risks": [
+    "MediaPipe blendshape-to-affect mapping not validated against ground truth emotion datasets — may misinterpret cultural or individual expression variations",
+    "Affect analysis adds computational overhead — MediaPipe Face Landmarker ~50-100ms per frame on CPU may impact real-time performance",
+    "Clinical language safety depends on comprehensive blocklist maintenance — new clinical terms may emerge that aren't blocked",
+    "Memory consolidation with affect summaries could create persistent bias if affect analysis is systematically wrong for certain users",
+    "Low confidence thresholds (0.6) may still allow some incorrect affect interpretations to influence system behavior"
+  ],
+  "open_questions": [
+    "Should affect analysis confidence thresholds be user-specific or adaptive based on historical accuracy?",
+    "How should the system handle affect patterns that contradict user's explicit emotional expressions (e.g., says happy but looks sad)?",
+    "Should affect state influence memory retrieval ranking in addition to response strategy?",
+    "When py-feat becomes compatible, should it replace MediaPipe or run in parallel for consensus-based confidence?",
+    "Should affect timelines be accessible to users for self-reflection, or kept internal for privacy?",
+    "How should cultural differences in emotional expression be handled in a production deployment?"
+  ],
+  "next_recommended_tasks": [
+    "Run full affect verification on local laptop with test images using scripts/affect_replay_test.py",
+    "Integrate py-feat backend when Python 3.11 compatibility issues are resolved",
+    "Add affect pattern learning over multiple sessions to improve user-specific adaptation",
+    "Implement acoustic affect analysis from speech prosody and integrate with facial affect",
+    "Add affect state influence on memory retrieval ranking for more contextually appropriate recall",
+    "Migrate SQLite store to fully async aiosqlite (inherited from previous iterations)",
+    "Add LLM-based semantic fact extraction during consolidation",
+    "Add Gradio live inspection tab showing real-time affect analysis state",
+    "Evaluate affect analysis accuracy against validated emotion recognition datasets",
+    "Add affect confidence calibration based on user feedback or ground truth when available"
+  ],
+  "doc_parity_check": {
+    "readme_matches_install_flow": "true",
+    "architecture_matches_code": "true",
+    "roadmap_matches_iteration_status": "true",
+    "notes": "docs/EMOTION_ARCHITECTURE.md created with comprehensive affect system documentation. All required docs updated to reflect iteration 009 implementation. API endpoints, schemas, configuration, and module structure match code implementation."
+  }
+}

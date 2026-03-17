@@ -95,6 +95,11 @@ class GroundedPromptContext(BaseModel):
     context: str = ""
     top_k_memories: int = 5
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    # Iteration 009 - affect context for tone adjustment
+    affect_context: str = Field(
+        default="",
+        description="Optional affect-based tone guidance (internal use only)"
+    )
 
 
 class SafetyDecision(BaseModel):
