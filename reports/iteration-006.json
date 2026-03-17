@@ -1,7 +1,7 @@
 {
   "iteration": "006",
   "branch_name": "feature/iteration-006-live-webcam-continuity",
-  "latest_commit_sha": "pending",
+  "latest_commit_sha": "cc1de97",
   "status": "completed",
   "summary": "Iteration 006 adds a complete live webcam continuity layer to Bay-Max. The live module (src/baymax/live/) provides continuous frame ingestion, automatic session lifecycle management based on presence/absence detection, companion event detection with stability gating, proactive memory-grounded responses with dual-layer cooldown enforcement, headless-safe overlay rendering, JSONL/JSON/Markdown artifact logging, and a CLI runner for webcam and replay modes. All 256 automated tests pass. Webcam mode is implemented but not exercised on this headless Sol node; folder-replay and video-replay modes are verified via automated tests.",
   "live_runtime_components": [
