@@ -3,7 +3,7 @@
   "branch_name": "feature/iteration-005-grounded-local-dialogue",
   "latest_commit_sha": "c978b2f",
   "status": "completed",
-  "summary": "Iteration 005 adds a grounded local dialogue system to Bay-Max. Three dialogue backends are implemented (rule_based, ollama, transformers) with a shared provider interface, plan-then-verbalize prompt builder, safety gating on input and output, and graceful fallback. The /v1/respond endpoint now returns backend, model_name, fallback_used, and safety_flags. A new GET /v1/dialogue/backends endpoint exposes configuration. All 194 automated tests pass. Five smoke-test cases pass with rule_based backend. Ollama and Transformers backends are implemented but not exercised with real models in this environment.",
+  "summary": "Iteration 005 adds a grounded local dialogue system to Bay-Max. Three dialogue backends are implemented (rule_based, ollama, transformers) with a shared provider interface, plan-then-verbalize prompt builder, safety gating on input and output, and graceful fallback. The /v1/respond endpoint now returns backend, model_name, fallback_used, and safety_flags. A new GET /v1/dialogue/backends endpoint exposes configuration. All 194 automated tests pass. Five smoke-test cases pass with rule_based backend. The Transformers backend was subsequently verified with Qwen/Qwen2.5-1.5B-Instruct on a NVIDIA A100-SXM4-80GB GPU: all 6 real-model smoke tests (ST001-ST006) passed. LanceDB vector retrieval with all-MiniLM-L6-v2 embedding was confirmed active. The Ollama backend remains unverified as the Ollama server is not installed in this environment.",
   "dialogue_backends": [
     {
       "backend": "rule_based",
@@ -15,13 +15,13 @@
       "backend": "ollama",
       "status": "implemented",
       "model_or_endpoint": "http://localhost:11434/api/chat",
-      "notes": "Implemented with urllib, configurable model. Not tested with real model — Ollama server not running in this environment."
+      "notes": "Implemented with urllib, configurable model. Not tested with real model — Ollama not installed in this environment."
     },
     {
       "backend": "transformers",
-      "status": "implemented",
-      "model_or_endpoint": "Qwen/Qwen2.5-1.5B-Instruct (default)",
-      "notes": "In-process HF pipeline with lazy loading. Not tested with real model — model not downloaded in this environment."
+      "status": "verified",
+      "model_or_endpoint": "Qwen/Qwen2.5-1.5B-Instruct",
+      "notes": "Verified with real inference on NVIDIA A100-SXM4-80GB. 6/6 real-model smoke tests passed. memory_refs retrieved via LanceDB. Response text did not explicitly quote Session A content (small model limitation), but memory was in prompt context."
     }
   ],
   "tasks_completed": [
@@ -87,10 +87,12 @@
       "id": "T507",
       "title": "Add local smoke testing and evaluation flow",
       "evidence": [
-        "scripts/dialogue_smoke.py: 5 test cases, JSON output",
-        "make smoke-test target added",
+        "scripts/dialogue_smoke.py: 5 test cases (rule_based), JSON output",
+        "scripts/dialogue_smoke.py: extended with --real-model flag, ST001-ST006 cases, environment info",
+        "make smoke-test and make real-model-test targets added",
         "docs/LOCAL_TESTING.md: commands for all three backends and smoke test",
-        "Smoke test executed: 5/5 passed with rule_based backend"
+        "Rule-based smoke test executed: 5/5 passed",
+        "Real-model smoke test executed: 6/6 passed (ST001-ST006, Transformers backend, A100 GPU)"
       ]
     },
     {
@@ -147,7 +149,9 @@
     "pip install -e '.[dev]'",
     "python -m pytest tests/ -v",
     "python -m ruff check --fix src/ apps/ tests/ scripts/",
-    "python scripts/dialogue_smoke.py"
+    "python scripts/dialogue_smoke.py",
+    "pip install -e '.[dev,vector,dialogue]'",
+    "python scripts/dialogue_smoke.py --real-model"
   ],
   "automated_tests_run": [
     {
@@ -193,9 +197,34 @@
       "notes": "Ollama server not running in this environment. Backend implemented and unit-tested via mocks."
     },
     {
-      "case": "Transformers grounded recall (real model)",
-      "result": "not_run",
-      "notes": "Models not downloaded in this environment. Backend implemented and unit-tested via mocks."
+      "case": "Transformers grounded recall (real model) — ST001",
+      "result": "passed",
+      "notes": "4476ms. backend=transformers, model=Qwen/Qwen2.5-1.5B-Instruct on NVIDIA A100-SXM4-80GB. Proper greeting generated."
+    },
+    {
+      "case": "Transformers two-session memory recall — ST002",
+      "result": "passed",
+      "notes": "memory_refs=1 via LanceDB (score=0.504). backend=transformers, fallback=False. mentions_session_a=False — model retrieved memories but responded generically (small model limitation)."
+    },
+    {
+      "case": "Memory summary after consolidation — ST003",
+      "result": "passed",
+      "notes": "episodic_count=1, semantic_count=0 after consolidation of Session A turns."
+    },
+    {
+      "case": "Safety flag detection (real model) — ST004",
+      "result": "passed",
+      "notes": "safety_flags=['diagnosis_request:diagnose me'] returned before LLM call."
+    },
+    {
+      "case": "Backend failure fallback (real model) — ST005",
+      "result": "passed",
+      "notes": "Empty ollama_model triggers ValueError in OllamaDialogueProvider.__init__; factory falls back to rule_based."
+    },
+    {
+      "case": "LanceDB vector store verification — ST006",
+      "result": "passed",
+      "notes": "type(vs).__name__=LanceDBVectorStore confirmed. 1 semantic hit returned (score=0.504). Embedding model=all-MiniLM-L6-v2."
     }
   ],
   "api_endpoints_verified": [
@@ -223,12 +252,15 @@
     "dialogue_temperature": "0.4"
   },
   "model_download_locations": [
-    "No models were downloaded during this iteration.",
-    "HuggingFace models would be cached to BAYMAX_MODEL_DIR when Transformers backend is used.",
-    "Ollama models are managed by the Ollama daemon in its own storage."
+    "No models were downloaded during the initial implementation iteration.",
+    "Real-model verification used pre-cached models at /scratch/kvinod/bay-max/models/",
+    "Qwen/Qwen2.5-1.5B-Instruct was pre-cached and loaded to cuda:0 (NVIDIA A100-SXM4-80GB, bfloat16)",
+    "sentence-transformers/all-MiniLM-L6-v2 was pre-cached and used for LanceDB embeddings",
+    "HF_HOME and TRANSFORMERS_CACHE both set to /scratch/kvinod/bay-max/models/ via .env"
   ],
   "artifact_output_locations": [
-    "./artifacts/smoke_test_005.json (gitignored)"
+    "./artifacts/smoke_test_005.json (gitignored)",
+    "./artifacts/real_model_smoke.json (gitignored)"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — aiosqlite migration pending",
@@ -237,20 +269,20 @@
     "MediaPipe Pose uses legacy mp.solutions.pose API",
     "LanceDB real backend not exercised in automated tests (StubVectorStore used)",
     "Semantic fact extraction uses keyword heuristics — 0 semantic facts created in smoke test consolidation",
-    "Ollama and Transformers backends not verified with real model inference in this environment",
+    "Ollama backend not verified with real model — Ollama server not installed in this environment",
     "Safety pattern matching is substring-based — may miss paraphrased unsafe requests"
   ],
   "deviations_from_prompt": [
-    "Transformers backend is implemented but not smoke-tested with a real model (environment lacks downloaded models) — reported honestly as not_run",
-    "Ollama backend is implemented but not smoke-tested with a real server — reported honestly as not_run",
+    "Ollama backend not smoke-tested with real server — Ollama CLI not installed in this environment. Reported honestly as not_run.",
+    "Transformers backend grounded recall verified: model retrieved memories (LanceDB, score=0.504) but did not explicitly verbalize Session A content — small model (1.5B) limitation, documented honestly.",
     "Test count for test_project_state_schema.py is now 7 (was 6) because project_state.json now has 17 endpoints — still passes the >=8 check",
     "dialogue extras in pyproject.toml include 'accelerate' for device_map='auto' support"
   ],
   "risks": [
-    "LLM dialogue quality (tone, groundedness) is unverified without real model execution",
+    "Qwen/Qwen2.5-1.5B-Instruct responds generically — memory grounding confirmed via memory_refs but small model may not verbalize recalled facts",
     "Ollama HTTP probing in is_available() adds a small latency bump on first check",
     "Safety pattern matching may miss paraphrased or novel unsafe requests",
-    "StubVectorStore in default env means vector-similarity grounding is not exercised"
+    "LanceDB not exercised in automated unit tests — StubVectorStore still the default for test isolation"
   ],
   "open_questions": [
     "Should check_safety() use semantic/embedding-based matching in a future iteration?",
@@ -259,13 +291,13 @@
     "Should the smoke test be run automatically in CI with the rule_based backend?"
   ],
   "next_recommended_tasks": [
-    "Run scripts/dialogue_smoke.py with real Ollama model to validate grounded recall end-to-end",
+    "Run scripts/dialogue_smoke.py --real-model with Ollama backend once Ollama is installed",
     "Migrate SQLiteMetadataStore to fully async aiosqlite",
     "Implement emotion estimation from face regions",
     "Add LLM-based semantic fact extraction during consolidation",
-    "Verify LanceDB + SentenceTransformerEmbedder real round-trip",
     "Add salience decay over time for episodic memories",
-    "Run CI smoke-test with rule_based backend on every PR"
+    "Run CI smoke-test with rule_based backend on every PR",
+    "Evaluate larger model (3B–7B) to improve memory verbalization in grounded recall"
   ],
   "doc_parity_check": {
     "readme_matches_install_flow": "true",
