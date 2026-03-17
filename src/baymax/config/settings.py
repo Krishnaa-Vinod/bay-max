@@ -113,10 +113,70 @@ class BaymaxSettings(BaseSettings):
 
     # Live overlay and artifacts
     enable_live_overlay: bool = True
+    enable_live_debug_hud: bool = True
     enable_artifact_logging: bool = True
-    live_artifact_dir: str = "./artifacts/live_run_006"
+    live_artifact_dir: str = "./artifacts/live_run_007"
     live_max_run_sec: float = 0.0  # 0 = unlimited
     live_video_replay_path: str = ""
+
+    # --- Iteration 007: TTS / Spoken Output settings ---
+
+    # TTS backend: "null" | "kokoro" | "piper"
+    tts_backend: str = "kokoro"
+    tts_voice: str = "af_heart"
+    tts_rate: int = 24000
+    tts_enabled: bool = True
+    tts_device: str = "auto"
+    tts_output_dir: str = "./artifacts/tts"
+
+    # Audio playback
+    enable_audio_playback: bool = True
+    audio_backend: str = "sounddevice"
+
+    # Kokoro-specific
+    kokoro_voice: str = "af_heart"
+
+    # Piper-specific
+    piper_model_path: str = ""
+    piper_config_path: str = ""
+
+    # --- Iteration 008: Speech Input / Bidirectional Speech ---
+
+    # Master enable for speech input
+    enable_speech_input: bool = True
+
+    # Microphone settings
+    mic_backend: str = "sounddevice"
+    mic_sample_rate: int = 16000
+    mic_channels: int = 1
+    mic_device: str = "default"
+
+    # VAD settings
+    vad_backend: str = "silero"
+    vad_threshold: float = 0.65
+    vad_min_speech_ms: float = 300.0
+    vad_silence_ms: float = 500.0
+
+    # STT settings
+    stt_backend: str = "faster_whisper"
+    whisper_model: str = "base.en"
+    whisper_device: str = "auto"
+
+    # Echo suppression
+    echo_suppression_enabled: bool = True
+    echo_similarity_threshold: float = 0.85
+
+    # Microphone mode: "vad" or "push_to_talk"
+    mic_mode: str = "vad"
+
+    # Post-speech cooldown before accepting new mic input (ms)
+    post_speech_cooldown_ms: float = 1500.0
+
+    # Listening indicator
+    enable_listening_indicator: bool = True
+
+    # Audio artifact directory
+    audio_artifact_dir: str = "./artifacts/audio"
 
 
 def get_settings() -> BaymaxSettings:

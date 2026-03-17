@@ -112,7 +112,62 @@ All heuristics are documented in detail in `docs/ENGAGEMENT_HEURISTICS.md`.
 These remain unimplemented and return hardcoded values:
 
 - **Emotion estimation**: Returns `EmotionLabel.NEUTRAL`
-- **Frame source / webcam capture**: Returns empty frames
+
+---
+
+## Speech Input / STT (Iteration 008)
+
+### Silero VAD
+
+| Property | Value |
+|----------|-------|
+| **Model** | Silero VAD |
+| **Library** | `torch.hub` (snakers4/silero-vad) |
+| **License** | MIT |
+| **Input** | Raw audio (16-bit PCM, 16000 Hz) |
+| **Output** | Speech probability (0.0-1.0) |
+| **Default threshold** | 0.65 (configurable via `BAYMAX_VAD_THRESHOLD`) |
+| **Min speech duration** | 300ms (configurable via `BAYMAX_VAD_MIN_SPEECH_MS`) |
+| **Silence timeout** | 500ms (configurable via `BAYMAX_VAD_SILENCE_MS`) |
+
+Silero VAD uses a lightweight LSTM-based model to detect speech activity in audio chunks. A 4-state machine (IDLE, SPEECH_STARTED, SPEECH_ONGOING, SILENCE_AFTER_SPEECH) segments continuous audio into discrete speech segments. Model is downloaded on first use via `torch.hub` and cached locally.
+
+### faster-whisper (Default ASR)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `faster_whisper` (default) |
+| **Library** | `faster-whisper` (CTranslate2-based) |
+| **Default model** | `base.en` |
+| **License** | MIT |
+| **Input** | NumPy audio array (16000 Hz) |
+| **Output** | Transcribed text + confidence + latency |
+| **Device** | Auto-detected (GPU if available, else CPU) |
+
+faster-whisper is a CTranslate2-based reimplementation of OpenAI's Whisper model, providing significantly faster inference with lower memory usage. The model is lazy-loaded on first transcription call and cached locally.
+
+### ASR Backend Selection
+
+```bash
+# faster-whisper (default)
+BAYMAX_STT_BACKEND=faster_whisper
+BAYMAX_WHISPER_MODEL=base.en
+BAYMAX_WHISPER_DEVICE=auto
+
+# Null (no transcription, for testing)
+BAYMAX_STT_BACKEND=null
+```
+
+### Echo Suppression
+
+| Property | Value |
+|----------|-------|
+| **Algorithm** | Text similarity (difflib.SequenceMatcher) |
+| **Default threshold** | 0.85 (configurable via `BAYMAX_ECHO_SIMILARITY_THRESHOLD`) |
+| **Comparison** | Case-insensitive, punctuation-stripped |
+| **Buffer** | Last N spoken texts (configurable) |
+
+Compares incoming transcriptions against recently spoken Bay-Max text to prevent echo loops when TTS output is picked up by the microphone.
 
 ---
 
@@ -183,4 +238,56 @@ BAYMAX_HF_DTYPE=auto  # auto | float16 | bfloat16 | float32
 | `BAYMAX_ENABLE_RULE_BASED_FALLBACK` | `true` | Fall back to rule_based on backend failure |
 | `BAYMAX_ENABLE_SAFE_HEALTH_MODE` | `true` | Block diagnosis-style requests |
 | `BAYMAX_ENABLE_DIALOGUE_DEBUG` | `false` | Include debug trace in response |
+
+---
+
+## TTS / Spoken Output (Iteration 007)
+
+### Kokoro (Default)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `kokoro` (default) |
+| **Model** | Kokoro-82M |
+| **Library** | `kokoro` |
+| **License** | Apache 2.0 |
+| **Sample rate** | 24000 Hz |
+| **Default voice** | `af_heart` |
+| **Input** | Text string |
+| **Output** | WAV file |
+
+Kokoro-82M is a lightweight open-weight TTS model with natural-sounding speech. Weights are downloaded on first use and cached locally.
+
+### Piper (Placeholder)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `piper` |
+| **Status** | Placeholder |
+| **Requires** | `piper-tts` + ONNX voice model |
+
+Piper backend is defined but not yet fully implemented. Requires separate installation of `piper-tts` and an ONNX voice model.
+
+### Null (Silent)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `null` |
+| **Status** | Always available |
+| **Output** | No audio |
+
+The null backend produces no audio output. Used as fallback when no TTS engine is available or when speech is not desired.
+
+### TTS Backend Selection
+
+```bash
+# Kokoro (default)
+BAYMAX_TTS_BACKEND=kokoro
+
+# Null (silent, no audio)
+BAYMAX_TTS_BACKEND=null
+
+# Piper (placeholder)
+BAYMAX_TTS_BACKEND=piper
+```
 

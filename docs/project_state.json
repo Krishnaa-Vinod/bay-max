@@ -1,8 +1,8 @@
 {
-  "iteration": "006",
-  "branch_name": "feature/iteration-006-live-webcam-continuity",
+  "iteration": "008",
+  "branch_name": "feature/iteration-008-bidirectional-speech",
   "status": "completed",
-  "last_updated": "2026-03-16",
+  "last_updated": "2026-03-17",
   "modules_implemented": [
     "config",
     "core",
@@ -13,7 +13,9 @@
     "dialogue",
     "orchestrator",
     "perception",
-    "live"
+    "live",
+    "tts",
+    "audio"
   ],
   "modules_stubbed": [
     "capture",
@@ -39,7 +41,10 @@
     "POST /v1/memory/correct",
     "GET /v1/dialogue/backends",
     "GET /v1/live/status",
-    "POST /v1/live/control"
+    "POST /v1/live/control",
+    "GET /v1/tts/backends",
+    "GET /v1/audio/status",
+    "GET /v1/stt/backends"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — not migrated to aiosqlite",
@@ -53,23 +58,30 @@
     "Safety pattern matching is substring-based — may miss paraphrased unsafe requests",
     "Live webcam mode implemented but not exercised on this headless machine (Sol has no camera); replay mode verified via automated tests",
     "OpenCV imshow overlay will fail silently on headless machines — this is expected and handled gracefully",
-    "LiveRuntime asyncio loop not tested end-to-end in automated tests (integration test uses unit-level flow simulation)"
+    "LiveRuntime asyncio loop not tested end-to-end in automated tests (integration test uses unit-level flow simulation)",
+    "PortAudio may not be installed on headless machines (required for TTS audio playback via sounddevice)",
+    "Piper TTS backend is a placeholder — not yet fully implemented",
+    "VT801-VT810 manual hardware tests (microphone, speaker) not_run on Sol — requires real audio hardware",
+    "Silero VAD model requires torch.hub download on first run — cached after that"
   ],
   "next_tasks": [
     "Migrate SQLite store to fully async aiosqlite",
     "Implement emotion estimation from facial expressions",
     "Add LLM-based semantic fact extraction during consolidation",
     "Add salience decay over time for episodic memories",
-    "Run real webcam live session on a machine with a camera",
+    "Run real webcam + mic live session on a machine with audio/camera hardware",
     "Migrate to MediaPipe Tasks API for pose estimation",
     "Add dialogue streaming support (token-by-token)",
     "Evaluate larger model (3B-7B) to improve memory verbalization",
-    "Add Gradio live inspection tab for live-mode state"
+    "Add Gradio live inspection tab for live-mode state",
+    "Complete Piper TTS backend implementation",
+    "Implement barge-in / wake-word detection (deferred from iteration 008)",
+    "Add real-time diarization for multi-speaker support"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP — live webcam continuity",
-    "api_version": "0.5.0"
+    "scope": "vision-first empathetic companion MVP — bidirectional speech (mic + TTS)",
+    "api_version": "0.7.0"
   }
 }

@@ -15,6 +15,11 @@ Bay-Max follows a **modular monolith** architecture. All modules live in a singl
 - MediaPipe (pose estimation)
 - sentence-transformers (text memory embeddings)
 - Ollama or HuggingFace Transformers (local LLM dialogue, optional)
+- Kokoro (TTS, speech synthesis)
+- faster-whisper (ASR, speech-to-text)
+- Silero VAD (voice activity detection)
+- sounddevice (audio capture and playback)
+- soundfile (WAV I/O)
 
 ## Module Map
 
@@ -56,6 +61,19 @@ src/baymax/
 │   ├── prompt_builder.py       GroundedPromptContext builder (plan-then-verbalize)
 │   ├── safety.py               Safety gating (check_safety, check_output_safety)
 │   └── factory.py              create_dialogue_provider() factory with fallback
+├── tts/             Text-to-speech backends and speech service
+│   ├── provider.py             TTSProvider interface + factory + NullTTSProvider
+│   ├── kokoro_provider.py      KokoroTTSProvider (Kokoro-82M)
+│   ├── piper_provider.py       PiperTTSProvider (placeholder)
+│   ├── speech_service.py       SpeechService with queued playback
+│   └── schemas.py              TTS Pydantic schemas
+├── audio/           Speech input pipeline (microphone, VAD, ASR, echo suppression)
+│   ├── schemas.py              Audio Pydantic schemas (AudioChunkInfo, VADDecision, etc.)
+│   ├── microphone.py           MicrophoneCapture + NullMicrophone
+│   ├── vad.py                  SileroVAD + NullVAD (voice activity detection)
+│   ├── transcriber.py          ASRProvider ABC + FasterWhisperProvider + NullASRProvider
+│   ├── echo_suppression.py     EchoSuppressor (text-similarity based)
+│   └── speech_input_service.py SpeechInputService (full pipeline orchestrator)
 └── orchestrator/    End-to-end flow coordination (Orchestrator)
 ```
 
@@ -71,7 +89,12 @@ src/baymax/
    - Build GroundedPromptContext (state, memories, recent turns, safety rules)
    - Route to configured backend (rule_based / ollama / transformers)
    - Fallback to rule_based if backend fails
-7. **Orchestrator**: Coordinates steps 1–6
+7. **Orchestrator**: Coordinates steps 1-6
+7.5. **TTS**: SupportiveResponse text -> speech synthesis -> WAV -> optional playback
+8. **Speech Input** (bidirectional loop):
+   - Microphone capture -> Silero VAD (speech segmentation) -> faster-whisper ASR -> echo suppression
+   - Speaking lock: mic audio discarded while TTS is active + post-speech cooldown
+   - Valid transcriptions stored as ChatTurn with source='speech' -> orchestrator.respond() -> TTS
 
 ## Dialogue Architecture (Iteration 005)
 
@@ -95,7 +118,7 @@ SupportivePlanner → ResponseStrategy
 
 See `docs/DIALOGUE_ARCHITECTURE.md` for full details.
 
-## API Endpoints (v0.4.0)
+## API Endpoints (v0.7.0)
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -116,6 +139,9 @@ See `docs/DIALOGUE_ARCHITECTURE.md` for full details.
 | POST | /v1/memory/search | Semantic memory search |
 | POST | /v1/memory/correct | Correct a semantic fact |
 | GET | /v1/dialogue/backends | Get dialogue backend configuration |
+| GET | /v1/tts/backends | Get TTS backend configuration |
+| GET | /v1/audio/status | Speech input/output runtime status |
+| GET | /v1/stt/backends | STT backend configuration |
 
 ## Storage
 
@@ -135,3 +161,6 @@ Additional iteration decisions:
 - Iteration 003: MediaPipe Pose, heuristic engagement scoring
 - Iteration 004: sentence-transformers embeddings, LanceDB, majority-vote smoothing
 - Iteration 005: plan-then-verbalize dialogue, Ollama + Transformers backends, safety gating
+- Iteration 006: live webcam continuity, event engine, proactive scheduler, artifact logging
+- Iteration 007: TTS spoken output, webcam+TTS verification
+- Iteration 008: Bidirectional speech (mic+VAD+ASR+echo suppression), Baymax-inspired persona

@@ -654,13 +654,15 @@ class Orchestrator:
         role: TurnRole,
         text: str,
         user_id: UUID | None = None,
+        source: str = "typed",
     ) -> ChatTurn:
-        """Add a typed conversation turn to a session."""
+        """Add a typed or spoken conversation turn to a session."""
         turn = ChatTurn(
             session_id=session_id,
             user_id=user_id,
             role=role,
             text=text,
+            source=source,
         )
         stored = await self.store.store_chat_turn(turn)
         return stored
