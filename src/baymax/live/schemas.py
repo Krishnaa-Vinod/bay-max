@@ -62,6 +62,14 @@ class LiveRuntimeStatus(BaseModel):
     last_heard_text: str = ""
     transcription_latency_ms: float = 0.0
     mic_mode: str = "vad"
+    # Iteration 009 — affect analysis state
+    affect_enabled: bool = False
+    affect_backend: str = ""
+    emotion_valence: float = 0.0
+    emotion_arousal: float = 0.0
+    emotion_confidence: float = 0.0
+    emotion_stable_duration_sec: float = 0.0
+    emotion_debug_summary: str = ""
 
 
 class LiveFrameResult(BaseModel):

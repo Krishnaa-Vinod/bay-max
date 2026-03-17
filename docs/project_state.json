@@ -1,6 +1,6 @@
 {
-  "iteration": "008",
-  "branch_name": "feature/iteration-008-bidirectional-speech",
+  "iteration": "009",
+  "branch_name": "feature/iteration-009-affect-aware-companion",
   "status": "completed",
   "last_updated": "2026-03-17",
   "modules_implemented": [
@@ -15,11 +15,13 @@
     "perception",
     "live",
     "tts",
-    "audio"
+    "audio",
+    "perception/emotion",
+    "perception/emotion_smoother",
+    "memory/clinical_safety"
   ],
   "modules_stubbed": [
-    "capture",
-    "perception/emotion_estimator"
+    "capture"
   ],
   "tests_passing": true,
   "api_endpoints": [
@@ -44,11 +46,11 @@
     "POST /v1/live/control",
     "GET /v1/tts/backends",
     "GET /v1/audio/status",
-    "GET /v1/stt/backends"
+    "GET /v1/stt/backends",
+    "GET /v1/emotion/backends"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — not migrated to aiosqlite",
-    "Emotion estimator remains stubbed (always returns NEUTRAL)",
     "Gradio demo uses sync-to-async ThreadPoolExecutor workaround",
     "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)",
     "LanceDB vector store requires separate install (pip install baymax[vector])",
@@ -62,26 +64,32 @@
     "PortAudio may not be installed on headless machines (required for TTS audio playback via sounddevice)",
     "Piper TTS backend is a placeholder — not yet fully implemented",
     "VT801-VT810 manual hardware tests (microphone, speaker) not_run on Sol — requires real audio hardware",
-    "Silero VAD model requires torch.hub download on first run — cached after that"
+    "Silero VAD model requires torch.hub download on first run — cached after that",
+    "py-feat affect backend attempted but incompatible with Python 3.11 environment due to setuptools conflicts",
+    "MediaPipe Face Landmarker blendshape-to-affect mapping uses custom heuristics — not clinically validated",
+    "Affect analysis requires good lighting and front-facing poses for reliable confidence scores",
+    "Manual affect verification tests (VT930-VT936) require local laptop with test images — not run on headless Sol"
   ],
   "next_tasks": [
     "Migrate SQLite store to fully async aiosqlite",
-    "Implement emotion estimation from facial expressions",
     "Add LLM-based semantic fact extraction during consolidation",
     "Add salience decay over time for episodic memories",
-    "Run real webcam + mic live session on a machine with audio/camera hardware",
+    "Run real webcam + mic + affect live session on a machine with audio/camera hardware",
     "Migrate to MediaPipe Tasks API for pose estimation",
     "Add dialogue streaming support (token-by-token)",
     "Evaluate larger model (3B-7B) to improve memory verbalization",
-    "Add Gradio live inspection tab for live-mode state",
+    "Add Gradio live inspection tab for live-mode state including affect analysis",
     "Complete Piper TTS backend implementation",
     "Implement barge-in / wake-word detection (deferred from iteration 008)",
-    "Add real-time diarization for multi-speaker support"
+    "Add real-time diarization for multi-speaker support",
+    "Integrate py-feat backend when Python compatibility issues are resolved",
+    "Add affect pattern learning over multiple sessions",
+    "Implement acoustic affect analysis from audio signals"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP — bidirectional speech (mic + TTS)",
-    "api_version": "0.7.0"
+    "scope": "vision-first empathetic companion MVP — affect-aware responses from facial expressions",
+    "api_version": "0.8.0"
   }
 }

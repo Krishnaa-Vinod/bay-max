@@ -1,0 +1,478 @@
+{
+  "prompt_version": "2026-03-17.iteration-009",
+  "agent_role": "You are the lead implementation agent for the Bay-Max repository. Your job is to extend the current bidirectional speech + live runtime system into an affect-aware companion layer. You must add a replaceable facial affect backend, integrate smoothed affect into state/planning/prompting, keep the system explicitly non-clinical, update all docs, add proof-oriented verification artifacts, run tests, and push your work.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-008-bidirectional-speech",
+    "working_branch": "feature/iteration-009-affect-aware-companion"
+  },
+  "iteration_context": {
+    "previous_iteration_status": "Iteration 008 completed bidirectional speech with faster-whisper, Silero VAD, echo suppression, Baymax-inspired persona guidance, and 356 passing automated tests. Manual audio-hardware verification remained not_run on Sol because the machine is headless and has no microphone/speakers.",
+    "current_goal": "Add facial affect understanding that biases Bay-Max's tone and strategy in a soft, explainable, non-clinical way."
+  },
+  "hard_requirements": {
+    "docs_must_be_updated_every_iteration": [
+      "README.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/PROJECT_MEMORY.md",
+      "docs/CHANGELOG.md",
+      "docs/project_state.json",
+      "docs/MODEL_STACK.md",
+      "docs/LOCAL_TESTING.md",
+      "docs/COMPANION_PERSONA.md"
+    ],
+    "new_docs_required": [
+      "docs/EMOTION_ARCHITECTURE.md"
+    ],
+    "docs_must_match_code": true,
+    "keep_runtime_non_clinical": true,
+    "keep_backend_replaceable": true,
+    "artifact_proof_required": true
+  },
+  "scope": {
+    "in_scope": [
+      "facial affect backend abstraction",
+      "Py-Feat integration as the default research backend if compatible",
+      "NullEmotion backend always available",
+      "optional fallback backend hook for MediaPipe Face Landmarker blendshapes if Py-Feat proves incompatible or too brittle",
+      "smoothed valence/arousal state",
+      "AU or facial-feature evidence logging for explainability",
+      "soft planner bias using affect state",
+      "prompt-builder integration for tone adaptation",
+      "session-level affect memory summaries with strict gating",
+      "artifact logging for affect timelines and strategy changes",
+      "replay-based local manual testing and automated tests on Sol"
+    ],
+    "out_of_scope": [
+      "medical diagnosis",
+      "mental-health diagnosis",
+      "physiological symptom detection",
+      "new speech models",
+      "wake word",
+      "barge-in",
+      "robotics",
+      "wearables",
+      "doctor report ingestion",
+      "cloud APIs",
+      "paid APIs",
+      "full multimodal clinical risk scoring"
+    ]
+  },
+  "model_policy": {
+    "default_affect_backend": "pyfeat",
+    "required_backends": [
+      "null",
+      "pyfeat"
+    ],
+    "optional_backend": "mediapipe_face_blendshapes",
+    "guidance": [
+      "Py-Feat is acceptable for this research iteration because it supports Action Units, emotion-related outputs, landmarks, and analysis tooling under an MIT package license; however, respect the licenses of the underlying pretrained models.",
+      "Do not assume Py-Feat is production-grade or low-latency enough for every frame.",
+      "Run affect inference at a lower cadence than face tracking/identity, e.g. on stable keyframes or every N frames.",
+      "If Py-Feat is incompatible with the project's Python/runtime environment, implement a graceful fallback and report the exact blocker honestly."
+    ]
+  },
+  "engineering_requirements": [
+    "Preserve the modular monolith architecture.",
+    "Do not break existing face ID, pose, memory, speech input, TTS, or live runtime flows.",
+    "Make affect analysis optional and configurable.",
+    "Do not store raw face images in git or long-term user memory.",
+    "Use environment variables for backend selection, thresholds, cadence, smoothing, and storage paths.",
+    "Do not expose valence/arousal numbers to the user by default; keep those for debug/status surfaces.",
+    "Add a visible runtime/debug indicator when affect analysis is enabled.",
+    "Keep all docs aligned with the actual implementation."
+  ],
+  "required_env_vars": [
+    "BAYMAX_ENABLE_AFFECT",
+    "BAYMAX_AFFECT_BACKEND",
+    "BAYMAX_AFFECT_DEVICE",
+    "BAYMAX_AFFECT_SAMPLE_EVERY_N_FRAMES",
+    "BAYMAX_AFFECT_CONFIDENCE_THRESHOLD",
+    "BAYMAX_AFFECT_SMOOTHING_ALPHA",
+    "BAYMAX_AFFECT_STABILITY_DURATION_SEC",
+    "BAYMAX_AFFECT_MEMORY_CONFIDENCE_THRESHOLD",
+    "BAYMAX_AFFECT_BIAS_ENABLED",
+    "BAYMAX_AFFECT_BIAS_CONFIDENCE_THRESHOLD",
+    "BAYMAX_AFFECT_NEGATIVE_VALENCE_THRESHOLD",
+    "BAYMAX_AFFECT_POSITIVE_VALENCE_THRESHOLD",
+    "BAYMAX_AFFECT_LOW_AROUSAL_THRESHOLD",
+    "BAYMAX_AFFECT_HIGH_AROUSAL_THRESHOLD",
+    "BAYMAX_AFFECT_DEBUG",
+    "BAYMAX_AFFECT_ARTIFACT_DIR"
+  ],
+  "required_env_defaults": {
+    "BAYMAX_ENABLE_AFFECT": "true",
+    "BAYMAX_AFFECT_BACKEND": "pyfeat",
+    "BAYMAX_AFFECT_DEVICE": "auto",
+    "BAYMAX_AFFECT_SAMPLE_EVERY_N_FRAMES": "10",
+    "BAYMAX_AFFECT_CONFIDENCE_THRESHOLD": "0.60",
+    "BAYMAX_AFFECT_SMOOTHING_ALPHA": "0.25",
+    "BAYMAX_AFFECT_STABILITY_DURATION_SEC": "30",
+    "BAYMAX_AFFECT_MEMORY_CONFIDENCE_THRESHOLD": "0.65",
+    "BAYMAX_AFFECT_BIAS_ENABLED": "true",
+    "BAYMAX_AFFECT_BIAS_CONFIDENCE_THRESHOLD": "0.60",
+    "BAYMAX_AFFECT_NEGATIVE_VALENCE_THRESHOLD": "-0.30",
+    "BAYMAX_AFFECT_POSITIVE_VALENCE_THRESHOLD": "0.40",
+    "BAYMAX_AFFECT_LOW_AROUSAL_THRESHOLD": "0.40",
+    "BAYMAX_AFFECT_HIGH_AROUSAL_THRESHOLD": "0.55",
+    "BAYMAX_AFFECT_DEBUG": "false",
+    "BAYMAX_AFFECT_ARTIFACT_DIR": "./artifacts/affect"
+  },
+  "required_repo_changes": [
+    "Create docs/EMOTION_ARCHITECTURE.md.",
+    "Update docs/COMPANION_PERSONA.md to explain how Baymax-inspired tone shifts with soft affect cues without becoming clinical or melodramatic.",
+    "Update docs/MODEL_STACK.md with affect backend choices and limitations.",
+    "Update docs/LOCAL_TESTING.md with replay-based affect verification instructions.",
+    "Update reports with iteration-009 files.",
+    "Update project_state.json to reflect remaining stubs and next tasks."
+  ],
+  "required_code_changes": [
+    "Add src/baymax/perception/emotion.py with a replaceable EmotionAnalyzer interface and at least NullEmotionAnalyzer plus PyFeatEmotionAnalyzer.",
+    "If Py-Feat can consume existing detected-face data cleanly, reuse the current face pipeline; otherwise document the fallback path honestly and keep the adapter isolated.",
+    "Add src/baymax/perception/emotion_smoother.py or equivalent smoothing/state helper.",
+    "Extend perception/state schemas with affect result, smoothed affect state, and evidence metadata.",
+    "Extend InteractionState with valence, arousal, affect_confidence, top_AUs_or_equivalent, affect_stable_duration_sec, and affect_enabled.",
+    "Integrate affect inference into the live runtime/perception loop at a lower cadence than face ID.",
+    "Update planner to use soft affect bias only when confidence is sufficient.",
+    "Update prompt builder to include a short internal affect context note when confidence is sufficient, explicitly labeling it as a soft observation and not a diagnosis.",
+    "Update memory consolidation to write session-level affect summaries only when stable and confident, and to block diagnostic/clinical wording.",
+    "Add status/debug/API surfaces for active affect backend and latest smoothed affect state.",
+    "Add artifact logging for affect timeline, strategy changes, and selected annotated snapshots or debug JSON outputs."
+  ],
+  "design_requirements": [
+    "Valence/arousal must be the planner-facing signal; AUs or equivalent facial coefficients are primarily for explainability, debugging, and proof artifacts.",
+    "Do not let a single frame override dialogue strategy.",
+    "Do not persist raw single-frame emotion guesses as long-term memory.",
+    "Do not let affect override safety or identity logic.",
+    "If confidence is low, return unknown and leave planner behavior unchanged.",
+    "Use wording like 'soft affect cues suggest lower positive affect' or 'user appeared consistently more positive and engaged' rather than diagnostic labels.",
+    "Treat 'fatigue' and similar condition-like words cautiously; prefer 'low-energy cues' unless clearly justified and non-clinical."
+  ],
+  "api_changes": [
+    {
+      "method": "GET",
+      "path": "/v1/emotion/backends",
+      "purpose": "Return configured/available affect backends and active settings.",
+      "must_return": [
+        "available_backends",
+        "active_backend",
+        "active_model_or_runtime",
+        "enabled",
+        "sample_every_n_frames"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/live/status",
+      "purpose": "Extend live status with affect fields when enabled.",
+      "must_return_additions": [
+        "affect_enabled",
+        "affect_backend",
+        "emotion_valence",
+        "emotion_arousal",
+        "emotion_confidence",
+        "emotion_stable_duration_sec",
+        "emotion_debug_summary"
+      ]
+    }
+  ],
+  "schema_requirements": {
+    "must_add_or_extend_models": [
+      "EmotionResult",
+      "AffectEvidence",
+      "SmoothedAffectState",
+      "EmotionBackendInfo",
+      "AffectMemoryObservation",
+      "AffectTimelinePoint"
+    ],
+    "must_include_fields": [
+      "backend",
+      "confidence",
+      "valence",
+      "arousal",
+      "dominant_emotion_soft_label_or_none",
+      "timestamps",
+      "evidence references",
+      "processing_ms where available"
+    ]
+  },
+  "memory_policy": [
+    "Do not store one memory per frame.",
+    "Store only session-level or stable-window affect summaries.",
+    "Never store diagnoses or disorder labels.",
+    "Block words/phrases like diagnosis, disorder, depressed, anxiety disorder, bipolar, symptoms of, clinically, clinical depression, psychiatric, panic disorder.",
+    "Keep correction/deletion compatibility for affect-derived semantic summaries.",
+    "If affect data is inconsistent or low-confidence, do not write it to memory."
+  ],
+  "tasks": [
+    {
+      "id": "T901",
+      "title": "Compatibility spike and architecture audit",
+      "actions": [
+        "Audit iteration-008 runtime, packaging, and docs for readiness.",
+        "Verify whether Py-Feat imports and initializes successfully in the project's real Python/runtime environment.",
+        "If Py-Feat is incompatible, document the blocker exactly and keep a working NullEmotion backend plus optional MediaPipe fallback hook.",
+        "Update pyproject extras/install docs accordingly."
+      ],
+      "acceptance_criteria": [
+        "The report states clearly whether Py-Feat ran for real or was blocked.",
+        "The repo remains installable.",
+        "No doc/install drift remains."
+      ]
+    },
+    {
+      "id": "T902",
+      "title": "Implement affect backend abstraction",
+      "actions": [
+        "Create EmotionAnalyzer interface.",
+        "Implement NullEmotionAnalyzer.",
+        "Implement PyFeatEmotionAnalyzer if compatible.",
+        "Add clean backend selection via settings.",
+        "Return structured affect outputs without clinical labels."
+      ],
+      "acceptance_criteria": [
+        "At least one real backend and one null backend exist or the real backend blocker is honestly documented.",
+        "Backend selection works through settings/environment variables."
+      ]
+    },
+    {
+      "id": "T903",
+      "title": "Add smoothing and state integration",
+      "actions": [
+        "Implement EMA or equivalent smoothing for valence/arousal.",
+        "Track stability duration and meaningful state changes.",
+        "Integrate affect state into InteractionState and live status.",
+        "Run affect inference at a lower cadence than face ID to protect runtime stability."
+      ],
+      "acceptance_criteria": [
+        "State contains smoothed affect fields.",
+        "Low-confidence inputs do not create false precision.",
+        "Cadence/sampling is configurable and documented."
+      ]
+    },
+    {
+      "id": "T904",
+      "title": "Planner bias and prompt-builder integration",
+      "actions": [
+        "Add soft affect bias to the supportive planner.",
+        "Bias must be confidence-gated and reversible.",
+        "Update prompt builder to include a short internal affect note when appropriate.",
+        "Update companion persona guidance so Baymax-inspired tone becomes gentler, calmer, or slightly more engaging depending on affect cues, without becoming theatrical."
+      ],
+      "acceptance_criteria": [
+        "Low-valence/low-arousal states soften encouragement into validation or gentler support where appropriate.",
+        "High-valence/high-arousal states can support lighter engagement where appropriate.",
+        "Low-confidence states leave strategy unchanged."
+      ]
+    },
+    {
+      "id": "T905",
+      "title": "Memory consolidation and safety enforcement",
+      "actions": [
+        "Add affect summary generation in consolidation.",
+        "Require stability duration and confidence threshold for writes.",
+        "Implement diagnostic-language blocklist and tests.",
+        "Ensure memory summaries remain non-clinical and explainable."
+      ],
+      "acceptance_criteria": [
+        "Affect summaries can be created from stable session state.",
+        "Clinical/diagnostic phrasing is blocked or sanitized.",
+        "No per-frame affect spam enters long-term memory."
+      ]
+    },
+    {
+      "id": "T906",
+      "title": "Artifact logging and replay/manual tooling",
+      "actions": [
+        "Add affect artifact output (timeline JSON/CSV, strategy-change log, selected annotated frames if feasible).",
+        "Add a replay-based manual verification path using local images or short clips rather than webcam only.",
+        "Add helper scripts if useful for repeatable replay tests.",
+        "Keep artifact directories outside git except small manifest/summary files."
+      ],
+      "acceptance_criteria": [
+        "A tester can verify affect behavior locally using replay inputs.",
+        "Artifacts are saved with enough detail to audit what the system inferred and how strategy changed."
+      ]
+    },
+    {
+      "id": "T907",
+      "title": "Tests, docs, report, commit, and push",
+      "actions": [
+        "Add automated tests for schemas, smoothing, backend selection, planner bias, prompt inclusion, memory blocklist, status/API fields, and project_state validity.",
+        "Mock heavy model calls where appropriate.",
+        "Run lint and tests.",
+        "Run at least one honest local or replay-based manual verification if the environment allows; otherwise mark not_run and explain exactly why.",
+        "Update all required docs.",
+        "Write reports/iteration-009.md and reports/iteration-009.json.",
+        "Commit and push the branch."
+      ],
+      "acceptance_criteria": [
+        "Automated tests pass.",
+        "Docs reflect actual implementation.",
+        "Verification artifacts exist.",
+        "The branch is pushed."
+      ]
+    }
+  ],
+  "manual_verification_requirements": {
+    "preferred_mode": "local replay on laptop/workstation with saved images or short clips",
+    "must_support": [
+      "smile or positive-expression clip",
+      "neutral-expression clip",
+      "worried/low-positive-affect or low-energy-expression clip",
+      "occluded or low-confidence clip",
+      "session-level stable-state memory write check",
+      "response-tone comparison across at least two affect conditions"
+    ],
+    "note": "Do not claim clinical accuracy. Manual checks are about system behavior and tone adaptation, not medical truth."
+  },
+  "testing_requirements": {
+    "must_have_automated_tests": [
+      "EmotionResult schema validation",
+      "backend selection and fallback behavior",
+      "smoothing/EMA behavior",
+      "stability-duration tracking",
+      "low-valence planner bias",
+      "high-valence planner bias",
+      "low-confidence no-change behavior",
+      "prompt builder includes affect context only when confidence is sufficient",
+      "memory blocklist enforcement",
+      "GET /v1/emotion/backends",
+      "live status affect fields",
+      "project_state.json validity"
+    ],
+    "must_have_manual_or_replay_checks": [
+      "positive-expression replay or live sample",
+      "neutral-expression replay or live sample",
+      "occlusion/low-confidence no-guess behavior",
+      "tone-shift comparison",
+      "stable-state affect memory write behavior"
+    ],
+    "test_honesty_rules": [
+      "Do not claim real emotion understanding beyond the exact tested behavior.",
+      "Do not claim Py-Feat works in the runtime unless you actually imported and ran it.",
+      "If the real backend is blocked, say so explicitly and keep the project runnable with a null backend."
+    ]
+  },
+  "report_requirements": {
+    "markdown_path": "reports/iteration-009.md",
+    "json_path": "reports/iteration-009.json",
+    "must_include": [
+      "branch_name",
+      "latest_commit_sha",
+      "summary",
+      "affect_backends",
+      "tasks_completed",
+      "tasks_partial",
+      "tasks_not_done",
+      "files_created",
+      "files_modified",
+      "commands_run",
+      "automated_tests_run",
+      "manual_or_replay_verification_results",
+      "api_endpoints_verified",
+      "known_issues",
+      "config_defaults_used",
+      "artifact_output_locations",
+      "deviations_from_prompt",
+      "next_recommended_tasks",
+      "risks",
+      "open_questions",
+      "doc_parity_check"
+    ]
+  },
+  "iteration_report_json_schema": {
+    "iteration": "009",
+    "branch_name": "string",
+    "latest_commit_sha": "string",
+    "status": "completed|partial|blocked",
+    "summary": "string",
+    "affect_backends": [
+      {
+        "backend": "string",
+        "status": "implemented|partial|blocked|not_implemented",
+        "model_or_runtime": "string",
+        "notes": "string"
+      }
+    ],
+    "tasks_completed": [
+      {
+        "id": "string",
+        "title": "string",
+        "evidence": ["string"]
+      }
+    ],
+    "tasks_partial": [
+      {
+        "id": "string",
+        "reason": "string",
+        "remaining_work": ["string"]
+      }
+    ],
+    "tasks_not_done": [
+      {
+        "id": "string",
+        "reason": "string"
+      }
+    ],
+    "files_created": ["string"],
+    "files_modified": ["string"],
+    "commands_run": ["string"],
+    "automated_tests_run": [
+      {
+        "command": "string",
+        "result": "passed|failed",
+        "notes": "string"
+      }
+    ],
+    "manual_or_replay_verification_results": [
+      {
+        "id": "string",
+        "case": "string",
+        "result": "passed|failed|ambiguous|not_run",
+        "notes": "string",
+        "artifact_files": ["string"]
+      }
+    ],
+    "api_endpoints_verified": [
+      {
+        "path": "string",
+        "result": "passed|failed|partial",
+        "notes": "string"
+      }
+    ],
+    "config_defaults_used": {
+      "affect_backend": "string",
+      "affect_sample_every_n_frames": "string",
+      "affect_confidence_threshold": "string",
+      "affect_smoothing_alpha": "string",
+      "affect_stability_duration_sec": "string"
+    },
+    "artifact_output_locations": ["string"],
+    "known_issues": ["string"],
+    "deviations_from_prompt": ["string"],
+    "risks": ["string"],
+    "open_questions": ["string"],
+    "next_recommended_tasks": ["string"],
+    "doc_parity_check": {
+      "readme_matches_install_flow": "true|false",
+      "roadmap_matches_iteration_status": "true|false",
+      "architecture_matches_code": "true|false",
+      "notes": "string"
+    }
+  },
+  "definition_of_done": [
+    "Branch is pushed.",
+    "Architecture and core docs are updated and match the code.",
+    "Affect backend abstraction exists with at least one working path or an honestly documented blocker plus runnable fallback.",
+    "State contains smoothed affect fields.",
+    "Planner uses soft affect bias only under confidence gating.",
+    "Prompt builder includes affect context safely.",
+    "Memory consolidation writes only stable, non-clinical affect summaries.",
+    "Verification artifacts exist.",
+    "Automated tests pass.",
+    "Manual or replay verification results are reported honestly.",
+    "Iteration report exists in markdown and JSON."
+  ]
+}

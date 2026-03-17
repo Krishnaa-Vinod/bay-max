@@ -1,7 +1,7 @@
 {
   "iteration": "008",
   "branch_name": "feature/iteration-008-bidirectional-speech",
-  "latest_commit_sha": "pending",
+  "latest_commit_sha": "84d95d4",
   "status": "completed",
   "summary": "Iteration 008 adds bidirectional speech to Bay-Max: a full speech input pipeline (Microphone -> Silero VAD -> faster-whisper ASR -> echo suppression -> dialogue) integrated into the live runtime alongside existing TTS output. The audio package provides modular abstractions for microphone capture, voice activity detection, ASR transcription, and echo suppression, with Null* stubs for headless/CI testing. Spoken user turns enter the same session/memory path as typed turns (source='speech'). A speaking lock discards mic audio while TTS is active, with a configurable post-speech cooldown. A Baymax-inspired companion persona style guide is injected into the system prompt for calm, gentle, literal tone. Two new API endpoints (GET /v1/audio/status, GET /v1/stt/backends) expose speech-input state. Push-to-talk mode is supported alongside continuous VAD. All 356 automated tests pass (296 existing + 60 new). Lint clean. Manual hardware tests (VT801-VT810) are honestly marked not_run — Sol is a headless HPC machine with no microphone or speakers.",
   "speech_input_backends": [

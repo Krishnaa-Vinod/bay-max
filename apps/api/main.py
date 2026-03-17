@@ -376,6 +376,14 @@ class AudioStatusResponse(BaseModel):
     last_heard_text: str = ""
     last_spoken_text: str = ""
     transcription_latency_ms: float = 0.0
+    # Iteration 009 — affect analysis state
+    affect_enabled: bool = False
+    affect_backend: str = ""
+    emotion_valence: float = 0.0
+    emotion_arousal: float = 0.0
+    emotion_confidence: float = 0.0
+    emotion_stable_duration_sec: float = 0.0
+    emotion_debug_summary: str = ""
 
 
 @app.get("/v1/audio/status", response_model=AudioStatusResponse)
@@ -385,6 +393,8 @@ async def get_audio_status() -> AudioStatusResponse:
     response = AudioStatusResponse(
         speech_input_enabled=settings.enable_speech_input,
         tts_backend=settings.tts_backend,
+        affect_enabled=settings.enable_affect,
+        affect_backend=settings.affect_backend,
     )
     if _live_runtime is not None:
         status = _live_runtime.status
@@ -395,6 +405,12 @@ async def get_audio_status() -> AudioStatusResponse:
         response.last_heard_text = status.last_heard_text
         response.last_spoken_text = status.last_spoken_text
         response.transcription_latency_ms = status.transcription_latency_ms
+        # Affect fields from live runtime status (iteration 009)
+        response.emotion_valence = status.emotion_valence
+        response.emotion_arousal = status.emotion_arousal
+        response.emotion_confidence = status.emotion_confidence
+        response.emotion_stable_duration_sec = status.emotion_stable_duration_sec
+        response.emotion_debug_summary = status.emotion_debug_summary
     return response
 
 
@@ -417,4 +433,40 @@ async def get_stt_backends() -> STTBackendsResponse:
         active_backend=settings.stt_backend,
         active_model=settings.whisper_model,
         vad_backend=settings.vad_backend,
+    )
+
+
+# --- Iteration 009: Affect Analysis / Facial Emotion Recognition ---
+
+
+class EmotionBackendsResponse(BaseModel):
+    """Response for emotion backends endpoint."""
+
+    available_backends: list[str]
+    active_backend: str
+    active_model_or_runtime: str
+    enabled: bool
+    sample_every_n_frames: int
+
+
+@app.get("/v1/emotion/backends", response_model=EmotionBackendsResponse)
+async def get_emotion_backends() -> EmotionBackendsResponse:
+    """Return configured and available affect analysis backends."""
+    settings = get_settings()
+    available = ["null", "mediapipe"]
+
+    # Determine active model/runtime description
+    if settings.affect_backend == "mediapipe":
+        active_model = "MediaPipe Face Landmarker with blendshapes"
+    elif settings.affect_backend == "null":
+        active_model = "NullEmotionAnalyzer (testing/fallback)"
+    else:
+        active_model = f"{settings.affect_backend} (unknown)"
+
+    return EmotionBackendsResponse(
+        available_backends=available,
+        active_backend=settings.affect_backend,
+        active_model_or_runtime=active_model,
+        enabled=settings.enable_affect,
+        sample_every_n_frames=settings.affect_sample_every_n_frames,
     )
