@@ -57,13 +57,27 @@
 - [x] Smoke test script (`scripts/dialogue_smoke.py`)
 - [x] All docs updated, 36 new tests (194 total)
 
+## Iteration 006 - Live Webcam Continuity (Completed)
+- [x] Continuous frame source abstraction (webcam + video replay + folder replay)
+- [x] Automatic session lifecycle: start, pause, resume, end based on presence/absence
+- [x] Event engine: arrival, departure, recognition gained/lost, posture/engagement change, quiet companionship
+- [x] Proactive response scheduler with global and per-event-type cooldowns
+- [x] Memory-grounded proactive responses via existing planner+dialogue stack
+- [x] Live overlay renderer (headless-safe, NumPy-based)
+- [x] ArtifactLogger: JSONL event log, response log, session timeline, manifest, summary
+- [x] CLI runner `scripts/live_companion.py` for webcam and replay modes
+- [x] `GET /v1/live/status` and `POST /v1/live/control` API endpoints
+- [x] New docs: LIVE_MODE_ARCHITECTURE.md, EVENT_ENGINE.md
+- [x] 62 new tests (256 total)
+
 ## Future Iterations
 - Async SQLite migration (aiosqlite throughout)
 - Emotion recognition from facial expressions
 - Multi-session user journey tracking
-- Proactive check-ins and salience-decay for episodic memory
+- Salience-decay over time for episodic memory
 - Conversation history and context window management
-- Audio integration (Whisper)
+- Audio integration (Whisper STT, TTS)
 - MediaPipe Tasks API migration for pose estimation
 - LLM-based semantic fact extraction during consolidation
+- Gradio live inspection tab for live-mode state
 - Production deployment considerations

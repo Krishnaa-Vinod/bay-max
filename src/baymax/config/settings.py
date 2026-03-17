@@ -90,6 +90,34 @@ class BaymaxSettings(BaseSettings):
     # Enable rule-based fallback when the selected backend fails
     enable_rule_based_fallback: bool = True
 
+    # --- Iteration 006: Live webcam continuity settings ---
+
+    # Source type: "webcam" | "replay"
+    live_source: str = "webcam"
+    live_camera_index: int = 0
+
+    # Frame rate / analysis cadence
+    preview_fps: int = 8
+    analysis_interval_sec: float = 2.0
+
+    # Presence detection thresholds
+    presence_min_consecutive_frames: int = 2
+    absence_timeout_sec: float = 30.0
+    session_resume_window_sec: float = 300.0
+
+    # Response cooldowns
+    proactive_min_interval_sec: float = 30.0
+    any_response_min_interval_sec: float = 10.0
+    quiet_companionship_interval_sec: float = 300.0
+    event_min_stability_sec: float = 4.0
+
+    # Live overlay and artifacts
+    enable_live_overlay: bool = True
+    enable_artifact_logging: bool = True
+    live_artifact_dir: str = "./artifacts/live_run_006"
+    live_max_run_sec: float = 0.0  # 0 = unlimited
+    live_video_replay_path: str = ""
+
 
 def get_settings() -> BaymaxSettings:
     """Return a settings instance."""
