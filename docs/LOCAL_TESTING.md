@@ -315,6 +315,91 @@ make verify-007        # Run iteration 007 verification script
 
 ---
 
+## Speech Input Testing (Iteration 008)
+
+### Environment Variables for Speech Input
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BAYMAX_ENABLE_SPEECH_INPUT` | `true` | Enable/disable speech input globally |
+| `BAYMAX_MIC_BACKEND` | `sounddevice` | Microphone backend |
+| `BAYMAX_MIC_SAMPLE_RATE` | `16000` | Audio sample rate in Hz |
+| `BAYMAX_MIC_CHANNELS` | `1` | Audio channels (mono) |
+| `BAYMAX_MIC_DEVICE` | `default` | Microphone device ID |
+| `BAYMAX_VAD_BACKEND` | `silero` | VAD backend: `silero` or `null` |
+| `BAYMAX_VAD_THRESHOLD` | `0.65` | Speech detection threshold (0.0-1.0) |
+| `BAYMAX_VAD_MIN_SPEECH_MS` | `300` | Min speech duration in ms |
+| `BAYMAX_VAD_SILENCE_MS` | `500` | Silence timeout to end segment in ms |
+| `BAYMAX_STT_BACKEND` | `faster_whisper` | ASR backend: `faster_whisper` or `null` |
+| `BAYMAX_WHISPER_MODEL` | `base.en` | Whisper model name |
+| `BAYMAX_WHISPER_DEVICE` | `auto` | Compute device for ASR |
+| `BAYMAX_ECHO_SUPPRESSION_ENABLED` | `true` | Enable echo suppression |
+| `BAYMAX_ECHO_SIMILARITY_THRESHOLD` | `0.85` | Echo text similarity threshold |
+| `BAYMAX_MIC_MODE` | `vad` | Mic mode: `vad` or `push_to_talk` |
+| `BAYMAX_POST_SPEECH_COOLDOWN_MS` | `1500` | Cooldown after TTS finishes in ms |
+| `BAYMAX_ENABLE_LISTENING_INDICATOR` | `true` | Show listening state indicator |
+| `BAYMAX_AUDIO_ARTIFACT_DIR` | `./artifacts/audio` | Directory for audio artifacts |
+
+### Installing Speech Dependencies
+
+```bash
+pip install -e ".[speech]"
+
+# Or install everything
+pip install -e ".[all]"
+```
+
+This installs `faster-whisper`, `sounddevice`, and `soundfile` for speech input.
+
+### Testing Full Bidirectional Speech
+
+```bash
+# Webcam + TTS + Speech Input (full bidirectional)
+make live-webcam-speech
+# or
+python scripts/live_companion.py --stt-backend faster_whisper --tts-backend kokoro
+
+# Push-to-talk mode (manual trigger instead of continuous VAD)
+python scripts/live_companion.py --stt-backend faster_whisper --mic-mode push_to_talk
+
+# Speech input without TTS
+python scripts/live_companion.py --stt-backend faster_whisper --no-tts
+
+# Webcam only (no speech input)
+python scripts/live_companion.py --no-speech-input
+```
+
+### Checking Speech Status via API
+
+```bash
+# Check speech input/output status
+curl http://localhost:8000/v1/audio/status
+
+# Check STT backends
+curl http://localhost:8000/v1/stt/backends
+```
+
+### Smoke Test Checklist (Iteration 008)
+
+1. `make test` passes (356 tests)
+2. `make lint` passes (0 errors)
+3. `pip install -e ".[speech]"` completes without errors
+4. `curl http://localhost:8000/v1/audio/status` returns JSON with `speech_input_enabled`, `listening`, `stt_backend`
+5. `curl http://localhost:8000/v1/stt/backends` returns JSON with `available_backends`, `active_backend`
+6. `python scripts/live_companion.py --stt-backend faster_whisper` starts without crash (requires microphone)
+7. Speaking a phrase produces a transcription and a spoken response (requires mic + speakers)
+
+### Speech Input Troubleshooting
+
+- **PortAudio not found**: Install PortAudio system package (`apt install portaudio19-dev` on Debian/Ubuntu)
+- **No microphone on headless machine**: Set `BAYMAX_ENABLE_SPEECH_INPUT=false` or use `--no-speech-input` flag
+- **Silero VAD model download fails**: Check internet connectivity; model is cached after first download via `torch.hub`
+- **faster-whisper model download fails**: Check internet connectivity; model is cached in HuggingFace cache directory
+- **Echo loop (Bay-Max responds to itself)**: Increase `BAYMAX_ECHO_SIMILARITY_THRESHOLD` or `BAYMAX_POST_SPEECH_COOLDOWN_MS`
+- **False VAD triggers**: Increase `BAYMAX_VAD_THRESHOLD` (e.g., 0.75) and `BAYMAX_VAD_MIN_SPEECH_MS` (e.g., 500)
+
+---
+
 ## Troubleshooting
 
 - **MediaPipe import error**: Ensure `mediapipe>=0.10.0` is installed. On some HPC systems, you may need to install from a wheel.

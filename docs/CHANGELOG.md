@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.7.0] - 2026-03-17 (Iteration 008)
+
+### Added
+- New `src/baymax/audio/` package: `schemas.py` (audio Pydantic schemas), `microphone.py` (MicrophoneCapture + NullMicrophone), `vad.py` (SileroVAD + NullVAD), `transcriber.py` (ASRProvider ABC + FasterWhisperProvider + NullASRProvider), `echo_suppression.py` (EchoSuppressor), `speech_input_service.py` (SpeechInputService orchestrator)
+- Full speech input pipeline: Microphone -> Silero VAD -> faster-whisper ASR -> echo suppression -> dialogue
+- Speaking lock: mic audio discarded while TTS is active + configurable post-speech cooldown (1500ms default)
+- Push-to-talk mode as alternative to continuous VAD
+- Spoken user turns stored with `ChatTurn.source='speech'` and routed through existing memory/dialogue pipeline
+- `docs/COMPANION_PERSONA.md`: Baymax-inspired companion persona style guide
+- Persona style injected into system prompt via `prompt_builder.py`
+- `GET /v1/audio/status` endpoint returning speech input/output runtime status
+- `GET /v1/stt/backends` endpoint returning STT backend configuration
+- `LiveRuntimeStatus` extended with speech input fields (speech_input_enabled, listening, vad_active, stt_backend, speaking_lock_active, last_heard_text, transcription_latency_ms, mic_mode)
+- New Makefile targets: `install-speech`, `live-webcam-speech`, `verify-008`
+- 18 new environment variables under `BAYMAX_*` for speech input (see `.env.example`)
+- Audio Pydantic schemas: `AudioChunkInfo`, `VADDecision`, `SpeechSegment`, `TranscriptionResult`, `EchoDecision`, `SpeechInputStatus`, `AudioBackendInfo`, `SpeechArtifactManifest`
+- `speech` optional dependency group in pyproject.toml (faster-whisper, sounddevice, soundfile)
+- 60 new tests (356 total)
+
+### Changed
+- API version bumped from 0.6.0 to 0.7.0
+- `pyproject.toml` version bumped to 0.7.0
+- `LiveRuntime` rewritten with speech input integration (parallel async tasks for mic loop + transcription consumer)
+- `Orchestrator.add_turn()` accepts `source` parameter
+
 ## [0.6.0] - 2026-03-17 (Iteration 007)
 
 ### Added

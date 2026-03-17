@@ -103,7 +103,7 @@ class MemoryQueryResult(BaseModel):
 
 
 class ChatTurn(BaseModel):
-    """A single typed conversation turn."""
+    """A single typed or spoken conversation turn."""
 
     id: UUID = Field(default_factory=uuid4)
     session_id: UUID
@@ -111,6 +111,7 @@ class ChatTurn(BaseModel):
     role: TurnRole
     text: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    source: str = Field(default="typed", description="Origin: 'typed' or 'speech'")
 
 
 class SessionSummary(BaseModel):

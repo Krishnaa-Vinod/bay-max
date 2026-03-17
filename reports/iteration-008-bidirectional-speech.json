@@ -1,0 +1,584 @@
+{
+  "prompt_version": "2026-03-17.iteration-008",
+  "agent_role": "You are the lead implementation agent for the Bay-Max repository. Your job is to add real local speech input so Bay-Max can listen, transcribe, avoid responding to itself, inject spoken user turns into memory, and respond out loud through the existing live runtime. You must keep the system local-first, update all architecture/docs files, create proof artifacts, run tests, perform honest manual verification on a machine with a microphone and speakers when available, commit, and push.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-007-webcam-verification-tts",
+    "working_branch": "feature/iteration-008-bidirectional-speech"
+  },
+  "iteration_context": {
+    "previous_iteration_status": "Iteration 007 added local TTS, speech queueing, live runtime speech output, verification scripts, and proof artifacts.",
+    "current_goal": "Close the loop by adding local microphone input, VAD-gated recording, speech transcription, echo suppression, and spoken-turn integration into the existing memory-grounded live companion runtime."
+  },
+  "hard_requirements": {
+    "docs_must_be_updated_every_iteration": [
+      "README.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/PROJECT_MEMORY.md",
+      "docs/CHANGELOG.md",
+      "docs/project_state.json",
+      "docs/MODEL_STACK.md",
+      "docs/LOCAL_TESTING.md"
+    ],
+    "new_docs_required": [
+      "docs/SPEECH_INPUT_ARCHITECTURE.md",
+      "docs/PERSONA_STYLE_GUIDE.md"
+    ],
+    "docs_must_match_code": true,
+    "local_first_only": true,
+    "must_keep_existing_live_runtime_and_tts_working": true,
+    "must_create_artifacts_as_proof": true
+  },
+  "scope": {
+    "in_scope": [
+      "microphone capture",
+      "VAD-gated speech segmentation",
+      "local ASR backend abstraction",
+      "real local ASR backend implementation",
+      "echo suppression",
+      "speaking lock and post-speech cooldown",
+      "speech-turn integration into memory/session flow",
+      "Baymax-inspired response style guide",
+      "manual and scripted local verification with artifacts"
+    ],
+    "out_of_scope": [
+      "emotion recognition from audio",
+      "speaker diarization",
+      "wake-word model",
+      "barge-in support while Bay-Max is speaking",
+      "doctor report ingestion",
+      "wearables",
+      "medical diagnosis",
+      "cloud ASR or TTS services",
+      "paid APIs",
+      "mobile deployment",
+      "robot hardware control"
+    ]
+  },
+  "design_decisions": [
+    "Use Silero VAD as the default voice activity detector.",
+    "Use faster-whisper as the default local ASR backend for runtime efficiency.",
+    "Keep a provider abstraction so openai-whisper can be added as an optional fallback if useful.",
+    "Do not run ASR continuously on all audio; only transcribe completed speech segments selected by VAD.",
+    "When Bay-Max is speaking, microphone capture must be paused or ignored via a speaking lock.",
+    "After Bay-Max finishes speaking, apply a short configurable cooldown before re-enabling microphone acceptance.",
+    "Integrate spoken turns into the same session/memory path as typed turns so existing memory features continue to work.",
+    "For debugging and fallback, support both VAD mode and a manual push-to-talk mode.",
+    "Implement a Baymax-inspired tone guide as a style layer, not as an exact copyrighted character impersonation."
+  ],
+  "model_policy": {
+    "vad_backend": {
+      "recommended": "Silero VAD",
+      "notes": "MIT-licensed, supports 8000 Hz and 16000 Hz, optimized for fast local use."
+    },
+    "asr_backends": [
+      {
+        "priority": 1,
+        "backend": "faster-whisper",
+        "model": "base or base.en",
+        "reason": "Better local runtime profile than the original Whisper package while preserving Whisper-quality behavior."
+      },
+      {
+        "priority": 2,
+        "backend": "openai-whisper",
+        "model": "base",
+        "reason": "Optional compatibility backend behind the same abstraction."
+      }
+    ],
+    "keep_existing_tts": [
+      "Kokoro as default real TTS backend",
+      "Piper remains optional fallback/future completion"
+    ],
+    "not_allowed": [
+      "OpenAI API",
+      "Claude API",
+      "ElevenLabs as default backend",
+      "Google Cloud STT",
+      "Azure Speech",
+      "any paid hosted inference service"
+    ]
+  },
+  "persona_requirements": {
+    "goal": "Baymax-inspired companion tone",
+    "must_feel_like": [
+      "calm",
+      "literal",
+      "helpful",
+      "gentle",
+      "nonjudgmental",
+      "brief but warm"
+    ],
+    "must_avoid": [
+      "sarcasm",
+      "high-energy hype",
+      "too many exclamation points",
+      "overly human slang",
+      "medical certainty",
+      "talking too much"
+    ],
+    "response_pattern": "Prefer: greeting or acknowledgement, one remembered or observed detail when appropriate, one supportive sentence, at most one gentle question.",
+    "implementation_note": "Create a reusable style guide and prompt context fields so dialogue/TTS can follow a Baymax-inspired style consistently.",
+    "product_note": "For public-facing docs/UI, prefer 'Baymax-inspired healthcare companion tone' rather than exact franchise branding unless the project owner explicitly wants demo-only homage text."
+  },
+  "required_env_vars": [
+    "BAYMAX_ENABLE_SPEECH_INPUT",
+    "BAYMAX_MIC_BACKEND",
+    "BAYMAX_MIC_SAMPLE_RATE",
+    "BAYMAX_MIC_CHANNELS",
+    "BAYMAX_MIC_DEVICE",
+    "BAYMAX_VAD_BACKEND",
+    "BAYMAX_VAD_THRESHOLD",
+    "BAYMAX_VAD_MIN_SPEECH_MS",
+    "BAYMAX_VAD_SILENCE_MS",
+    "BAYMAX_STT_BACKEND",
+    "BAYMAX_WHISPER_MODEL",
+    "BAYMAX_WHISPER_DEVICE",
+    "BAYMAX_ECHO_SUPPRESSION_ENABLED",
+    "BAYMAX_ECHO_SIMILARITY_THRESHOLD",
+    "BAYMAX_MIC_MODE",
+    "BAYMAX_POST_SPEECH_COOLDOWN_MS",
+    "BAYMAX_ENABLE_LISTENING_INDICATOR",
+    "BAYMAX_AUDIO_ARTIFACT_DIR"
+  ],
+  "required_env_defaults": {
+    "BAYMAX_ENABLE_SPEECH_INPUT": "true",
+    "BAYMAX_MIC_BACKEND": "sounddevice",
+    "BAYMAX_MIC_SAMPLE_RATE": "16000",
+    "BAYMAX_MIC_CHANNELS": "1",
+    "BAYMAX_MIC_DEVICE": "default",
+    "BAYMAX_VAD_BACKEND": "silero",
+    "BAYMAX_VAD_THRESHOLD": "0.65",
+    "BAYMAX_VAD_MIN_SPEECH_MS": "300",
+    "BAYMAX_VAD_SILENCE_MS": "500",
+    "BAYMAX_STT_BACKEND": "faster_whisper",
+    "BAYMAX_WHISPER_MODEL": "base.en",
+    "BAYMAX_WHISPER_DEVICE": "auto",
+    "BAYMAX_ECHO_SUPPRESSION_ENABLED": "true",
+    "BAYMAX_ECHO_SIMILARITY_THRESHOLD": "0.85",
+    "BAYMAX_MIC_MODE": "vad",
+    "BAYMAX_POST_SPEECH_COOLDOWN_MS": "1500",
+    "BAYMAX_ENABLE_LISTENING_INDICATOR": "true",
+    "BAYMAX_AUDIO_ARTIFACT_DIR": "./artifacts/audio"
+  },
+  "required_repo_changes": [
+    "Update README local setup so speech input dependencies are installable without guesswork.",
+    "Add exact laptop verification steps to docs/LOCAL_TESTING.md.",
+    "Add docs/SPEECH_INPUT_ARCHITECTURE.md describing mic -> VAD -> STT -> memory -> dialogue -> TTS.",
+    "Add docs/PERSONA_STYLE_GUIDE.md with Baymax-inspired tone rules and examples.",
+    "Update docs/MODEL_STACK.md to include Silero VAD and faster-whisper.",
+    "Update docs/ARCHITECTURE.md to show the bidirectional speech loop.",
+    "Update reports and project_state.json with remaining known gaps honestly."
+  ],
+  "required_code_changes": [
+    "Add src/baymax/audio/ package with microphone capture, vad, transcriber, echo suppression, and speech input service modules.",
+    "Add ASR provider abstraction and implement at least one real backend using faster-whisper.",
+    "Optionally add an openai-whisper provider behind the same interface if low effort.",
+    "Integrate speech input into src/baymax/live/runtime.py without breaking existing replay and TTS flows.",
+    "When a valid transcription arrives, store it as a user turn with source='speech'.",
+    "Pause or ignore microphone input while TTS playback or synthesis is active.",
+    "Apply a post-speech cooldown before accepting new microphone audio.",
+    "Add listening-state fields to live status and any needed audio status schemas.",
+    "Add GET /v1/audio/status and GET /v1/stt/backends endpoints.",
+    "Extend scripts/live_companion.py with speech-input flags and clear local usage examples.",
+    "Add a scripted verification path that can save audio, transcripts, timing, and echo decisions as artifacts."
+  ],
+  "api_changes": [
+    {
+      "method": "GET",
+      "path": "/v1/audio/status",
+      "purpose": "Return current speech-input and speech-output runtime status.",
+      "must_return": [
+        "speech_input_enabled",
+        "listening",
+        "vad_active",
+        "stt_backend",
+        "tts_backend",
+        "speaking_lock_active",
+        "last_heard_text",
+        "last_spoken_text",
+        "transcription_latency_ms"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/stt/backends",
+      "purpose": "Return configured/available speech-input backends.",
+      "must_return": [
+        "available_backends",
+        "active_backend",
+        "active_model",
+        "vad_backend"
+      ]
+    }
+  ],
+  "schema_requirements": {
+    "must_add_or_extend_models": [
+      "AudioChunkInfo",
+      "VADDecision",
+      "SpeechSegment",
+      "TranscriptionResult",
+      "EchoDecision",
+      "SpeechInputStatus",
+      "AudioBackendInfo",
+      "SpeechArtifactManifest"
+    ],
+    "must_include_fields": [
+      "timestamps",
+      "backend names",
+      "confidence or probability fields where relevant",
+      "latency fields",
+      "source='speech' for spoken turns",
+      "artifact paths where relevant"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T801",
+      "title": "Audit iteration-007 runtime and packaging for speech-input readiness",
+      "actions": [
+        "Review current live runtime, TTS integration, local testing docs, and artifact logging.",
+        "Fix any install/documentation drift for microphone/STT dependencies before adding features.",
+        "Ensure there is a clear install target for dev + vision + vector + dialogue + tts + speech input where practical."
+      ],
+      "acceptance_criteria": [
+        "README and Makefile match the actual local install flow for speech-enabled testing.",
+        "Existing live runtime and TTS tests still pass before new speech-input code is added."
+      ]
+    },
+    {
+      "id": "T802",
+      "title": "Implement microphone capture and VAD segmentation",
+      "actions": [
+        "Add microphone capture module using sounddevice or equivalent existing local backend.",
+        "Implement Silero VAD wrapper and state machine for speech start/end decisions.",
+        "Support a push-to-talk/manual mode as a fallback for debugging.",
+        "Store short audio artifacts for completed utterances when verification mode is enabled."
+      ],
+      "acceptance_criteria": [
+        "Speech segments are created only after VAD detects actual speech or manual trigger completes.",
+        "Silence/noise does not continuously trigger transcription in basic manual tests."
+      ]
+    },
+    {
+      "id": "T803",
+      "title": "Implement local ASR backend abstraction and real faster-whisper backend",
+      "actions": [
+        "Add ASR provider interface.",
+        "Implement a faster-whisper backend using local models.",
+        "Optionally add an openai-whisper compatibility backend behind the same interface.",
+        "Return transcript text, backend, model, latency, and confidence/metadata where available."
+      ],
+      "acceptance_criteria": [
+        "At least one real local ASR backend is implemented and can transcribe a short utterance.",
+        "ASR failure states are handled honestly and gracefully."
+      ]
+    },
+    {
+      "id": "T804",
+      "title": "Implement echo suppression and speaking lock",
+      "actions": [
+        "Pause or ignore microphone transcription while TTS is active.",
+        "Apply a short cooldown after speech playback ends.",
+        "Add text-similarity or equivalent check against recently spoken Bay-Max text to reject obvious echo loops.",
+        "Log echo-rejection decisions as artifacts in verification mode."
+      ],
+      "acceptance_criteria": [
+        "Bay-Max does not respond to its own TTS output in a basic local echo test.",
+        "Speaking lock state is visible in runtime status."
+      ]
+    },
+    {
+      "id": "T805",
+      "title": "Integrate spoken turns into session memory and dialogue flow",
+      "actions": [
+        "When a valid transcription arrives, store it as a user chat turn with source='speech'.",
+        "Trigger response generation through the existing orchestrator path.",
+        "Ensure retrieved memories and Baymax-inspired tone still apply.",
+        "Keep typed-turn and spoken-turn paths compatible."
+      ],
+      "acceptance_criteria": [
+        "A spoken recall request can retrieve prior memories and produce a grounded response.",
+        "Speech-origin turns appear in memory/session logs."
+      ]
+    },
+    {
+      "id": "T806",
+      "title": "Add Baymax-inspired style layer",
+      "actions": [
+        "Create a reusable persona/style guide for calm, literal, healthcare-companion tone.",
+        "Integrate style fields into grounded prompt construction and optionally TTS wording defaults.",
+        "Keep responses concise, gentle, and nonjudgmental.",
+        "Do not overuse exact franchise catchphrases in general runtime prompts."
+      ],
+      "acceptance_criteria": [
+        "Responses feel more Baymax-inspired in manual review: calm, concise, warm, and literal.",
+        "The style layer does not break safety constraints or memory grounding."
+      ]
+    },
+    {
+      "id": "T807",
+      "title": "Add API/status surfaces and artifact-proof logging",
+      "actions": [
+        "Add audio status and STT backends endpoints.",
+        "Extend live status with listening/speaking/transcription fields.",
+        "Create artifact logs for utterances, transcripts, response timing, and echo decisions.",
+        "Write artifacts to a dedicated verification_008 directory with manifest and summary."
+      ],
+      "acceptance_criteria": [
+        "A tester can inspect what Bay-Max heard, what it said, and why a segment was accepted or rejected.",
+        "Manifest and summary are generated for verification runs."
+      ]
+    },
+    {
+      "id": "T808",
+      "title": "Tests, local verification, docs, report, commit, and push",
+      "actions": [
+        "Add automated tests for VAD logic, ASR provider behavior, speaking lock, echo suppression, spoken-turn integration, status endpoints, and project_state.json validity.",
+        "Mock heavy model calls in unit tests where appropriate.",
+        "Run lint and full tests.",
+        "Run honest local/manual verification on a machine with microphone and speakers when available; otherwise mark not_run with reason.",
+        "Update all required docs and project state files.",
+        "Write reports/iteration-008.md and reports/iteration-008.json.",
+        "Commit and push the branch."
+      ],
+      "acceptance_criteria": [
+        "Automated tests pass.",
+        "Manual microphone verification results are reported honestly.",
+        "Artifacts exist and prove what was tested.",
+        "Branch is pushed."
+      ]
+    }
+  ],
+  "manual_verification_plan": [
+    {
+      "id": "VT801",
+      "case": "Microphone startup and status",
+      "steps": [
+        "Run live companion locally with speech input enabled.",
+        "Confirm /v1/audio/status shows listening=true and correct backends.",
+        "Save a status snapshot artifact."
+      ]
+    },
+    {
+      "id": "VT802",
+      "case": "VAD segmentation",
+      "steps": [
+        "Speak one short phrase, stop, wait for silence cutoff.",
+        "Confirm exactly one speech segment artifact and one transcript are produced.",
+        "Repeat with ambient silence/noise to confirm no false transcriptions in the same window."
+      ]
+    },
+    {
+      "id": "VT803",
+      "case": "Spoken turn enters memory pipeline",
+      "steps": [
+        "Speak a simple preference or project fact.",
+        "Confirm a session turn with source='speech' is stored.",
+        "Consolidate session if needed and inspect memory summary."
+      ]
+    },
+    {
+      "id": "VT804",
+      "case": "Speech-based grounded recall",
+      "steps": [
+        "Create prior memory in Session A.",
+        "In Session B, ask by voice 'What do you remember about me?'.",
+        "Confirm response text mentions at least one specific prior detail and artifact records memory_refs."
+      ]
+    },
+    {
+      "id": "VT805",
+      "case": "Echo suppression",
+      "steps": [
+        "Allow Bay-Max to speak a response out loud.",
+        "Confirm microphone path does not immediately transcribe Bay-Max's own speech into a new user turn.",
+        "Save echo decision artifact or speaking-lock log."
+      ]
+    },
+    {
+      "id": "VT806",
+      "case": "Speaking lock and cooldown",
+      "steps": [
+        "Speak while Bay-Max is actively talking or immediately after it finishes.",
+        "Confirm input is paused/ignored until cooldown expires.",
+        "Record timing artifact."
+      ]
+    },
+    {
+      "id": "VT807",
+      "case": "No-memory graceful behavior",
+      "steps": [
+        "Use a fresh user with no memories and ask a question by voice.",
+        "Confirm Bay-Max does not fabricate prior knowledge."
+      ]
+    },
+    {
+      "id": "VT808",
+      "case": "Safety in spoken mode",
+      "steps": [
+        "Ask a spoken diagnosis-style question such as 'Can you diagnose me from my face?'.",
+        "Confirm the spoken and text response redirects safely without unsupported medical claims."
+      ]
+    },
+    {
+      "id": "VT809",
+      "case": "Baymax-inspired tone",
+      "steps": [
+        "Ask two normal conversational questions.",
+        "Review whether responses are calm, concise, literal, gentle, and not over-chatty.",
+        "Capture transcript and response artifacts for review."
+      ]
+    },
+    {
+      "id": "VT810",
+      "case": "Artifact completeness",
+      "steps": [
+        "Confirm verification_008 contains manifest.json, summary.md, transcripts, timing, and key audio artifacts or logs.",
+        "Verify artifact paths are referenced in the report."
+      ]
+    }
+  ],
+  "testing_requirements": {
+    "must_have_automated_tests": [
+      "VAD state transitions",
+      "ASR provider success/failure behavior",
+      "speaking lock blocks or suppresses input",
+      "echo suppression logic",
+      "spoken-turn insertion into session store",
+      "GET /v1/audio/status",
+      "GET /v1/stt/backends",
+      "project_state.json validity"
+    ],
+    "must_have_manual_tests_when_hardware_available": [
+      "speech-based grounded recall",
+      "echo suppression",
+      "safety refusal in spoken mode",
+      "audible TTS playback heard by human tester"
+    ],
+    "test_honesty_rules": [
+      "Do not claim microphone capture works unless a real local microphone test was run.",
+      "Do not claim audible playback was heard unless a human actually heard it.",
+      "Do not claim recall-by-speech works unless a manual speech test used prior memory and the response mentioned it.",
+      "Clearly separate headless/mock results from real local hardware results."
+    ]
+  },
+  "report_requirements": {
+    "markdown_path": "reports/iteration-008.md",
+    "json_path": "reports/iteration-008.json",
+    "must_include": [
+      "branch_name",
+      "latest_commit_sha",
+      "summary",
+      "speech_input_backends",
+      "tasks_completed",
+      "tasks_partial",
+      "tasks_not_done",
+      "files_created",
+      "files_modified",
+      "commands_run",
+      "automated_tests_run",
+      "automated_test_results",
+      "manual_verification_results",
+      "api_endpoints_verified",
+      "artifact_output_locations",
+      "known_issues",
+      "deviations_from_prompt",
+      "next_recommended_tasks",
+      "risks",
+      "open_questions",
+      "doc_parity_check"
+    ]
+  },
+  "iteration_report_json_schema": {
+    "iteration": "008",
+    "branch_name": "string",
+    "latest_commit_sha": "string",
+    "status": "completed|partial|blocked",
+    "summary": "string",
+    "speech_input_backends": [
+      {
+        "backend": "string",
+        "status": "implemented|partial|not_implemented",
+        "model_or_runtime": "string",
+        "notes": "string"
+      }
+    ],
+    "tasks_completed": [
+      {
+        "id": "string",
+        "title": "string",
+        "evidence": ["string"]
+      }
+    ],
+    "tasks_partial": [
+      {
+        "id": "string",
+        "reason": "string",
+        "remaining_work": ["string"]
+      }
+    ],
+    "tasks_not_done": [
+      {
+        "id": "string",
+        "reason": "string"
+      }
+    ],
+    "files_created": ["string"],
+    "files_modified": ["string"],
+    "commands_run": ["string"],
+    "automated_tests_run": [
+      {
+        "command": "string",
+        "result": "passed|failed",
+        "notes": "string"
+      }
+    ],
+    "manual_verification_results": [
+      {
+        "id": "string",
+        "case": "string",
+        "result": "passed|failed|ambiguous|not_run",
+        "notes": "string",
+        "artifact_files": ["string"]
+      }
+    ],
+    "api_endpoints_verified": [
+      {
+        "path": "string",
+        "result": "passed|failed|partial",
+        "notes": "string"
+      }
+    ],
+    "artifact_output_locations": ["string"],
+    "known_issues": ["string"],
+    "deviations_from_prompt": ["string"],
+    "risks": ["string"],
+    "open_questions": ["string"],
+    "next_recommended_tasks": ["string"],
+    "doc_parity_check": {
+      "readme_matches_install_flow": "true|false",
+      "architecture_matches_code": "true|false",
+      "roadmap_matches_iteration_status": "true|false",
+      "notes": "string"
+    }
+  },
+  "honesty_rules": [
+    "Do not state that speech input works unless a real microphone test or honest replay-style substitute was run and clearly labeled.",
+    "Do not fake audio artifacts, transcripts, or heard-playback results.",
+    "If faster-whisper or microphone dependencies failed on the target machine, say so explicitly.",
+    "If Baymax-inspired tone improved only partially, report that honestly instead of overclaiming."
+  ],
+  "definition_of_done": [
+    "Branch is pushed.",
+    "At least one real local STT backend is implemented.",
+    "Speech input is integrated into live runtime.",
+    "Speaking lock and echo suppression exist and are testable.",
+    "Spoken turns enter the existing session/memory flow.",
+    "Baymax-inspired style guide is implemented and documented.",
+    "Artifacts prove what was heard, transcribed, and said.",
+    "Core docs are updated and match the code.",
+    "Automated tests pass.",
+    "Manual local speech verification is reported honestly."
+  ]
+}

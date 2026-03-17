@@ -33,7 +33,7 @@ class LiveRuntime:
     """Continuous live companion runtime.
 
     Manages the frame loop, session lifecycle, event detection,
-    proactive response generation, and artifact logging.
+    proactive response generation, speech input/output, and artifact logging.
     """
 
     def __init__(
@@ -92,6 +92,34 @@ class LiveRuntime:
             audio_backend=settings.audio_backend,
         )
 
+        # Iteration 008: Speech input service
+        self._speech_input_service = None
+        self._speech_input_enabled = settings.enable_speech_input
+        if self._speech_input_enabled:
+            try:
+                from baymax.audio.speech_input_service import SpeechInputService
+
+                self._speech_input_service = SpeechInputService(
+                    sample_rate=settings.mic_sample_rate,
+                    channels=settings.mic_channels,
+                    mic_device=settings.mic_device,
+                    vad_backend=settings.vad_backend,
+                    vad_threshold=settings.vad_threshold,
+                    vad_min_speech_ms=settings.vad_min_speech_ms,
+                    vad_silence_ms=settings.vad_silence_ms,
+                    stt_backend=settings.stt_backend,
+                    stt_model=settings.whisper_model,
+                    stt_device=settings.whisper_device,
+                    echo_threshold=settings.echo_similarity_threshold,
+                    mic_mode=settings.mic_mode,
+                    post_speech_cooldown_ms=settings.post_speech_cooldown_ms,
+                    artifact_dir=settings.audio_artifact_dir,
+                    enable_artifacts=settings.enable_artifact_logging,
+                )
+            except Exception as exc:
+                logger.warning("Failed to init SpeechInputService: %s", exc)
+                self._speech_input_service = None
+
         # Runtime state
         self._status = LiveRuntimeStatus()
         self._running = False
@@ -102,6 +130,8 @@ class LiveRuntime:
         self._sessions_resumed = 0
         self._users_recognized: set[str] = set()
         self._errors: list[str] = []
+        self._speech_input_task: asyncio.Task | None = None
+        self._speech_consumer_task: asyncio.Task | None = None
 
         # Overlay settings
         self._enable_overlay = settings.enable_live_overlay
@@ -135,6 +165,10 @@ class LiveRuntime:
     def speech_service(self) -> SpeechService:
         return self._speech_service
 
+    @property
+    def speech_input_service(self):
+        return self._speech_input_service
+
     async def run(
         self,
         source: str | None = None,
@@ -160,6 +194,20 @@ class LiveRuntime:
 
         # Initialize orchestrator
         await self._orch.initialize()
+
+        # Start speech input if enabled
+        if self._speech_input_service is not None:
+            started = await self._speech_input_service.start()
+            if started:
+                logger.info("Speech input started")
+                self._speech_input_task = asyncio.create_task(
+                    self._speech_input_service.run_loop()
+                )
+                self._speech_consumer_task = asyncio.create_task(
+                    self._consume_transcriptions()
+                )
+            else:
+                logger.warning("Speech input failed to start")
 
         # Create frame source
         source_path = source or settings.live_video_replay_path
@@ -263,6 +311,22 @@ class LiveRuntime:
             logger.error("Runtime error: %s", e, exc_info=True)
 
         finally:
+            # Stop speech input
+            if self._speech_input_service is not None:
+                await self._speech_input_service.stop()
+            if self._speech_input_task is not None:
+                self._speech_input_task.cancel()
+                try:
+                    await self._speech_input_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if self._speech_consumer_task is not None:
+                self._speech_consumer_task.cancel()
+                try:
+                    await self._speech_consumer_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
             # Clean shutdown
             end_evt = self._supervisor.force_end()
             if end_evt:
@@ -290,6 +354,126 @@ class LiveRuntime:
             self._frame_count, self._analysis_count,
         )
         return summary
+
+    async def _consume_transcriptions(self) -> None:
+        """Consume transcriptions from speech input and process as user turns."""
+        while self._running:
+            try:
+                if self._speech_input_service is None:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                try:
+                    result = await asyncio.wait_for(
+                        self._speech_input_service.output_queue.get(),
+                        timeout=0.5,
+                    )
+                except TimeoutError:
+                    continue
+
+                if not result.success or not result.text.strip():
+                    continue
+
+                await self._handle_speech_turn(result.text)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("Transcription consumer error: %s", exc)
+                await asyncio.sleep(0.5)
+
+    async def _handle_speech_turn(self, text: str) -> None:
+        """Process a speech transcription as a user turn through the full pipeline."""
+        session_id = self._supervisor.current_session_id
+        user_id = self._status.current_user_id
+
+        if session_id is None:
+            logger.debug("No active session for speech turn, skipping")
+            return
+
+        logger.info("Speech turn: '%s'", text[:80])
+
+        try:
+            # Store user turn with source='speech'
+            await self._orch.add_turn(
+                session_id=session_id,
+                role=TurnRole.USER,
+                text=text,
+                user_id=user_id,
+                source="speech",
+            )
+
+            # Generate response
+            response = await self._orch.respond(
+                session_id=session_id,
+                user_id=user_id,
+                context=f"The user said: {text}",
+            )
+
+            # Store system response turn
+            await self._orch.add_turn(
+                session_id=session_id,
+                role=TurnRole.SYSTEM,
+                text=response.message,
+                user_id=user_id,
+            )
+
+            # Record cooldown
+            self._status.last_response_text = response.message
+            self._status.last_response_at = datetime.utcnow()
+            self._last_memory_refs_count = len(response.memory_refs)
+
+            logger.info("Speech response: %s", response.message[:80])
+
+            # Synthesize and play TTS with speaking lock
+            await self._speak_response(response.message, session_id, "speech_turn")
+
+        except Exception as exc:
+            logger.error("Failed to process speech turn: %s", exc)
+            self._errors.append(f"Speech turn error: {exc}")
+
+    async def _speak_response(
+        self, text: str, session_id: UUID | None, trigger: str
+    ) -> None:
+        """Synthesize and play TTS, managing speaking lock for echo suppression."""
+        # Engage speaking lock
+        if self._speech_input_service is not None:
+            self._speech_input_service.set_speaking_lock(True)
+            self._speech_input_service.record_spoken_text(text)
+
+        try:
+            speech_result = await self._speech_service.synthesize_and_play(
+                text=text,
+                session_id=str(session_id) if session_id else None,
+                trigger_event=trigger,
+            )
+            if speech_result.success:
+                self._artifact_logger.log_speech_event(
+                    text=text,
+                    backend=speech_result.backend,
+                    voice=speech_result.voice,
+                    wav_path=speech_result.wav_path,
+                    success=True,
+                    session_id=str(session_id) if session_id else None,
+                    trigger_event=trigger,
+                )
+            else:
+                self._artifact_logger.log_speech_event(
+                    text=text,
+                    backend=speech_result.backend,
+                    voice=speech_result.voice,
+                    wav_path=None,
+                    success=False,
+                    error=speech_result.error,
+                    session_id=str(session_id) if session_id else None,
+                    trigger_event=trigger,
+                )
+        except Exception as exc:
+            logger.warning("TTS error (non-fatal): %s", exc)
+        finally:
+            # Release speaking lock (triggers cooldown)
+            if self._speech_input_service is not None:
+                self._speech_input_service.set_speaking_lock(False)
 
     async def _process_analysis_frame(self, frame) -> None:
         """Run the full perception + event + response pipeline on an analysis frame."""
@@ -495,48 +679,10 @@ class LiveRuntime:
                 response.message[:80],
             )
 
-            # Synthesize and play speech
-            try:
-                speech_result = await self._speech_service.synthesize_and_play(
-                    text=response.message,
-                    session_id=str(session_id) if session_id else None,
-                    trigger_event=event.event_type.value,
-                )
-                if speech_result.success:
-                    self._artifact_logger.log_speech_event(
-                        text=response.message,
-                        backend=speech_result.backend,
-                        voice=speech_result.voice,
-                        wav_path=speech_result.wav_path,
-                        success=True,
-                        session_id=(
-                            str(session_id) if session_id else None
-                        ),
-                        trigger_event=event.event_type.value,
-                    )
-                    logger.info(
-                        "Speech synthesized: %s",
-                        speech_result.wav_path or "(null backend)",
-                    )
-                else:
-                    self._artifact_logger.log_speech_event(
-                        text=response.message,
-                        backend=speech_result.backend,
-                        voice=speech_result.voice,
-                        wav_path=None,
-                        success=False,
-                        error=speech_result.error,
-                        session_id=(
-                            str(session_id) if session_id else None
-                        ),
-                        trigger_event=event.event_type.value,
-                    )
-                    logger.warning(
-                        "Speech synthesis failed: %s",
-                        speech_result.error,
-                    )
-            except Exception as e:
-                logger.warning("TTS error (non-fatal): %s", e)
+            # Synthesize and play speech with speaking lock
+            await self._speak_response(
+                response.message, session_id, event.event_type.value
+            )
 
         except Exception as e:
             logger.error("Failed to generate proactive response: %s", e)
@@ -591,12 +737,26 @@ class LiveRuntime:
             self._status.last_event = last.event_type.value
             self._status.last_event_at = last.timestamp
 
-        # Speech status
+        # Speech output status
         qs = self._speech_service.queue_status()
         self._status.last_spoken_text = qs.last_spoken_text
         self._status.speech_queue_depth = qs.queue_depth
         self._status.tts_backend = self._speech_service.provider.name()
         self._status.tts_voice = self._settings.tts_voice
+
+        # Speech input status (Iteration 008)
+        if self._speech_input_service is not None:
+            sis = self._speech_input_service.status()
+            self._status.speech_input_enabled = sis.speech_input_enabled
+            self._status.listening = sis.listening
+            self._status.vad_active = sis.vad_active
+            self._status.stt_backend = sis.stt_backend
+            self._status.speaking_lock_active = sis.speaking_lock_active
+            self._status.last_heard_text = sis.last_heard_text
+            self._status.transcription_latency_ms = sis.transcription_latency_ms
+            self._status.mic_mode = sis.mic_mode
+        else:
+            self._status.speech_input_enabled = False
 
     def _request_stop(self) -> None:
         """Request a clean stop."""

@@ -2,14 +2,17 @@
 """Bay-Max Live Companion Runner.
 
 Usage:
-    # Webcam mode (requires display):
+    # Webcam mode with speech input (requires mic + display):
     python scripts/live_companion.py
+
+    # Webcam mode without speech input:
+    python scripts/live_companion.py --no-speech-input
 
     # Video replay mode (headless-friendly):
     python scripts/live_companion.py --replay path/to/video.mp4
 
-    # Folder replay mode:
-    python scripts/live_companion.py --replay path/to/frames_dir/
+    # Push-to-talk mode instead of VAD:
+    python scripts/live_companion.py --mic-mode push_to_talk
 
     # Override settings:
     python scripts/live_companion.py --replay video.mp4 --max-frames 100 --no-overlay
@@ -20,6 +23,9 @@ Environment variables (see .env.example):
     BAYMAX_ANALYSIS_INTERVAL_SEC - Seconds between analyses (default: 2.0)
     BAYMAX_LIVE_ARTIFACT_DIR  - Artifact output directory
     BAYMAX_DIALOGUE_BACKEND   - "rule_based" | "transformers" | "ollama"
+    BAYMAX_ENABLE_SPEECH_INPUT - "true" | "false"
+    BAYMAX_STT_BACKEND        - "faster_whisper" | "null"
+    BAYMAX_MIC_MODE           - "vad" | "push_to_talk"
 """
 
 import argparse
@@ -94,6 +100,30 @@ def main():
         action="store_true",
         help="Disable audio playback (WAV files still generated)",
     )
+    # Iteration 008: Speech input flags
+    parser.add_argument(
+        "--no-speech-input",
+        action="store_true",
+        help="Disable speech input (microphone capture + STT)",
+    )
+    parser.add_argument(
+        "--stt-backend",
+        type=str,
+        default=None,
+        help="STT backend: faster_whisper | null",
+    )
+    parser.add_argument(
+        "--mic-mode",
+        type=str,
+        default=None,
+        help="Microphone mode: vad | push_to_talk",
+    )
+    parser.add_argument(
+        "--whisper-model",
+        type=str,
+        default=None,
+        help="Whisper model size: base.en | base | small.en | small",
+    )
     args = parser.parse_args()
 
     # Set up logging
@@ -122,10 +152,23 @@ def main():
         os.environ["BAYMAX_TTS_BACKEND"] = args.tts_backend
     if args.no_playback:
         os.environ["BAYMAX_ENABLE_AUDIO_PLAYBACK"] = "false"
+    # Speech input overrides
+    if args.no_speech_input:
+        os.environ["BAYMAX_ENABLE_SPEECH_INPUT"] = "false"
+    if args.stt_backend:
+        os.environ["BAYMAX_STT_BACKEND"] = args.stt_backend
+    if args.mic_mode:
+        os.environ["BAYMAX_MIC_MODE"] = args.mic_mode
+    if args.whisper_model:
+        os.environ["BAYMAX_WHISPER_MODEL"] = args.whisper_model
 
     from baymax.live.runtime import LiveRuntime
 
     runtime = LiveRuntime(db_path=args.db_path)
+
+    stt_label = args.stt_backend or "faster_whisper"
+    speech_input_status = "disabled" if args.no_speech_input else stt_label
+    mic_mode = args.mic_mode or "vad"
 
     print("=" * 60)
     print("  Bay-Max Live Companion")
@@ -140,6 +183,8 @@ def main():
     tts_status = "disabled" if args.no_tts else (args.tts_backend or "kokoro")
     print(f"  TTS: {tts_status}")
     print(f"  Playback: {'disabled' if args.no_playback else 'enabled'}")
+    print(f"  Speech input: {speech_input_status}")
+    print(f"  Mic mode: {mic_mode}")
     print("=" * 60)
     print()
 

@@ -83,13 +83,30 @@
 - [x] New docs: TTS_ARCHITECTURE.md, LIVE_VERIFICATION_GUIDE.md
 - [x] 40 new tests (296 total)
 
+## Iteration 008 - Bidirectional Speech (Completed)
+- [x] Speech input pipeline: Microphone -> Silero VAD -> faster-whisper ASR -> echo suppression
+- [x] MicrophoneCapture (sounddevice) and NullMicrophone (headless stub)
+- [x] Silero VAD with 4-state machine (IDLE/SPEECH_STARTED/SPEECH_ONGOING/SILENCE_AFTER_SPEECH)
+- [x] FasterWhisperProvider (CTranslate2, base.en model) and NullASRProvider
+- [x] EchoSuppressor (text-similarity based, SequenceMatcher)
+- [x] SpeechInputService orchestrator with speaking lock and post-speech cooldown
+- [x] Push-to-talk fallback mode alongside continuous VAD
+- [x] Spoken turns integrated into session/memory flow (ChatTurn.source='speech')
+- [x] Baymax-inspired companion persona style guide (docs/COMPANION_PERSONA.md)
+- [x] Persona style injected into system prompt (prompt_builder.py)
+- [x] GET /v1/audio/status and GET /v1/stt/backends endpoints
+- [x] LiveRuntimeStatus extended with speech input fields
+- [x] 60 new tests (356 total)
+
 ## Future Iterations
 - Async SQLite migration (aiosqlite throughout)
 - Emotion recognition from facial expressions
 - Multi-session user journey tracking
 - Salience-decay over time for episodic memory
 - Conversation history and context window management
-- Audio integration (Whisper STT — speech-to-text input)
+- Barge-in support (interrupt Bay-Max while speaking)
+- Wake-word detection for hands-free activation
+- Speaker diarization for multi-person support
 - MediaPipe Tasks API migration for pose estimation
 - LLM-based semantic fact extraction during consolidation
 - Gradio live inspection tab for live-mode state

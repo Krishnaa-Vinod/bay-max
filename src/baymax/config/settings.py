@@ -140,6 +140,44 @@ class BaymaxSettings(BaseSettings):
     piper_model_path: str = ""
     piper_config_path: str = ""
 
+    # --- Iteration 008: Speech Input / Bidirectional Speech ---
+
+    # Master enable for speech input
+    enable_speech_input: bool = True
+
+    # Microphone settings
+    mic_backend: str = "sounddevice"
+    mic_sample_rate: int = 16000
+    mic_channels: int = 1
+    mic_device: str = "default"
+
+    # VAD settings
+    vad_backend: str = "silero"
+    vad_threshold: float = 0.65
+    vad_min_speech_ms: float = 300.0
+    vad_silence_ms: float = 500.0
+
+    # STT settings
+    stt_backend: str = "faster_whisper"
+    whisper_model: str = "base.en"
+    whisper_device: str = "auto"
+
+    # Echo suppression
+    echo_suppression_enabled: bool = True
+    echo_similarity_threshold: float = 0.85
+
+    # Microphone mode: "vad" or "push_to_talk"
+    mic_mode: str = "vad"
+
+    # Post-speech cooldown before accepting new mic input (ms)
+    post_speech_cooldown_ms: float = 1500.0
+
+    # Listening indicator
+    enable_listening_indicator: bool = True
+
+    # Audio artifact directory
+    audio_artifact_dir: str = "./artifacts/audio"
+
 
 def get_settings() -> BaymaxSettings:
     """Return a settings instance."""

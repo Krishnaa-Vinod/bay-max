@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
@@ -358,4 +358,63 @@ async def get_tts_backends() -> TTSBackendsResponse:
         audio_playback_enabled=settings.enable_audio_playback,
         sample_rate=settings.tts_rate,
         tts_enabled=settings.tts_enabled,
+    )
+
+
+# --- Iteration 008: Speech Input / Bidirectional Speech ---
+
+
+class AudioStatusResponse(BaseModel):
+    """Response for audio status endpoint."""
+
+    speech_input_enabled: bool = False
+    listening: bool = False
+    vad_active: bool = False
+    stt_backend: str = ""
+    tts_backend: str = ""
+    speaking_lock_active: bool = False
+    last_heard_text: str = ""
+    last_spoken_text: str = ""
+    transcription_latency_ms: float = 0.0
+
+
+@app.get("/v1/audio/status", response_model=AudioStatusResponse)
+async def get_audio_status() -> AudioStatusResponse:
+    """Return current speech-input and speech-output runtime status."""
+    settings = get_settings()
+    response = AudioStatusResponse(
+        speech_input_enabled=settings.enable_speech_input,
+        tts_backend=settings.tts_backend,
+    )
+    if _live_runtime is not None:
+        status = _live_runtime.status
+        response.listening = status.listening
+        response.vad_active = status.vad_active
+        response.stt_backend = status.stt_backend
+        response.speaking_lock_active = status.speaking_lock_active
+        response.last_heard_text = status.last_heard_text
+        response.last_spoken_text = status.last_spoken_text
+        response.transcription_latency_ms = status.transcription_latency_ms
+    return response
+
+
+class STTBackendsResponse(BaseModel):
+    """Response for STT backends endpoint."""
+
+    available_backends: list[str]
+    active_backend: str
+    active_model: str
+    vad_backend: str
+
+
+@app.get("/v1/stt/backends", response_model=STTBackendsResponse)
+async def get_stt_backends() -> STTBackendsResponse:
+    """Return configured and available speech-to-text backends."""
+    settings = get_settings()
+    available = ["faster_whisper", "null"]
+    return STTBackendsResponse(
+        available_backends=available,
+        active_backend=settings.stt_backend,
+        active_model=settings.whisper_model,
+        vad_backend=settings.vad_backend,
     )

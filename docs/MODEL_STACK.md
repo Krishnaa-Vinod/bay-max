@@ -112,7 +112,62 @@ All heuristics are documented in detail in `docs/ENGAGEMENT_HEURISTICS.md`.
 These remain unimplemented and return hardcoded values:
 
 - **Emotion estimation**: Returns `EmotionLabel.NEUTRAL`
-- **STT / speech-to-text input**: Not yet implemented
+
+---
+
+## Speech Input / STT (Iteration 008)
+
+### Silero VAD
+
+| Property | Value |
+|----------|-------|
+| **Model** | Silero VAD |
+| **Library** | `torch.hub` (snakers4/silero-vad) |
+| **License** | MIT |
+| **Input** | Raw audio (16-bit PCM, 16000 Hz) |
+| **Output** | Speech probability (0.0-1.0) |
+| **Default threshold** | 0.65 (configurable via `BAYMAX_VAD_THRESHOLD`) |
+| **Min speech duration** | 300ms (configurable via `BAYMAX_VAD_MIN_SPEECH_MS`) |
+| **Silence timeout** | 500ms (configurable via `BAYMAX_VAD_SILENCE_MS`) |
+
+Silero VAD uses a lightweight LSTM-based model to detect speech activity in audio chunks. A 4-state machine (IDLE, SPEECH_STARTED, SPEECH_ONGOING, SILENCE_AFTER_SPEECH) segments continuous audio into discrete speech segments. Model is downloaded on first use via `torch.hub` and cached locally.
+
+### faster-whisper (Default ASR)
+
+| Property | Value |
+|----------|-------|
+| **Backend** | `faster_whisper` (default) |
+| **Library** | `faster-whisper` (CTranslate2-based) |
+| **Default model** | `base.en` |
+| **License** | MIT |
+| **Input** | NumPy audio array (16000 Hz) |
+| **Output** | Transcribed text + confidence + latency |
+| **Device** | Auto-detected (GPU if available, else CPU) |
+
+faster-whisper is a CTranslate2-based reimplementation of OpenAI's Whisper model, providing significantly faster inference with lower memory usage. The model is lazy-loaded on first transcription call and cached locally.
+
+### ASR Backend Selection
+
+```bash
+# faster-whisper (default)
+BAYMAX_STT_BACKEND=faster_whisper
+BAYMAX_WHISPER_MODEL=base.en
+BAYMAX_WHISPER_DEVICE=auto
+
+# Null (no transcription, for testing)
+BAYMAX_STT_BACKEND=null
+```
+
+### Echo Suppression
+
+| Property | Value |
+|----------|-------|
+| **Algorithm** | Text similarity (difflib.SequenceMatcher) |
+| **Default threshold** | 0.85 (configurable via `BAYMAX_ECHO_SIMILARITY_THRESHOLD`) |
+| **Comparison** | Case-insensitive, punctuation-stripped |
+| **Buffer** | Last N spoken texts (configurable) |
+
+Compares incoming transcriptions against recently spoken Bay-Max text to prevent echo loops when TTS output is picked up by the microphone.
 
 ---
 

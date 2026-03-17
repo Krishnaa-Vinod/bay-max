@@ -3,16 +3,16 @@
 This file provides continuity context for AI agents working on the Bay-Max project. Update this file after completing significant work.
 
 ## Last Updated
-2026-03-17 (Iteration 007)
+2026-03-17 (Iteration 008)
 
 ## Current State
-- **Iteration**: 007 (Webcam + TTS)
-- **Branch**: feature/iteration-007-webcam-verification-tts
+- **Iteration**: 008 (Bidirectional Speech)
+- **Branch**: feature/iteration-008-bidirectional-speech
 - **Status**: Complete
 
 ## What Exists
 - Full modular monolith structure under `src/baymax/`
-- 10 modules: capture(stub), perception, state, memory, planner, dialogue, orchestrator, config, live, **tts**
+- 10 modules: capture(stub), perception, state, memory, planner, dialogue, orchestrator, config, live, **tts**, **audio**
 - Real face detection via facenet-pytorch MTCNN
 - Real face embeddings via InceptionResnetV1 (vggface2, 512-d vectors)
 - Cosine similarity face recognition against enrolled embeddings
@@ -44,14 +44,27 @@ This file provides continuity context for AI agents working on the Bay-Max proje
   - SpeechService with queued playback
   - LiveRuntime TTS integration (proactive responses spoken aloud)
   - PiperTTSProvider (placeholder), NullTTSProvider (silent fallback)
-- FastAPI backend with 20 endpoints (version 0.6.0)
-- CLI runner `scripts/live_companion.py` for webcam and folder/video replay
-- 296 tests all passing, ruff lint clean
+- **[NEW] Audio/Speech Input module** (`src/baymax/audio/`):
+  - MicrophoneCapture (sounddevice) + NullMicrophone (headless stub)
+  - SileroVAD: 4-state machine (IDLE/SPEECH_STARTED/SPEECH_ONGOING/SILENCE_AFTER_SPEECH)
+  - FasterWhisperProvider: CTranslate2-based ASR (base.en default) + NullASRProvider
+  - EchoSuppressor: text-similarity (SequenceMatcher) against recent TTS output
+  - SpeechInputService: orchestrates mic -> VAD -> ASR -> echo check -> output queue
+  - Speaking lock + post-speech cooldown to prevent echo loops
+  - Push-to-talk fallback alongside continuous VAD
+  - Spoken turns stored as ChatTurn with source='speech'
+- **[NEW] Companion Persona** (`docs/COMPANION_PERSONA.md`):
+  - Baymax-inspired calm, literal, gentle, nonjudgmental tone
+  - Injected into system prompt via `_PERSONA_STYLE` in prompt_builder.py
+- FastAPI backend with 22 endpoints (version 0.7.0)
+- CLI runner `scripts/live_companion.py` for webcam, replay, TTS, and speech input modes
+- 356 tests all passing, ruff lint clean
 
 ## What Is Stubbed
 - Frame source / webcam capture via `capture` module (still returns empty; live mode uses `live/frame_source.py` directly)
 - Emotion estimator (returns hardcoded values)
 - Live webcam not exercised on this headless machine — replay/folder mode verified via automated tests
+- Real microphone/speaker speech input not exercised on Sol (headless HPC) — NullMicrophone/NullVAD stubs used in tests
 
 ## Key Decisions Made
 - Modular monolith over microservices (ADR-0001)
@@ -80,6 +93,12 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - Stability delay in EventEngine prevents jitter-triggered events for posture/engagement (Iteration 006)
 - Headless-safe design throughout: cv2.imshow wrapped in try/except, NumPy overlay, folder replay (Iteration 006)
 - Kokoro-82M as default TTS backend (open-weight, Apache-2.0, lightweight) (Iteration 007)
+- faster-whisper as default ASR backend (CTranslate2, better local performance than openai-whisper) (Iteration 008)
+- Silero VAD for speech activity detection (MIT, lightweight LSTM) (Iteration 008)
+- Text-based echo suppression over acoustic echo cancellation (simpler, no DSP dependency) (Iteration 008)
+- Speaking lock + cooldown instead of barge-in (simpler, avoids partial utterance handling) (Iteration 008)
+- Push-to-talk as debugging fallback, not primary mode (Iteration 008)
+- Persona style injected into system prompt, not into template strings (Iteration 008)
 
 ## Model Stack
 - **Face Detection**: MTCNN (facenet-pytorch) - multi-task cascaded CNN
@@ -93,6 +112,10 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - **Dialogue**: Configurable — rule_based (default), Ollama (local server), or Transformers (local model)
 - **Dialogue Safety**: Input check + output check for diagnosis-style requests
 - **TTS**: Kokoro-82M (Apache-2.0, 24kHz, af_heart voice default)
+- **VAD**: Silero VAD (MIT, LSTM-based, 16kHz, threshold 0.65)
+- **ASR**: faster-whisper (CTranslate2, base.en, lazy-loaded)
+- **Echo Suppression**: Text similarity (SequenceMatcher, threshold 0.85)
+- **Companion Persona**: Baymax-inspired calm/literal/gentle tone (injected via prompt_builder.py)
 
 ## Known Issues
 - SQLite store uses synchronous sqlite3 despite being wrapped in async
@@ -105,6 +128,9 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - Live webcam mode implemented but not exercised on this headless machine (Sol); replay mode verified
 - PortAudio may not be installed on headless machines (required for TTS audio playback)
 - Piper TTS backend is a placeholder (not yet fully implemented)
+- No real speech was heard or transcribed on Sol — only automated/mock tests ran
+- Silero VAD threshold (0.65) may need tuning for different microphone hardware
+- Post-speech cooldown (1500ms) may need tuning for different room acoustics
 
 ## For Next Agent
 1. Read this file and `docs/project_state.json` first
@@ -122,3 +148,11 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 13. `GET /v1/tts/backends` returns available TTS backends and active configuration
 14. TTS is enabled by default with Kokoro; set `BAYMAX_TTS_BACKEND=null` to disable
 15. Install TTS dependencies with `pip install -e ".[tts]"`
+16. Audio/speech input module is in `src/baymax/audio/` -- `speech_input_service.py` is the orchestrator
+17. SpeechInputService manages: mic -> VAD -> ASR -> echo suppression -> output queue
+18. Speaking lock is managed by SpeechInputService; LiveRuntime sets it during TTS playback
+19. `GET /v1/audio/status` returns speech input/output runtime status
+20. `GET /v1/stt/backends` returns STT backend configuration
+21. Install speech input dependencies with `pip install -e ".[speech]"`
+22. Companion persona style is in `docs/COMPANION_PERSONA.md` and injected via `dialogue/prompt_builder.py`
+23. ChatTurn.source field distinguishes typed vs spoken turns ('typed' default, 'speech' for mic input)

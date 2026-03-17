@@ -34,6 +34,7 @@ make run-demo
 | `pip install -e ".[dev,vector]"` | + LanceDB + sentence-transformers | Memory semantic search |
 | `pip install -e ".[dev,dialogue]"` | + Transformers + PyTorch | Local HuggingFace LLM dialogue |
 | `pip install -e ".[tts]"` | Kokoro TTS + audio | Spoken output |
+| `pip install -e ".[speech]"` | faster-whisper + audio | Speech input |
 | `pip install -e ".[all]"` | Everything | Full local stack |
 
 For **Ollama-based dialogue** (easiest local LLM mode): no extra Python package required.
@@ -63,6 +64,24 @@ Bay-Max supports text-to-speech output via the `BAYMAX_TTS_BACKEND` setting:
 
 See `docs/TTS_ARCHITECTURE.md` for full TTS design details.
 
+## Speech Input (Iteration 008)
+
+Bay-Max supports bidirectional speech via `BAYMAX_STT_BACKEND`:
+
+| Backend | Env value | Requirement |
+|---------|-----------|-------------|
+| faster-whisper (default) | `faster_whisper` | `pip install -e ".[speech]"` |
+| Null (no transcription) | `null` | None |
+
+Features:
+- Silero VAD for speech segmentation (configurable threshold and timing)
+- Echo suppression to prevent responding to own TTS output
+- Speaking lock with post-speech cooldown
+- Push-to-talk mode for debugging
+- Baymax-inspired companion persona style
+
+See `docs/COMPANION_PERSONA.md` for the persona style guide.
+
 ## Project Structure
 
 ```
@@ -77,6 +96,7 @@ src/baymax/          # Core library
   planner/           # Response strategy planning
   dialogue/          # Response generation (rule-based + LLM backends)
   tts/               # Text-to-speech (Kokoro, Piper, Null backends)
+  audio/             # Speech input (microphone, VAD, ASR, echo suppression)
   orchestrator/      # End-to-end flow coordination
 apps/api/            # FastAPI application
 apps/demo/           # Gradio demo application
