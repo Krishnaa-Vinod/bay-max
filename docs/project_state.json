@@ -45,19 +45,20 @@
     "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)",
     "LanceDB vector store requires separate install (pip install baymax[vector])",
     "Semantic fact extraction uses simple keyword heuristics (not LLM-based)",
-    "Local LLM backends (Ollama, Transformers) not smoke-tested with real models on this machine — environment lacks models",
-    "LanceDB real backend not tested in automated tests (stub used)"
+    "Ollama backend not smoke-tested with real model — Ollama server not installed in this environment",
+    "LanceDB real backend not tested in automated tests (stub used)",
+    "Safety pattern matching is substring-based — may miss paraphrased unsafe requests"
   ],
   "next_tasks": [
-    "Manual smoke test grounded recall with real local model (Ollama or Transformers)",
-    "Verify LanceDB real backend with actual embedding + search round-trip",
+    "Run real-model smoke test with Ollama backend once Ollama is installed",
     "Migrate SQLite store to fully async aiosqlite",
     "Implement emotion estimation from facial expressions",
     "Add LLM-based semantic fact extraction during consolidation",
     "Add salience decay over time for episodic memories",
     "Add webcam live-stream support via capture module",
     "Migrate to MediaPipe Tasks API for pose estimation",
-    "Add dialogue streaming support (token-by-token)"
+    "Add dialogue streaming support (token-by-token)",
+    "Evaluate larger model (3B-7B) to improve memory verbalization in grounded recall"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",

@@ -1,4 +1,4 @@
-.PHONY: help install install-vector install-dialogue install-all lint test run-api run-demo smoke-test clean
+.PHONY: help install install-vector install-dialogue install-all lint test run-api run-demo smoke-test real-model-test clean
 
 help:
 	@echo "Bay-Max development commands:"
@@ -11,6 +11,7 @@ help:
 	@echo "  make run-api           - Start FastAPI server on port 8000"
 	@echo "  make run-demo          - Start Gradio demo on port 7860"
 	@echo "  make smoke-test        - Run local dialogue smoke-test script"
+	@echo "  make real-model-test   - Run real-model smoke-test (requires LLM backend in .env)"
 	@echo "  make clean             - Remove build artifacts and caches"
 
 install:
@@ -39,6 +40,9 @@ run-demo:
 
 smoke-test:
 	python scripts/dialogue_smoke.py
+
+real-model-test:
+	python scripts/dialogue_smoke.py --real-model
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
