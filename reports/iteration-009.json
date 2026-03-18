@@ -1,9 +1,10 @@
 {
   "iteration": "009",
   "branch_name": "feature/iteration-009-affect-aware-companion",
-  "latest_commit_sha": "pending_final_commit",
+  "latest_commit_sha": "fbf3c1c",
+  "hotfix_applied": "iteration-009.1-affect-runtime-wiring",
   "status": "completed",
-  "summary": "Iteration 009 adds facial affect analysis to Bay-Max with valence/arousal dimensional modeling, EMA smoothing, confidence-gated strategy bias, and strict clinical language safety. MediaPipe Face Landmarker serves as the primary backend (py-feat incompatible with Python 3.11), with NullEmotionAnalyzer always available as fallback. Smoothed affect state influences response strategy and tone without overriding safety or critical interactions. Session-level affect summaries are written to memory only when stable (≥30sec) and confident (≥0.65), with clinical language blocklist enforcement. Comprehensive artifact logging provides timeline data, strategy changes, and verification manifests. All 386 automated tests pass (356 existing + 30 new). Manual affect verification requires test images not available on headless Sol.",
+  "summary": "Iteration 009 adds facial affect analysis to Bay-Max with valence/arousal dimensional modeling, EMA smoothing, confidence-gated strategy bias, and strict clinical language safety. MediaPipe Face Landmarker serves as the primary backend (py-feat incompatible with Python 3.11), with NullEmotionAnalyzer always available as fallback. Hotfix 009.1 wires affect analysis into the live runtime, populates status fields, adds overlay HUD display, and ensures the planner receives smoothed affect state. The runtime now gracefully falls back to the null backend when MediaPipe is unavailable. Comprehensive artifact logging and smoke tests verify the integration.",
   "affect_backends": [
     {
       "backend": "null",
@@ -107,6 +108,24 @@
         "Documentation: docs/EMOTION_ARCHITECTURE.md created, project_state.json updated",
         "Environment variables: 16 new BAYMAX_AFFECT_* configuration options added"
       ]
+    },
+    {
+      "id": "T908",
+      "title": "Hotfix 009.1: Runtime wiring and verification",
+      "evidence": [
+        "src/baymax/live/runtime.py: Wired affect analyzer and smoother initialization in __init__",
+        "Runtime now runs affect analysis on analysis frames (every N frames configured)",
+        "StateManager.update_affect() method added to propagate affect to InteractionState",
+        "_update_status() now populates all affect fields in LiveRuntimeStatus",
+        "Graceful fallback to null backend when MediaPipe unavailable",
+        "_run_affect_analysis() method added to orchestrate face detection and affect analysis",
+        "src/baymax/live/overlay.py: Debug HUD now shows affect values (valence, arousal, confidence, stable duration)",
+        ".env.example: Added all BAYMAX_AFFECT_* environment variables with documentation",
+        "scripts/affect_replay_smoke.py: New smoke test verifying runtime affect wiring",
+        "tests/test_iteration_009.py: Added TestRuntimeAffectWiring class with 4 new tests",
+        "All 4 new runtime wiring tests pass",
+        "Smoke test verifies all critical checks pass with null backend fallback"
+      ]
     }
   ],
   "tasks_partial": [],
@@ -120,20 +139,27 @@
     "docs/EMOTION_ARCHITECTURE.md",
     "tests/test_iteration_009.py",
     "scripts/affect_replay_test.py",
+    "scripts/affect_replay_smoke.py",
     "reports/iteration-009-affect-aware-companion.json",
-    "reports/iteration-009-verification-checklist.md"
+    "reports/iteration-009-verification-checklist.md",
+    "reports/iteration-009.1-checklist.md",
+    "reports/iteration-009.1-hotfix-affect-runtime.json"
   ],
   "files_modified": [
     "src/baymax/config/settings.py",
     "src/baymax/schemas/perception.py",
     "src/baymax/schemas/response.py",
     "src/baymax/state/models.py",
+    "src/baymax/state/manager.py",
     "src/baymax/live/schemas.py",
+    "src/baymax/live/runtime.py",
+    "src/baymax/live/overlay.py",
     "src/baymax/planner/supportive_planner.py",
     "src/baymax/dialogue/prompt_builder.py",
     "src/baymax/memory/consolidate.py",
     "apps/api/main.py",
-    "docs/project_state.json"
+    "docs/project_state.json",
+    ".env.example"
   ],
   "commands_run": [
     "python3.11 -m pytest tests/ -v (baseline verification: 356 passed)",
@@ -142,7 +168,10 @@
     "python3.11 -m pytest tests/test_iteration_009.py -v (30 passed)",
     "python3.11 -m pytest tests/ -v (final verification: 386 passed)",
     "python3.11 -m ruff check --fix src/ apps/ tests/ scripts/ (0 errors)",
-    "python3.11 scripts/affect_replay_test.py create-sequences (test sequences created)"
+    "python3.11 scripts/affect_replay_test.py create-sequences (test sequences created)",
+    "python -m pytest tests/test_iteration_009.py::TestRuntimeAffectWiring -v (4 passed, hotfix 009.1)",
+    "python scripts/affect_replay_smoke.py --backend null (smoke test passed, hotfix 009.1)",
+    "python -m ruff check src/baymax/live/ src/baymax/state/ scripts/affect_replay_smoke.py (0 errors in new code)"
   ],
   "automated_tests_run": [
     {
@@ -159,57 +188,95 @@
       "command": "python3.11 -m ruff check src/ apps/ tests/ scripts/",
       "result": "passed",
       "notes": "0 linting errors. Code quality maintained throughout integration."
+    },
+    {
+      "command": "python -m pytest tests/test_iteration_009.py::TestRuntimeAffectWiring -v",
+      "result": "passed",
+      "notes": "4 new runtime wiring tests passed (hotfix 009.1): runtime_has_affect_components, state_manager_update_affect, live_runtime_status_has_affect_fields, interaction_state_has_affect_fields."
+    },
+    {
+      "command": "python scripts/affect_replay_smoke.py --backend null",
+      "result": "passed",
+      "notes": "Smoke test verifies runtime wiring: 16/16 checks passed including analyzer initialization, smoother initialization, status fields, and null backend fallback."
     }
   ],
+  "runtime_wiring_status": {
+    "status": "completed",
+    "evidence": [
+      "LiveRuntime initializes affect analyzer and smoother in __init__",
+      "Graceful fallback to null backend when MediaPipe unavailable",
+      "_run_affect_analysis() orchestrates face detection and affect analysis on eligible frames",
+      "StateManager.update_affect() propagates affect state to InteractionState",
+      "_update_status() populates all affect fields in LiveRuntimeStatus",
+      "Planner receives smoothed affect via InteractionState (state.valence, state.arousal, etc.)",
+      "Overlay HUD displays affect values in debug mode",
+      "Smoke test artifacts saved to artifacts/verification_0091/affect/"
+    ]
+  },
   "manual_or_replay_verification_results": [
     {
       "id": "VT930",
       "case": "Positive expression replay or live sample",
       "result": "not_run",
       "notes": "Sol is headless with no camera. Replay test infrastructure created (affect_replay_test.py) but requires test images. Expected: valence trends positive, confidence reasonable, tone slightly warmer.",
-      "artifact_files": ["scripts/affect_replay_test.py", "test_data/affect_replay/positive_expression.json"]
+      "artifact_files": [
+        "scripts/affect_replay_test.py",
+        "test_data/affect_replay/positive_expression.json"
+      ]
     },
     {
       "id": "VT931",
       "case": "Neutral expression replay or live sample",
       "result": "not_run",
       "notes": "Requires test images for replay verification. Expected: valence near neutral, planner mostly unchanged.",
-      "artifact_files": ["test_data/affect_replay/neutral_expression.json"]
+      "artifact_files": [
+        "test_data/affect_replay/neutral_expression.json"
+      ]
     },
     {
       "id": "VT932",
       "case": "Low-positive-affect / worried / low-energy replay",
       "result": "not_run",
       "notes": "Expected: tone softens, less cheerleading, more validation. Test sequence defined but images not available on Sol.",
-      "artifact_files": ["test_data/affect_replay/low_affect_expression.json"]
+      "artifact_files": [
+        "test_data/affect_replay/low_affect_expression.json"
+      ]
     },
     {
       "id": "VT933",
       "case": "Occluded / turned-away / poor-light sample",
       "result": "not_run",
       "notes": "Expected: low confidence or unknown, no hard guess. Occlusion test sequence created.",
-      "artifact_files": ["test_data/affect_replay/occlusion_test.json"]
+      "artifact_files": [
+        "test_data/affect_replay/occlusion_test.json"
+      ]
     },
     {
       "id": "VT934",
       "case": "Stable-state memory write",
       "result": "automated",
       "notes": "Memory consolidation with affect summaries verified in automated tests. Requires stability ≥30s and confidence ≥0.65.",
-      "artifact_files": ["tests/test_iteration_009.py::TestClinicalSafety"]
+      "artifact_files": [
+        "tests/test_iteration_009.py::TestClinicalSafety"
+      ]
     },
     {
       "id": "VT935",
       "case": "Unstable/noisy affect",
       "result": "automated",
       "notes": "Low confidence and unstable affect properly excluded from memory consolidation, verified in smoother tests.",
-      "artifact_files": ["tests/test_iteration_009.py::TestAffectSmoother::test_smoother_low_confidence_skip"]
+      "artifact_files": [
+        "tests/test_iteration_009.py::TestAffectSmoother::test_smoother_low_confidence_skip"
+      ]
     },
     {
       "id": "VT936",
       "case": "Response-tone comparison",
       "result": "automated",
       "notes": "Planner bias tests verify different affect states yield different strategies while preserving Baymax persona.",
-      "artifact_files": ["tests/test_iteration_009.py::TestPlannerAffectBias"]
+      "artifact_files": [
+        "tests/test_iteration_009.py::TestPlannerAffectBias"
+      ]
     }
   ],
   "api_endpoints_verified": [

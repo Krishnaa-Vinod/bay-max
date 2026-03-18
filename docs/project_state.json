@@ -1,8 +1,9 @@
 {
-  "iteration": "009",
+  "iteration": "009.1",
   "branch_name": "feature/iteration-009-affect-aware-companion",
   "status": "completed",
   "last_updated": "2026-03-17",
+  "hotfix_applied": "009.1-affect-runtime-wiring",
   "modules_implemented": [
     "config",
     "core",
@@ -68,7 +69,8 @@
     "py-feat affect backend attempted but incompatible with Python 3.11 environment due to setuptools conflicts",
     "MediaPipe Face Landmarker blendshape-to-affect mapping uses custom heuristics — not clinically validated",
     "Affect analysis requires good lighting and front-facing poses for reliable confidence scores",
-    "Manual affect verification tests (VT930-VT936) require local laptop with test images — not run on headless Sol"
+    "Manual affect verification tests (VT930-VT936) require local laptop with test images — not run on headless Sol",
+    "MediaPipe not installed in current environment — runtime falls back to null affect backend gracefully"
   ],
   "next_tasks": [
     "Migrate SQLite store to fully async aiosqlite",
@@ -90,6 +92,6 @@
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
     "scope": "vision-first empathetic companion MVP — affect-aware responses from facial expressions",
-    "api_version": "0.8.0"
+    "api_version": "0.8.1"
   }
 }

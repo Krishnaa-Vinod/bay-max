@@ -95,6 +95,30 @@ class StateManager:
         state.engagement_score = engagement_result.score
         return state
 
+    def update_affect(
+        self,
+        session_id: UUID,
+        *,
+        affect_enabled: bool = False,
+        valence: float = 0.0,
+        arousal: float = 0.0,
+        affect_confidence: float = 0.0,
+        affect_stable_duration_sec: float = 0.0,
+        affect_sample_count: int = 0,
+    ) -> InteractionState | None:
+        """Update state with affect analysis results."""
+        state = self._states.get(session_id)
+        if state is None:
+            return None
+        state.affect_enabled = affect_enabled
+        state.valence = valence
+        state.arousal = arousal
+        state.affect_confidence = affect_confidence
+        state.affect_stable_duration_sec = affect_stable_duration_sec
+        state.affect_sample_count = affect_sample_count
+        state.last_affect_update = datetime.utcnow()
+        return state
+
     def remove(self, session_id: UUID) -> None:
         """Remove state for an ended session."""
         self._states.pop(session_id, None)
