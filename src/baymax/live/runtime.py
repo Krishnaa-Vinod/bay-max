@@ -23,6 +23,8 @@ from baymax.live.schemas import (
 )
 from baymax.live.session_supervisor import SessionSupervisor
 from baymax.orchestrator.service import Orchestrator
+from baymax.perception.emotion import EmotionAnalyzer, get_emotion_analyzer
+from baymax.perception.emotion_smoother import AffectSmoother
 from baymax.tts.provider import get_tts_provider
 from baymax.tts.speech_service import SpeechService
 
@@ -139,6 +141,56 @@ class LiveRuntime:
             settings, "enable_live_debug_hud", False
         )
         self._last_memory_refs_count = 0
+
+        # Iteration 009: Affect analysis initialization
+        self._affect_enabled = settings.enable_affect
+        self._affect_sample_every_n_frames = settings.affect_sample_every_n_frames
+        self._affect_frame_counter = 0
+        self._affect_analyzer: EmotionAnalyzer | None = None
+        self._affect_smoother: AffectSmoother | None = None
+
+        if self._affect_enabled:
+            try:
+                self._affect_analyzer = get_emotion_analyzer(
+                    backend=settings.affect_backend,
+                    device=settings.affect_device,
+                )
+                self._affect_smoother = AffectSmoother(
+                    alpha=settings.affect_smoothing_alpha,
+                    stability_threshold=0.1,
+                    stability_duration_sec=settings.affect_stability_duration_sec,
+                    confidence_threshold=settings.affect_confidence_threshold,
+                )
+                logger.info(
+                    "Affect analysis initialized: backend=%s, sample_every=%d frames",
+                    settings.affect_backend,
+                    settings.affect_sample_every_n_frames,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to init affect analyzer with backend '%s': %s. "
+                    "Falling back to null backend.",
+                    settings.affect_backend,
+                    exc,
+                )
+                # Fall back to null backend
+                try:
+                    self._affect_analyzer = get_emotion_analyzer(backend="null")
+                    self._affect_smoother = AffectSmoother(
+                        alpha=settings.affect_smoothing_alpha,
+                        stability_threshold=0.1,
+                        stability_duration_sec=settings.affect_stability_duration_sec,
+                        confidence_threshold=settings.affect_confidence_threshold,
+                    )
+                    logger.info(
+                        "Affect analysis initialized with null fallback, "
+                        "sample_every=%d frames",
+                        settings.affect_sample_every_n_frames,
+                    )
+                except Exception as fallback_exc:
+                    logger.warning("Failed to init null affect backend: %s", fallback_exc)
+                    self._affect_analyzer = None
+                    self._affect_smoother = None
 
     @property
     def status(self) -> LiveRuntimeStatus:
@@ -620,6 +672,17 @@ class LiveRuntime:
                 )
                 self._artifact_logger.log_suppression(decision)
 
+        # --- Affect analysis (Iteration 009) ---
+        self._affect_frame_counter += 1
+        if (
+            self._affect_enabled
+            and self._affect_analyzer is not None
+            and self._affect_smoother is not None
+            and session_id is not None
+            and self._affect_frame_counter % self._affect_sample_every_n_frames == 0
+        ):
+            await self._run_affect_analysis(frame, session_id)
+
         # Update status
         self._status.current_user_id = user_id
         self._status.current_user_display_name = user_name
@@ -725,6 +788,90 @@ class LiveRuntime:
         else:
             return f"Event: {event.event_type.value}"
 
+    async def _run_affect_analysis(self, frame, session_id: UUID) -> None:
+        """Run facial affect analysis on the current frame."""
+        if self._affect_analyzer is None or self._affect_smoother is None:
+            return
+
+        try:
+            # Get face detection from orchestrator to reuse detected face region
+            detector = self._orch._ensure_detector()
+            detections = detector.detect(frame)
+
+            if not detections:
+                # No face detected - return unknown affect
+                logger.debug("No face detected for affect analysis")
+                return
+
+            # Use first detected face
+            face = detections[0]
+            face_bbox = {
+                "x1": face.bbox.x1,
+                "y1": face.bbox.y1,
+                "x2": face.bbox.x2,
+                "y2": face.bbox.y2,
+            }
+
+            # Run affect analysis
+            emotion_result = self._affect_analyzer.analyze(frame, face_bbox)
+
+            # Update smoother
+            smoothed_state = self._affect_smoother.update(emotion_result)
+
+            # Update state manager with affect values
+            self._orch.state_manager.update_affect(
+                session_id,
+                affect_enabled=True,
+                valence=smoothed_state.valence,
+                arousal=smoothed_state.arousal,
+                affect_confidence=smoothed_state.confidence,
+                affect_stable_duration_sec=smoothed_state.stable_duration_sec,
+                affect_sample_count=smoothed_state.sample_count,
+            )
+
+            # Update runtime status affect fields
+            self._status.affect_enabled = True
+            self._status.affect_backend = self._affect_analyzer.name()
+            self._status.emotion_valence = smoothed_state.valence
+            self._status.emotion_arousal = smoothed_state.arousal
+            self._status.emotion_confidence = smoothed_state.confidence
+            self._status.emotion_stable_duration_sec = smoothed_state.stable_duration_sec
+
+            # Generate debug summary
+            if smoothed_state.confidence >= self._settings.affect_confidence_threshold:
+                if smoothed_state.valence > 0.3:
+                    valence_desc = "positive"
+                elif smoothed_state.valence < -0.3:
+                    valence_desc = "subdued"
+                else:
+                    valence_desc = "neutral"
+
+                if smoothed_state.arousal > 0.6:
+                    arousal_desc = "energetic"
+                elif smoothed_state.arousal < 0.3:
+                    arousal_desc = "calm"
+                else:
+                    arousal_desc = "moderate"
+
+                self._status.emotion_debug_summary = (
+                    f"{valence_desc}, {arousal_desc} (conf: {smoothed_state.confidence:.2f})"
+                )
+            else:
+                self._status.emotion_debug_summary = (
+                    f"low confidence ({smoothed_state.confidence:.2f})"
+                )
+
+            logger.debug(
+                "Affect analysis: valence=%.3f, arousal=%.3f, confidence=%.3f, stable=%.1fs",
+                smoothed_state.valence,
+                smoothed_state.arousal,
+                smoothed_state.confidence,
+                smoothed_state.stable_duration_sec,
+            )
+
+        except Exception as e:
+            logger.warning("Affect analysis failed: %s", e)
+
     def _update_status(self) -> None:
         """Refresh the runtime status object."""
         self._status.session_status = self._supervisor.state
@@ -757,6 +904,21 @@ class LiveRuntime:
             self._status.mic_mode = sis.mic_mode
         else:
             self._status.speech_input_enabled = False
+
+        # Affect analysis status (Iteration 009)
+        if self._affect_enabled and self._affect_smoother is not None:
+            self._status.affect_enabled = True
+            self._status.affect_backend = (
+                self._affect_analyzer.name() if self._affect_analyzer else "null"
+            )
+            # Get current smoothed state
+            smoothed = self._affect_smoother.get_current_state()
+            self._status.emotion_valence = smoothed.valence
+            self._status.emotion_arousal = smoothed.arousal
+            self._status.emotion_confidence = smoothed.confidence
+            self._status.emotion_stable_duration_sec = smoothed.stable_duration_sec
+        else:
+            self._status.affect_enabled = False
 
     def _request_stop(self) -> None:
         """Request a clean stop."""

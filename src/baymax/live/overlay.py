@@ -34,7 +34,8 @@ def render_overlay(
     h, w = overlay.shape[:2]
 
     # Semi-transparent background strip at the top
-    bar_height = 120 if debug else 80
+    # Increase height if debug mode to fit affect info
+    bar_height = 150 if debug else 80
     sub_img = overlay[0:bar_height, 0:w]
     dark = np.zeros_like(sub_img)
     cv2.addWeighted(sub_img, 0.4, dark, 0.6, 0, sub_img)
@@ -71,6 +72,47 @@ def render_overlay(
     if debug:
         dbg = f"Backend: {backend} | Model: {model_name} | Memories: {memory_refs_count}"
         cv2.putText(overlay, dbg, (10, y_start + 88), font, scale * 0.8, (200, 200, 200), thin)
+
+        # Affect analysis info (Iteration 009)
+        if status.affect_enabled:
+            affect_line = (
+                f"Affect: v={status.emotion_valence:+.2f} "
+                f"a={status.emotion_arousal:.2f} "
+                f"conf={status.emotion_confidence:.2f} "
+                f"stable={status.emotion_stable_duration_sec:.0f}s "
+                f"[{status.affect_backend}]"
+            )
+            # Color based on valence
+            if status.emotion_confidence >= 0.5:
+                if status.emotion_valence > 0.2:
+                    affect_color = (100, 255, 100)  # Green for positive
+                elif status.emotion_valence < -0.2:
+                    affect_color = (100, 100, 255)  # Blue for subdued
+                else:
+                    affect_color = (200, 200, 200)  # Gray for neutral
+            else:
+                affect_color = (150, 150, 150)  # Dimmed for low confidence
+
+            cv2.putText(
+                overlay, affect_line, (10, y_start + 110),
+                font, scale * 0.8, affect_color, thin
+            )
+
+            # Add debug summary if available
+            if status.emotion_debug_summary:
+                cv2.putText(
+                    overlay,
+                    f"[{status.emotion_debug_summary}]",
+                    (10, y_start + 128),
+                    font, scale * 0.7, affect_color, thin
+                )
+        else:
+            cv2.putText(
+                overlay,
+                "Affect: disabled",
+                (10, y_start + 110),
+                font, scale * 0.8, (100, 100, 100), thin
+            )
 
     # Bottom bar with frame count
     bottom_y = h - 10

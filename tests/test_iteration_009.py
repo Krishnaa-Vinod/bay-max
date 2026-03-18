@@ -1,12 +1,11 @@
 """Comprehensive tests for Iteration 009 - Affect-Aware Companion."""
 
-import json
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
+from unittest.mock import patch
+from uuid import uuid4
 
 import numpy as np
+import pytest
 
 from baymax.config.settings import BaymaxSettings
 from baymax.core.enums import ResponseStrategy
@@ -24,7 +23,6 @@ from baymax.perception.emotion import (
 )
 from baymax.perception.emotion_smoother import AffectSmoother
 from baymax.schemas.perception import (
-    AffectEvidence,
     AffectMemoryObservation,
     EmotionResult,
     SmoothedAffectState,
@@ -609,10 +607,9 @@ class TestProjectStateValidation:
     def test_iteration_completeness(self):
         """Test that iteration 009 requirements are implemented."""
         # Verify key components can be imported
-        from baymax.perception.emotion import NullEmotionAnalyzer, MediaPipeEmotionAnalyzer
+        from baymax.perception.emotion import MediaPipeEmotionAnalyzer, NullEmotionAnalyzer
         from baymax.perception.emotion_smoother import AffectSmoother
-        from baymax.memory.clinical_safety import check_clinical_language
-        from baymax.schemas.perception import EmotionResult, SmoothedAffectState
+        from baymax.schemas.perception import EmotionResult
 
         # Basic instantiation tests
         null_analyzer = NullEmotionAnalyzer()
@@ -627,3 +624,120 @@ class TestProjectStateValidation:
         # Schema validation
         result = EmotionResult(backend="test", success=True)
         assert result.backend == "test"
+
+
+class TestRuntimeAffectWiring:
+    """Test that affect analysis is wired into the live runtime."""
+
+    def test_runtime_has_affect_components(self):
+        """Test that LiveRuntime initializes affect components when enabled."""
+        from unittest.mock import MagicMock, patch
+
+        # Mock settings to enable affect with null backend
+        mock_settings = MagicMock()
+        mock_settings.enable_affect = True
+        mock_settings.affect_backend = "null"
+        mock_settings.affect_device = "cpu"
+        mock_settings.affect_sample_every_n_frames = 10
+        mock_settings.affect_smoothing_alpha = 0.25
+        mock_settings.affect_stability_duration_sec = 30.0
+        mock_settings.affect_confidence_threshold = 0.6
+        mock_settings.presence_min_consecutive_frames = 2
+        mock_settings.absence_timeout_sec = 30.0
+        mock_settings.session_resume_window_sec = 300.0
+        mock_settings.event_min_stability_sec = 4.0
+        mock_settings.quiet_companionship_interval_sec = 300.0
+        mock_settings.proactive_min_interval_sec = 30.0
+        mock_settings.any_response_min_interval_sec = 10.0
+        mock_settings.live_artifact_dir = "./artifacts/test"
+        mock_settings.enable_artifact_logging = False
+        mock_settings.tts_enabled = False
+        mock_settings.enable_speech_input = False
+        mock_settings.enable_live_overlay = False
+        mock_settings.enable_live_debug_hud = False
+        mock_settings.tts_voice = "test"
+
+        with patch("baymax.live.runtime.get_settings", return_value=mock_settings):
+            from baymax.live.runtime import LiveRuntime
+
+            runtime = LiveRuntime(db_path=":memory:")
+
+            # Verify affect components are initialized
+            assert runtime._affect_enabled is True
+            assert runtime._affect_analyzer is not None
+            assert runtime._affect_analyzer.name() == "null"
+            assert runtime._affect_smoother is not None
+            assert runtime._affect_sample_every_n_frames == 10
+            assert runtime._affect_frame_counter == 0
+
+    def test_state_manager_update_affect(self):
+        """Test that StateManager can update affect fields."""
+        from baymax.state.manager import StateManager
+
+        manager = StateManager()
+        session_id = uuid4()
+
+        # Create a session state
+        state = manager.get_or_create(session_id)
+        assert state.affect_enabled is False
+        assert state.valence == 0.0
+        assert state.arousal == 0.0
+
+        # Update affect
+        updated_state = manager.update_affect(
+            session_id,
+            affect_enabled=True,
+            valence=0.5,
+            arousal=0.6,
+            affect_confidence=0.8,
+            affect_stable_duration_sec=15.0,
+            affect_sample_count=10,
+        )
+
+        assert updated_state is not None
+        assert updated_state.affect_enabled is True
+        assert updated_state.valence == 0.5
+        assert updated_state.arousal == 0.6
+        assert updated_state.affect_confidence == 0.8
+        assert updated_state.affect_stable_duration_sec == 15.0
+        assert updated_state.affect_sample_count == 10
+
+    def test_live_runtime_status_has_affect_fields(self):
+        """Test that LiveRuntimeStatus has affect fields."""
+        from baymax.live.schemas import LiveRuntimeStatus
+
+        status = LiveRuntimeStatus()
+
+        # Check affect fields exist with defaults
+        assert hasattr(status, "affect_enabled")
+        assert hasattr(status, "affect_backend")
+        assert hasattr(status, "emotion_valence")
+        assert hasattr(status, "emotion_arousal")
+        assert hasattr(status, "emotion_confidence")
+        assert hasattr(status, "emotion_stable_duration_sec")
+        assert hasattr(status, "emotion_debug_summary")
+
+        # Check default values
+        assert status.affect_enabled is False
+        assert status.affect_backend == ""
+        assert status.emotion_valence == 0.0
+        assert status.emotion_arousal == 0.0
+        assert status.emotion_confidence == 0.0
+
+    def test_interaction_state_has_affect_fields(self):
+        """Test that InteractionState has affect fields."""
+        state = InteractionState(session_id=uuid4())
+
+        assert hasattr(state, "affect_enabled")
+        assert hasattr(state, "valence")
+        assert hasattr(state, "arousal")
+        assert hasattr(state, "affect_confidence")
+        assert hasattr(state, "affect_stable_duration_sec")
+        assert hasattr(state, "affect_sample_count")
+        assert hasattr(state, "last_affect_update")
+
+        # Check default values
+        assert state.affect_enabled is False
+        assert state.valence == 0.0
+        assert state.arousal == 0.0
+        assert state.affect_confidence == 0.0
