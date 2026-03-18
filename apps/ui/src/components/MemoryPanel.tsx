@@ -75,7 +75,7 @@ export function MemoryPanel({ memoryHits, userId }: MemoryPanelProps) {
                     #{idx + 1}
                   </span>
                   <span className="text-xs text-gray-500">
-                    score: {hit.score.toFixed(2)}
+                    {hit.score !== null ? `score: ${hit.score.toFixed(2)}` : ''}
                   </span>
                 </div>
                 <div className="text-gray-300">{hit.text}</div>

@@ -280,6 +280,9 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         # Update runtime status
         _live_runtime._status.last_response_text = response.message
         _live_runtime._status.last_response_at = datetime.utcnow()
+        # Track memory refs for UI (iteration 010b hotfix)
+        refs = response.memory_refs[:10] if response.memory_refs else []
+        _live_runtime._status.last_memory_refs = refs
 
         # Optionally speak the response
         if _live_runtime.speech_service is not None:

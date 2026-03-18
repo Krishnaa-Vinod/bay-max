@@ -121,6 +121,13 @@ def build_snapshot_message(
             import time
             session_duration = time.time() - _live_runtime._start_time
 
+    # Build memory hits from status if not explicitly provided (iteration 010b hotfix)
+    resolved_memory_hits = memory_hits
+    if resolved_memory_hits is None and status.last_memory_refs:
+        resolved_memory_hits = [
+            {"text": ref, "score": None} for ref in status.last_memory_refs
+        ]
+
     return {
         "type": "snapshot",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -137,9 +144,14 @@ def build_snapshot_message(
             ),
             "user_name": status.current_user_display_name,
             "user_id": str(status.current_user_id) if status.current_user_id else None,
-            "recognition_confidence": 0.0,  # TODO: track this in status
-            "posture": "unknown",  # TODO: track in status
-            "engagement": 0.5,  # TODO: track in status
+            "recognition_confidence": status.recognition_confidence,
+            "posture": status.posture,
+            "engagement": status.engagement_score if status.engagement_score is not None else (
+                0.8 if status.engagement == "high" else
+                0.5 if status.engagement == "medium" else
+                0.3 if status.engagement == "low" else
+                None
+            ),
             "valence": status.emotion_valence,
             "arousal": status.emotion_arousal,
             "affect_confidence": status.emotion_confidence,
@@ -150,7 +162,7 @@ def build_snapshot_message(
         "pipeline_state": _get_pipeline_state(status),
         "last_response": status.last_response_text or "",
         "last_spoken_text": status.last_spoken_text or "",
-        "memory_hits": memory_hits or [],
+        "memory_hits": resolved_memory_hits or [],
         "cooldown_remaining_sec": round(cooldown_remaining, 1),
         "last_event": status.last_event or "",
         "frame_count": status.frame_count,
