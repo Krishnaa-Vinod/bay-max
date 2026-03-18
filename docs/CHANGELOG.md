@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.10.0] - 2026-03-18 (Iteration 010b)
+
+### Added
+- New `apps/ui/` frontend application: Vite + React + TypeScript + Tailwind CSS diagnostic UI
+- Three-column diagnostic layout: "What Bay-Max Sees", "What Bay-Max is Doing", "What Bay-Max Remembers"
+- WebSocket endpoint `/ws/live` for real-time telemetry streaming (snapshots + pipeline events)
+- HTTP endpoints: `/v1/live/frame/latest`, `/v1/live/ui-state`, `/v1/live/text-input`, `/v1/live/mic/toggle`, `/v1/live/memory/recent`
+- Animated Bay-Max face SVG component with state-driven blink/eyes/mouth animations
+- Color-coded activity feed with 100-event ring buffer and auto-scroll
+- Live camera feed from backend-rendered annotated frames
+- Affect visualization with valence/arousal mini-plot
+- Memory panel showing retrieved memories with similarity scores
+- Semantic facts panel and memory stats
+- Session info panel with state/duration/turn count
+- Text input and microphone toggle controls
+- CORS middleware for localhost development ports
+- New Makefile targets: `ui-install`, `run-ui`, `ui-build`, `ui-test`, `run-full`
+- Frontend tests using Vitest + Testing Library
+- New docs: `docs/COMPANION_UI_ARCHITECTURE.md`, `docs/WEBSOCKET_PROTOCOL.md`
+
+### Changed
+- API version bumped from 0.8.1 to 0.10.0
+- `apps/api/main.py` now includes live WebSocket and HTTP routers
+- `LiveRuntime` now updates annotated frame cache for UI endpoint
+- Makefile updated with UI workflow commands
+
 ## [0.7.0] - 2026-03-17 (Iteration 008)
 
 ### Added

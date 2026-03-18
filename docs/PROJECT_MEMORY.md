@@ -3,11 +3,11 @@
 This file provides continuity context for AI agents working on the Bay-Max project. Update this file after completing significant work.
 
 ## Last Updated
-2026-03-17 (Iteration 008)
+2026-03-18 (Iteration 010b)
 
 ## Current State
-- **Iteration**: 008 (Bidirectional Speech)
-- **Branch**: feature/iteration-008-bidirectional-speech
+- **Iteration**: 010b (Companion UI)
+- **Branch**: feature/iteration-010b-companion-ui
 - **Status**: Complete
 
 ## What Exists
@@ -56,9 +56,21 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 - **[NEW] Companion Persona** (`docs/COMPANION_PERSONA.md`):
   - Baymax-inspired calm, literal, gentle, nonjudgmental tone
   - Injected into system prompt via `_PERSONA_STYLE` in prompt_builder.py
-- FastAPI backend with 22 endpoints (version 0.7.0)
+- **[NEW] Companion UI** (`apps/ui/`):
+  - Vite + React + TypeScript + Tailwind CSS diagnostic web UI
+  - Three-column layout: What Bay-Max Sees / What Bay-Max is Doing / What Bay-Max Remembers
+  - WebSocket telemetry client (`/ws/live`) for real-time runtime state and events
+  - Backend-owned annotated frame preview from `/v1/live/frame/latest`
+  - Animated Bay-Max face SVG with state-driven blink/eyes/mouth
+  - Color-coded activity feed (100-event ring buffer)
+  - Affect visualization with valence/arousal mini-plot
+  - Memory panel with similarity scores and semantic facts
+  - Text input and microphone toggle controls
+  - TypeScript types and API client for all telemetry messages
+- FastAPI backend with 29 endpoints (version 0.10.0)
+- New WebSocket and HTTP endpoints in `apps/api/live_ws.py` and `apps/api/live_http.py`
 - CLI runner `scripts/live_companion.py` for webcam, replay, TTS, and speech input modes
-- 356 tests all passing, ruff lint clean
+- 386 tests all passing, ruff lint clean
 
 ## What Is Stubbed
 - Frame source / webcam capture via `capture` module (still returns empty; live mode uses `live/frame_source.py` directly)
@@ -156,3 +168,13 @@ This file provides continuity context for AI agents working on the Bay-Max proje
 21. Install speech input dependencies with `pip install -e ".[speech]"`
 22. Companion persona style is in `docs/COMPANION_PERSONA.md` and injected via `dialogue/prompt_builder.py`
 23. ChatTurn.source field distinguishes typed vs spoken turns ('typed' default, 'speech' for mic input)
+24. Affect analysis module is in `src/baymax/perception/emotion.py` and `emotion_smoother.py`
+25. Affect is integrated into LiveRuntime via `_run_affect_analysis()` method
+26. Companion UI is in `apps/ui/` -- React + TypeScript + Tailwind CSS
+27. WebSocket telemetry is in `apps/api/live_ws.py`; HTTP endpoints in `apps/api/live_http.py`
+28. UI connects via WebSocket to `/ws/live` for real-time snapshots and events
+29. UI fetches annotated frames from `/v1/live/frame/latest`
+30. Run full stack with: Terminal 1: `make run-api`, Terminal 2: `make live-webcam`, Terminal 3: `make run-ui`
+31. Frontend uses TypeScript types in `apps/ui/src/types/live.ts` for all WebSocket messages
+32. See `docs/WEBSOCKET_PROTOCOL.md` for full telemetry message schema
+33. See `docs/COMPANION_UI_ARCHITECTURE.md` for UI component architecture

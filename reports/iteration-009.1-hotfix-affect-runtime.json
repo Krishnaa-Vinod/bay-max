@@ -1,0 +1,297 @@
+{
+  "prompt_version": "2026-03-18.iteration-009.1-hotfix",
+  "agent_role": "You are the lead implementation agent for the Bay-Max repository. Your job is to convert Iteration 009 from component-complete to fully runtime-wired and verified. Fix the remaining affect integration gaps, run proof-oriented verification, normalize reports/docs/version metadata, commit, and push.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-009-affect-aware-companion",
+    "working_branch": "hotfix/iteration-0091-affect-runtime-proof"
+  },
+  "iteration_context": {
+    "previous_iteration_status": "Iteration 009 added affect analysis backends, smoothing, planner bias, prompt integration, safety gating, docs, and tests. However, live runtime wiring and real local affect verification are still incomplete.",
+    "current_goal": "Make affect analysis truly active in the live runtime, prove it with replay/local artifacts, and fix metadata/doc drift so the branch is trustworthy."
+  },
+  "hard_requirements": {
+    "do_not_add_new_model_families": true,
+    "do_not_expand_scope_beyond_affect_hotfix": true,
+    "preserve_existing_behavior": [
+      "face recognition",
+      "pose and engagement",
+      "memory recall",
+      "dialogue",
+      "TTS",
+      "speech input"
+    ],
+    "docs_must_be_updated": [
+      "README.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/PROJECT_MEMORY.md",
+      "docs/CHANGELOG.md",
+      "docs/MODEL_STACK.md",
+      "docs/EMOTION_ARCHITECTURE.md",
+      "docs/LOCAL_TESTING.md",
+      "docs/project_state.json",
+      ".env.example",
+      "pyproject.toml",
+      "reports/iteration-009.md",
+      "reports/iteration-009.json"
+    ]
+  },
+  "actual_gaps_to_fix": [
+    "Live runtime does not clearly initialize/use the affect analyzer and smoother in the continuous frame loop.",
+    "Live runtime status path does not clearly populate affect fields even though schemas expose them.",
+    "Replay/local affect verification has not been run with real face samples; current evidence is mostly automated tests.",
+    ".env.example does not expose affect settings even though settings.py does.",
+    "reports/iteration-009.json still contains latest_commit_sha='pending_final_commit'.",
+    "pyproject.toml version metadata and report/manifest metadata need normalization."
+  ],
+  "design_requirements": [
+    "Keep affect as a soft tone-adaptation signal, not a clinical inference engine.",
+    "Use the existing affect backend abstraction; do not switch away from MediaPipe unless needed for compatibility.",
+    "Use existing detected/recognized face regions where possible; avoid duplicating face detection work.",
+    "Run affect analysis at a lower cadence than face tracking using the configured sample-every-n-frames setting.",
+    "Apply smoothing before planner influence and before memory writes.",
+    "If confidence is low or no face is usable, return unknown/none rather than guessing.",
+    "Live runtime overlay/debug output must show affect values when available.",
+    "Artifacts must prove what was inferred, when, and why."
+  ],
+  "required_env_vars": [
+    "BAYMAX_ENABLE_AFFECT",
+    "BAYMAX_AFFECT_BACKEND",
+    "BAYMAX_AFFECT_DEVICE",
+    "BAYMAX_AFFECT_SAMPLE_EVERY_N_FRAMES",
+    "BAYMAX_AFFECT_CONFIDENCE_THRESHOLD",
+    "BAYMAX_AFFECT_SMOOTHING_ALPHA",
+    "BAYMAX_AFFECT_STABILITY_DURATION_SEC",
+    "BAYMAX_AFFECT_BIAS_ENABLED",
+    "BAYMAX_AFFECT_BIAS_CONFIDENCE_THRESHOLD"
+  ],
+  "required_env_defaults": {
+    "BAYMAX_ENABLE_AFFECT": "true",
+    "BAYMAX_AFFECT_BACKEND": "mediapipe",
+    "BAYMAX_AFFECT_DEVICE": "auto",
+    "BAYMAX_AFFECT_SAMPLE_EVERY_N_FRAMES": "10",
+    "BAYMAX_AFFECT_CONFIDENCE_THRESHOLD": "0.60",
+    "BAYMAX_AFFECT_SMOOTHING_ALPHA": "0.35",
+    "BAYMAX_AFFECT_STABILITY_DURATION_SEC": "30",
+    "BAYMAX_AFFECT_BIAS_ENABLED": "true",
+    "BAYMAX_AFFECT_BIAS_CONFIDENCE_THRESHOLD": "0.60"
+  },
+  "required_code_changes": [
+    "Wire the affect analyzer and affect smoother into src/baymax/live/runtime.py end-to-end.",
+    "Initialize the analyzer from settings and keep graceful fallback behavior if unavailable.",
+    "On eligible analysis frames, extract/use a face region and run affect analysis.",
+    "Update live runtime status with valence, arousal, affect confidence, backend, and stable duration.",
+    "Expose affect information in overlay/debug output so local testers can see it live or in replay.",
+    "Ensure planner input in the live path receives the smoothed affect state.",
+    "Ensure memory/consolidation path can receive stable affect summaries from live sessions without per-frame spam.",
+    "Add artifact logging for affect samples, stable affect changes, and affect-driven response decisions.",
+    "Add or update a replay/local verification script for affect behavior using images or short clips.",
+    "Keep all existing safety gating against clinical language."
+  ],
+  "required_api_behavior": [
+    {
+      "method": "GET",
+      "path": "/v1/audio/status",
+      "expectation": "Return affect fields that reflect actual runtime values, not just schema defaults.",
+      "must_include": [
+        "affect_enabled",
+        "valence",
+        "arousal",
+        "affect_confidence",
+        "affect_backend",
+        "affect_stable_duration_sec"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/v1/emotion/backends",
+      "expectation": "Continue to report available backends and active configuration accurately."
+    }
+  ],
+  "artifact_requirements": {
+    "root": "artifacts/verification_0091/",
+    "must_create": [
+      "artifacts/verification_0091/manifest.json",
+      "artifacts/verification_0091/summary.md",
+      "artifacts/verification_0091/sweep_results.json",
+      "artifacts/verification_0091/affect/replay_status_samples.json",
+      "artifacts/verification_0091/affect/annotated_frames/",
+      "artifacts/verification_0091/affect/runtime_events.json",
+      "artifacts/verification_0091/logs/"
+    ],
+    "must_capture": [
+      "which sample/image/video was used",
+      "runtime status snapshots showing affect fields",
+      "annotated frames or screenshots with affect overlay when possible",
+      "whether affect confidence crossed threshold",
+      "whether planner strategy changed due to affect",
+      "whether any affect memory candidate was created or intentionally suppressed",
+      "commands run",
+      "backend/model information",
+      "environment limitations"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T901",
+      "title": "Audit and patch runtime integration",
+      "actions": [
+        "Read the current live runtime, live schemas, emotion backend, smoother, planner, and memory consolidation code.",
+        "Identify exactly where affect is missing from the live analysis loop and status propagation.",
+        "Wire the affect analyzer and smoother into the live runtime without breaking existing perception flow."
+      ],
+      "acceptance_criteria": [
+        "Live runtime actively runs affect analysis on eligible frames when enabled.",
+        "No regression in face recognition, pose, speech, or dialogue paths."
+      ]
+    },
+    {
+      "id": "T902",
+      "title": "Populate status, overlay, and event logs",
+      "actions": [
+        "Update LiveRuntimeStatus population so affect fields reflect real values.",
+        "Add affect info to overlay/debug HUD and any status APIs that expose runtime state.",
+        "Log meaningful affect events or stable-state transitions to artifacts."
+      ],
+      "acceptance_criteria": [
+        "A local tester can see valence/arousal/confidence/backend/stable-duration in runtime outputs.",
+        "Artifact logs clearly show when affect changed or was unavailable."
+      ]
+    },
+    {
+      "id": "T903",
+      "title": "Confirm planner and memory integration from live runtime",
+      "actions": [
+        "Ensure the live runtime passes smoothed affect state into the planner path used for responses.",
+        "Ensure affect only biases tone when confidence threshold is met.",
+        "Ensure stable affect summaries can enter session consolidation while single-frame noise is suppressed."
+      ],
+      "acceptance_criteria": [
+        "At least one verification case demonstrates affect-aware strategy/tone selection or explicitly shows no change when confidence is low.",
+        "Memory writes remain gated and non-clinical."
+      ]
+    },
+    {
+      "id": "T904",
+      "title": "Run proof-oriented replay and local verification",
+      "actions": [
+        "Add or update a replay/local verification script for affect analysis.",
+        "Use at least one neutral-looking sample and one clearly positive/expressive sample if available locally.",
+        "If local webcam testing is possible, run at least one live test outside Sol; otherwise run replay tests and report the limitation honestly.",
+        "Save all outputs under artifacts/verification_0091/."
+      ],
+      "acceptance_criteria": [
+        "There is real non-test proof that runtime affect fields update on actual images or replay frames.",
+        "If live webcam testing is not possible, replay-based proof exists and the blocker is explicitly stated."
+      ]
+    },
+    {
+      "id": "T905",
+      "title": "Fix report, config, and version parity",
+      "actions": [
+        "Add affect env vars to .env.example.",
+        "Normalize pyproject version metadata to match the intended project state for this hotfix.",
+        "Replace placeholder latest_commit_sha values in reports with real SHAs.",
+        "Ensure README/ROADMAP/ARCHITECTURE/MODEL_STACK/EMOTION_ARCHITECTURE/LOCAL_TESTING/project_state.json reflect the actual implemented state and remaining blockers."
+      ],
+      "acceptance_criteria": [
+        "Docs and metadata match the code and branch state.",
+        "No placeholder commit SHA remains in the final report."
+      ]
+    },
+    {
+      "id": "T906",
+      "title": "Regression tests, report, commit, and push",
+      "actions": [
+        "Run the full automated test suite and lint.",
+        "Add focused tests for live-runtime affect propagation/status/update logic if coverage is missing.",
+        "Write reports/iteration-009.md and reports/iteration-009.json updates describing the hotfix truthfully.",
+        "Commit and push the hotfix branch."
+      ],
+      "acceptance_criteria": [
+        "Automated tests pass.",
+        "Artifacts exist.",
+        "Branch is pushed.",
+        "Report clearly separates automated, replay, and true live-webcam evidence."
+      ]
+    }
+  ],
+  "manual_verification_expectations": [
+    {
+      "case": "Neutral/reduced-expression sample",
+      "expected": "valence near neutral or low confidence; no exaggerated bias"
+    },
+    {
+      "case": "Positive-expression or smiling sample",
+      "expected": "higher positive valence than the neutral sample or a clearly different affect state"
+    },
+    {
+      "case": "No-face or poor-face sample",
+      "expected": "unknown/unavailable affect; no false confident output"
+    },
+    {
+      "case": "Planner bias check",
+      "expected": "tone/strategy only changes when confidence threshold is met; no clinical claim"
+    },
+    {
+      "case": "Runtime status check",
+      "expected": "status endpoint/overlay shows actual affect values changing over time"
+    }
+  ],
+  "testing_requirements": {
+    "must_run": [
+      "python -m pytest tests/ -q",
+      "python -m ruff check src/ apps/ tests/ scripts/"
+    ],
+    "must_add_or_update_tests_for": [
+      "live runtime affect analyzer initialization",
+      "live runtime affect status propagation",
+      "low-confidence no-op behavior",
+      "planner bias from smoothed affect in a live/runtime path",
+      "affect overlay/debug context if applicable",
+      "report/project-state JSON validity if modified"
+    ],
+    "honesty_rules": [
+      "Do not claim live webcam affect works unless you ran it on a machine with a real camera.",
+      "Do not claim Py-Feat backend works if only MediaPipe was used.",
+      "Do not fake screenshots, overlays, or artifact contents.",
+      "If replay/local samples are synthetic or hand-picked, state that clearly."
+    ]
+  },
+  "report_requirements": {
+    "markdown_path": "reports/iteration-009.md",
+    "json_path": "reports/iteration-009.json",
+    "must_include": [
+      "branch_name",
+      "latest_commit_sha",
+      "status",
+      "summary",
+      "affect_backends",
+      "runtime_wiring_status",
+      "tasks_completed",
+      "tasks_partial",
+      "tasks_not_done",
+      "files_created",
+      "files_modified",
+      "commands_run",
+      "automated_tests_run",
+      "manual_or_replay_checks",
+      "api_endpoints_verified",
+      "artifact_locations",
+      "known_issues",
+      "deviations_from_prompt",
+      "next_recommended_tasks",
+      "doc_parity_check"
+    ]
+  },
+  "definition_of_done": [
+    "Affect is genuinely wired into the live runtime.",
+    "Runtime status and overlay reflect affect values when available.",
+    "Planner sees smoothed affect state from the live path.",
+    "Replay/local verification artifacts prove the feature is active.",
+    ".env.example, pyproject, reports, and docs are normalized.",
+    "No placeholder commit SHA remains.",
+    "Automated tests pass and hotfix branch is pushed."
+  ]
+}

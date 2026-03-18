@@ -343,6 +343,14 @@ class LiveRuntime:
                             posture=self._status.session_status.value,
                             engagement="medium",
                         )
+
+                        # Update annotated frame for UI endpoint
+                        try:
+                            from apps.api.live_http import update_annotated_frame
+                            update_annotated_frame(annotated)
+                        except ImportError:
+                            pass  # API not running
+
                         # Show frame (if display available)
                         try:
                             import cv2

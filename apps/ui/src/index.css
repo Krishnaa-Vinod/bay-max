@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #0f1419;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1f25;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3d4a56;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a5a69;
+}
+
+/* Activity feed auto-scroll */
+.activity-feed {
+  scroll-behavior: smooth;
+}
+
+/* Baymax face glow */
+.baymax-face-glow {
+  filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.3));
+}
+
+/* Status badges */
+.status-badge {
+  @apply px-2 py-1 rounded-full text-xs font-medium;
+}
+
+.status-idle {
+  @apply bg-gray-600 text-gray-200;
+}
+
+.status-active {
+  @apply bg-blue-600 text-blue-100;
+}
+
+.status-listening {
+  @apply bg-cyan-600 text-cyan-100;
+}
+
+.status-speaking {
+  @apply bg-green-600 text-green-100;
+}
+
+.status-thinking {
+  @apply bg-yellow-600 text-yellow-100;
+}
+
+.status-cooldown {
+  @apply bg-orange-600 text-orange-100;
+}
+
+.status-offline {
+  @apply bg-red-600 text-red-100;
+}

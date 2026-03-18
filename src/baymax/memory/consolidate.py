@@ -23,7 +23,6 @@ from baymax.schemas.perception import (
     BodyStateObservation,
     RecognitionObservation,
 )
-from baymax.state.models import InteractionState
 
 logger = logging.getLogger(__name__)
 

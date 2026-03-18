@@ -1,9 +1,8 @@
 {
-  "iteration": "009.1",
-  "branch_name": "feature/iteration-009-affect-aware-companion",
+  "iteration": "010b",
+  "branch_name": "feature/iteration-010b-companion-ui",
   "status": "completed",
-  "last_updated": "2026-03-17",
-  "hotfix_applied": "009.1-affect-runtime-wiring",
+  "last_updated": "2026-03-18",
   "modules_implemented": [
     "config",
     "core",
@@ -19,7 +18,8 @@
     "audio",
     "perception/emotion",
     "perception/emotion_smoother",
-    "memory/clinical_safety"
+    "memory/clinical_safety",
+    "apps/ui"
   ],
   "modules_stubbed": [
     "capture"
@@ -48,7 +48,19 @@
     "GET /v1/tts/backends",
     "GET /v1/audio/status",
     "GET /v1/stt/backends",
-    "GET /v1/emotion/backends"
+    "GET /v1/emotion/backends",
+    "WS /ws/live",
+    "GET /v1/live/frame/latest",
+    "GET /v1/live/ui-state",
+    "POST /v1/live/text-input",
+    "POST /v1/live/mic/toggle",
+    "GET /v1/live/memory/recent"
+  ],
+  "frontend_stack": [
+    "Vite",
+    "React 18",
+    "TypeScript",
+    "Tailwind CSS"
   ],
   "known_issues": [
     "SQLite store uses synchronous sqlite3 wrapped in async methods — not migrated to aiosqlite",
@@ -56,42 +68,29 @@
     "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)",
     "LanceDB vector store requires separate install (pip install baymax[vector])",
     "Semantic fact extraction uses simple keyword heuristics (not LLM-based)",
-    "Ollama backend not smoke-tested with real model — Ollama server not installed in this environment",
-    "LanceDB real backend not tested in automated tests (stub used)",
-    "Safety pattern matching is substring-based — may miss paraphrased unsafe requests",
     "Live webcam mode implemented but not exercised on this headless machine (Sol has no camera); replay mode verified via automated tests",
     "OpenCV imshow overlay will fail silently on headless machines — this is expected and handled gracefully",
-    "LiveRuntime asyncio loop not tested end-to-end in automated tests (integration test uses unit-level flow simulation)",
     "PortAudio may not be installed on headless machines (required for TTS audio playback via sounddevice)",
     "Piper TTS backend is a placeholder — not yet fully implemented",
     "VT801-VT810 manual hardware tests (microphone, speaker) not_run on Sol — requires real audio hardware",
-    "Silero VAD model requires torch.hub download on first run — cached after that",
-    "py-feat affect backend attempted but incompatible with Python 3.11 environment due to setuptools conflicts",
-    "MediaPipe Face Landmarker blendshape-to-affect mapping uses custom heuristics — not clinically validated",
-    "Affect analysis requires good lighting and front-facing poses for reliable confidence scores",
-    "Manual affect verification tests (VT930-VT936) require local laptop with test images — not run on headless Sol",
-    "MediaPipe not installed in current environment — runtime falls back to null affect backend gracefully"
+    "MediaPipe not installed in current environment — runtime falls back to null affect backend gracefully",
+    "Companion UI requires npm and Node.js to be installed",
+    "Browser manual tests not run on headless Sol environment"
   ],
   "next_tasks": [
+    "Run full browser-based UI verification on a machine with webcam and display",
+    "Add more comprehensive frontend tests",
+    "Add memory edit/correction controls to UI",
+    "Add session timeline export feature",
     "Migrate SQLite store to fully async aiosqlite",
     "Add LLM-based semantic fact extraction during consolidation",
-    "Add salience decay over time for episodic memories",
-    "Run real webcam + mic + affect live session on a machine with audio/camera hardware",
     "Migrate to MediaPipe Tasks API for pose estimation",
-    "Add dialogue streaming support (token-by-token)",
-    "Evaluate larger model (3B-7B) to improve memory verbalization",
-    "Add Gradio live inspection tab for live-mode state including affect analysis",
-    "Complete Piper TTS backend implementation",
-    "Implement barge-in / wake-word detection (deferred from iteration 008)",
-    "Add real-time diarization for multi-speaker support",
-    "Integrate py-feat backend when Python compatibility issues are resolved",
-    "Add affect pattern learning over multiple sessions",
-    "Implement acoustic affect analysis from audio signals"
+    "Complete Piper TTS backend implementation"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP — affect-aware responses from facial expressions",
-    "api_version": "0.8.1"
+    "scope": "vision-first empathetic companion MVP with diagnostic web UI",
+    "api_version": "0.10.0"
   }
 }

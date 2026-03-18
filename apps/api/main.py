@@ -5,7 +5,11 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 import numpy as np
+
+# Import live UI routers
+from apps.api import live_http, live_ws
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, Field
 
@@ -43,11 +47,18 @@ def set_live_runtime(runtime):
     """Set the live runtime reference for status queries."""
     global _live_runtime
     _live_runtime = runtime
+    # Also set in the live modules
+    live_ws.set_live_runtime(runtime)
+    live_http.set_live_runtime(runtime)
+    if runtime is not None:
+        live_http.set_orchestrator(runtime._orch)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await orchestrator.initialize()
+    # Set orchestrator reference for live HTTP endpoints
+    live_http.set_orchestrator(orchestrator)
     yield
     await orchestrator.shutdown()
 
@@ -55,9 +66,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Bay-Max API",
     description="Memory-first empathetic companion agent",
-    version="0.7.0",
+    version="0.10.0",
     lifespan=lifespan,
 )
+
+# Add CORS middleware for the companion UI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include live UI routers
+app.include_router(live_ws.router)
+app.include_router(live_http.router)
 
 
 @app.get("/healthz")

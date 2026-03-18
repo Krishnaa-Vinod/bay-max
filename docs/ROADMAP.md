@@ -98,6 +98,31 @@
 - [x] LiveRuntimeStatus extended with speech input fields
 - [x] 60 new tests (356 total)
 
+## Iteration 009 - Affect-Aware Companion (Completed)
+- [x] Facial affect analysis module (perception/emotion.py, emotion_smoother.py)
+- [x] MediaPipe Face Landmarker affect backend with blendshape-to-valence/arousal mapping
+- [x] Null affect backend for graceful fallback
+- [x] AffectSmoother with temporal smoothing and stability detection
+- [x] Affect integration into LiveRuntime and state manager
+- [x] Overlay display of valence/arousal/confidence in debug HUD
+- [x] GET /v1/emotion/backends endpoint
+- [x] 30 new tests (386 total)
+
+## Iteration 010b - Companion UI (Completed)
+- [x] Diagnostic web UI with Vite + React + TypeScript + Tailwind CSS
+- [x] Three-column layout: camera feed, activity, memory panels
+- [x] WebSocket telemetry endpoint (/ws/live) for real-time state streaming
+- [x] HTTP endpoints for frame, UI state, text input, mic toggle, memory
+- [x] Animated Bay-Max face SVG with pipeline state-driven animations
+- [x] Color-coded activity feed with ring buffer and auto-scroll
+- [x] Affect visualization with valence/arousal mini-plot
+- [x] Memory panel with similarity scores
+- [x] Text input and microphone controls
+- [x] Backend-owned annotated frame preview
+- [x] CORS middleware for local development
+- [x] Developer workflow: ui-install, run-ui, run-full Makefile targets
+- [x] New docs: COMPANION_UI_ARCHITECTURE.md, WEBSOCKET_PROTOCOL.md
+
 ## Future Iterations
 - Async SQLite migration (aiosqlite throughout)
 - Emotion recognition from facial expressions

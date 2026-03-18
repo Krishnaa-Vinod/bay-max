@@ -1,4 +1,4 @@
-.PHONY: help install install-vector install-dialogue install-tts install-speech install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts live-webcam-speech verify-007 verify-008 clean
+.PHONY: help install install-vector install-dialogue install-tts install-speech install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts live-webcam-speech verify-007 verify-008 ui-install run-ui run-full ui-build ui-test clean
 
 help:
 	@echo "Bay-Max development commands:"
@@ -20,6 +20,11 @@ help:
 	@echo "  make live-replay       - Start live companion in replay mode (set REPLAY_PATH)"
 	@echo "  make verify-007        - Run iteration 007 local verification"
 	@echo "  make verify-008        - Run iteration 008 tests"
+	@echo "  make ui-install        - Install companion UI dependencies"
+	@echo "  make run-ui            - Start companion UI dev server on port 3000"
+	@echo "  make ui-build          - Build companion UI for production"
+	@echo "  make ui-test           - Run companion UI tests"
+	@echo "  make run-full          - Start API + live runtime + UI together"
 	@echo "  make clean             - Remove build artifacts and caches"
 
 install:
@@ -76,7 +81,38 @@ verify-007:
 verify-008:
 	pytest tests/test_iteration_008.py -v
 
+# Companion UI commands
+ui-install:
+	cd apps/ui && npm install
+
+run-ui:
+	cd apps/ui && npm run dev
+
+ui-build:
+	cd apps/ui && npm run build
+
+ui-test:
+	cd apps/ui && npm test
+
+# Full development workflow: API + UI (requires two terminals or background processes)
+run-full:
+	@echo "Starting full development stack..."
+	@echo "  Backend API: http://localhost:8000"
+	@echo "  Companion UI: http://localhost:3000"
+	@echo ""
+	@echo "Run in separate terminals:"
+	@echo "  Terminal 1: make run-api"
+	@echo "  Terminal 2: make live-webcam"
+	@echo "  Terminal 3: make run-ui"
+	@echo ""
+	@echo "Or use 'make run-full-bg' to run API in background"
+
+run-full-bg:
+	uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 &
+	cd apps/ui && npm run dev
+
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .pytest_cache dist build
+	rm -rf apps/ui/node_modules apps/ui/dist
