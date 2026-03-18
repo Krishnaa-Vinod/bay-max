@@ -116,7 +116,6 @@ class MediaPipeEmotionAnalyzer(EmotionAnalyzer):
             return
 
         try:
-            import mediapipe as mp
             from mediapipe.tasks import python as mp_python
             from mediapipe.tasks.python import vision
 

@@ -146,7 +146,7 @@ def main():
             # Print artifact information
             timeline_summary = results.get("timeline_summary", {})
             if timeline_summary:
-                print(f"\nTimeline Summary:")
+                print("\nTimeline Summary:")
                 print(f"  Points: {timeline_summary.get('timeline_points', 0)}")
                 print(f"  High confidence: {timeline_summary.get('high_confidence_points', 0)}")
 

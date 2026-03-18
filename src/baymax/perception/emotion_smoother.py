@@ -1,7 +1,7 @@
 """Affect state smoothing and stability tracking for Bay-Max."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from baymax.schemas.perception import EmotionResult, SmoothedAffectState

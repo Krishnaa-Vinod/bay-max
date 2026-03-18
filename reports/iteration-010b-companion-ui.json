@@ -1,0 +1,553 @@
+{
+  "prompt_version": "2026-03-18.iteration-010b",
+  "agent_role": "You are the lead implementation agent for the Bay-Max repository. Your job is to build a diagnostic companion web UI that makes the existing live runtime, perception, memory, dialogue, TTS, speech, and affect systems visible and testable in one screen. Preserve existing behavior, add frontend/backend integration, add proof artifacts, update docs, run tests, commit, and push.",
+  "repo": {
+    "url": "https://github.com/Krishnaa-Vinod/bay-max.git",
+    "base_branch": "feature/iteration-009-affect-aware-companion",
+    "working_branch": "feature/iteration-010b-companion-ui"
+  },
+  "preflight_requirements": [
+    "Before building the UI, ensure the iteration-009.1 hotfix changes are present in the working tree or cherry-picked into this branch: affect runtime wiring, state manager update_affect support, overlay affect display, .env affect vars, and updated iteration-009 reports.",
+    "If the 009.1 hotfix is not yet on the remote base branch, include those changes in this iteration and document that in the report under deviations_from_prompt.",
+    "Do not proceed with a frontend that hides broken backend telemetry. The UI must reflect real runtime state, not mocked state, except in explicit frontend story/demo fixtures."
+  ],
+  "iteration_context": {
+    "current_goal": "Build a single-page, desktop-first diagnostic UI for Bay-Max that shows what Bay-Max sees, what Bay-Max is doing, and what Bay-Max remembers in real time.",
+    "why_now": "The current system already has live runtime, memory, dialogue, TTS, speech input, and affect-aware planning. The next highest-leverage step is a cockpit UI that makes those systems observable and debuggable in one place.",
+    "important_architecture_rule": "The Python live runtime remains the owner of the camera and core perception pipeline. The browser UI must observe runtime state through backend endpoints/WebSockets, not directly take ownership of the webcam as the primary source of truth."
+  },
+  "hard_requirements": {
+    "docs_must_be_updated_every_iteration": [
+      "README.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/PROJECT_MEMORY.md",
+      "docs/CHANGELOG.md",
+      "docs/project_state.json",
+      "docs/MODEL_STACK.md",
+      "docs/LOCAL_TESTING.md"
+    ],
+    "new_docs_required": [
+      "docs/COMPANION_UI_ARCHITECTURE.md",
+      "docs/WEBSOCKET_PROTOCOL.md"
+    ],
+    "docs_must_match_code": true,
+    "preserve_existing_tests": true,
+    "preserve_existing_runtime_behavior": true,
+    "no_mock_only_ui": true
+  },
+  "product_scope": {
+    "in_scope": [
+      "single-page diagnostic web UI",
+      "desktop-first three-column layout",
+      "live runtime telemetry via FastAPI WebSocket",
+      "backend-owned annotated frame preview in the UI",
+      "animated Bay-Max-style SVG face with state-driven animation",
+      "activity feed showing pipeline events",
+      "last response panel",
+      "text input and microphone control surface",
+      "retrieved memories panel with scores",
+      "semantic facts and memory stats panel",
+      "run-full developer workflow",
+      "artifact-backed verification"
+    ],
+    "out_of_scope": [
+      "consumer-polished mobile app",
+      "multi-page routing",
+      "browser-owned primary webcam pipeline",
+      "new ML models",
+      "new medical features",
+      "wake word",
+      "full character rigging",
+      "full memory editor UI",
+      "authentication/multi-user access control"
+    ]
+  },
+  "architecture_decisions": [
+    "Use a dedicated frontend app with Vite + React + TypeScript.",
+    "Use Tailwind CSS for the dark diagnostic UI.",
+    "Use a FastAPI WebSocket endpoint for live JSON telemetry and immediate pipeline events.",
+    "Do not stream full-resolution raw camera video through the WebSocket payload. Keep the WebSocket JSON-first.",
+    "Serve or expose the latest annotated frame through a separate lightweight backend route, e.g. /v1/live/frame/latest, and have the frontend refresh it at a low but responsive cadence, or use an explicitly separate binary frame stream if already easy. Avoid bloating JSON telemetry with base64 images unless necessary.",
+    "The browser UI is an observer/controller of the existing runtime, not a replacement runtime.",
+    "Use ring buffers for event feed and memory hit display to avoid unbounded frontend growth.",
+    "Keep Bay-Max face animation lightweight: SVG + CSS/React state, no heavy animation framework required unless already helpful."
+  ],
+  "recommended_stack": {
+    "frontend": [
+      "Vite",
+      "React",
+      "TypeScript",
+      "Tailwind CSS"
+    ],
+    "backend": [
+      "FastAPI WebSocket",
+      "existing LiveRuntime",
+      "existing API layer"
+    ],
+    "optional_frontend_helpers": [
+      "clsx or class-variance-authority for styling ergonomics",
+      "recharts or a tiny custom SVG implementation for plots if desired",
+      "zustand or a small reducer/context if state becomes messy"
+    ],
+    "avoid_unnecessary_dependencies": [
+      "Do not add a heavy UI framework just to build panels and lists.",
+      "Do not add a full animation engine unless CSS/SVG state transitions prove insufficient."
+    ]
+  },
+  "ui_spec": {
+    "layout": "Single page, three columns, desktop-first, dark theme, no tabs.",
+    "left_column": {
+      "title": "What Bay-Max sees",
+      "must_show": [
+        "annotated live frame from backend",
+        "recognized identity + confidence",
+        "posture label",
+        "engagement bar",
+        "valence/arousal mini plot",
+        "session info summary"
+      ]
+    },
+    "center_column": {
+      "title": "What Bay-Max is doing",
+      "must_show": [
+        "animated Bay-Max face",
+        "current pipeline state badge",
+        "scrolling activity feed with colors and timestamps",
+        "last response shown in full",
+        "text input",
+        "microphone control button"
+      ]
+    },
+    "right_column": {
+      "title": "What Bay-Max remembers",
+      "must_show": [
+        "top retrieved memories with similarity/confidence scores",
+        "semantic facts panel",
+        "memory stats panel",
+        "session info such as session id/duration/turn count/last event"
+      ]
+    },
+    "avatar_states": [
+      "idle",
+      "listening",
+      "thinking",
+      "speaking",
+      "cooldown"
+    ],
+    "avatar_behavior_rules": [
+      "Blink every 3-4 seconds in idle.",
+      "Widen eyes slightly while listening.",
+      "Look upward or shift pupils while thinking.",
+      "Animate mouth while speaking.",
+      "Keep animation lightweight and deterministic.",
+      "Do not let animation block the app or hide backend state."
+    ],
+    "activity_feed_rules": [
+      "Use the latest 100 events in memory.",
+      "Auto-scroll to latest unless the user intentionally scrolls upward.",
+      "Color-code by event status or class: green completed, blue session events, yellow in-progress, red blocked/suppressed/errors.",
+      "Every event should have a stage and timestamp."
+    ]
+  },
+  "backend_api_requirements": [
+    {
+      "type": "websocket",
+      "path": "/ws/live",
+      "purpose": "Stream live runtime telemetry snapshots and immediate pipeline events to the UI.",
+      "must_support_message_types": [
+        "snapshot",
+        "pipeline_event",
+        "speech_event",
+        "memory_event",
+        "error"
+      ]
+    },
+    {
+      "type": "http",
+      "method": "GET",
+      "path": "/v1/live/frame/latest",
+      "purpose": "Return the latest annotated frame owned by the live runtime for UI display.",
+      "notes": "Can be JPEG/PNG. Must not require the browser to open the webcam directly as the source of truth."
+    },
+    {
+      "type": "http",
+      "method": "GET",
+      "path": "/v1/live/ui-state",
+      "purpose": "Return current one-shot UI bootstrap state if the frontend loads after the runtime has already started."
+    },
+    {
+      "type": "http",
+      "method": "POST",
+      "path": "/v1/live/text-input",
+      "purpose": "Allow UI text input to submit a typed turn into the current session."
+    },
+    {
+      "type": "http",
+      "method": "POST",
+      "path": "/v1/live/mic/toggle",
+      "purpose": "Allow the UI to toggle speech input or push-to-talk mode if supported by the backend runtime."
+    }
+  ],
+  "websocket_contract": {
+    "snapshot_message_example": {
+      "type": "snapshot",
+      "timestamp": "2026-03-18T14:32:07.423Z",
+      "session": {
+        "id": "ses_abc123",
+        "state": "ACTIVE",
+        "duration_sec": 847,
+        "turn_count": 12
+      },
+      "perception": {
+        "face_detected": true,
+        "user_name": "Krishna",
+        "recognition_confidence": 0.91,
+        "posture": "upright",
+        "engagement": 0.73,
+        "valence": 0.4,
+        "arousal": 0.5,
+        "affect_confidence": 0.61
+      },
+      "pipeline_state": "SPEAKING",
+      "last_response": "I remember you mentioned...",
+      "memory_hits": [
+        {
+          "text": "Krishna is building Bay-Max",
+          "score": 0.87
+        },
+        {
+          "text": "prefers warm greetings",
+          "score": 0.79
+        }
+      ],
+      "cooldown_remaining_sec": 0,
+      "last_event": "RECOGNIZED_USER_ARRIVAL"
+    },
+    "event_message_example": {
+      "type": "pipeline_event",
+      "timestamp": "2026-03-18T14:32:03.891Z",
+      "stage": "memory_retrieval",
+      "status": "complete",
+      "detail": "3 memories retrieved in 47ms"
+    },
+    "requirements": [
+      "Document the message schema in docs/WEBSOCKET_PROTOCOL.md.",
+      "Keep events structured and machine-readable.",
+      "Include enough information to reconstruct a live run from saved UI artifacts."
+    ]
+  },
+  "frontend_structure": {
+    "suggested_root": "apps/ui/",
+    "suggested_files": [
+      "apps/ui/index.html",
+      "apps/ui/package.json",
+      "apps/ui/tsconfig.json",
+      "apps/ui/vite.config.ts",
+      "apps/ui/tailwind.config.*",
+      "apps/ui/src/main.tsx",
+      "apps/ui/src/App.tsx",
+      "apps/ui/src/lib/ws.ts",
+      "apps/ui/src/lib/api.ts",
+      "apps/ui/src/types/live.ts",
+      "apps/ui/src/components/CameraFeed.tsx",
+      "apps/ui/src/components/ActivityFeed.tsx",
+      "apps/ui/src/components/BayMaxFace.tsx",
+      "apps/ui/src/components/MemoryPanel.tsx",
+      "apps/ui/src/components/AffectPlot.tsx",
+      "apps/ui/src/components/StatusBar.tsx",
+      "apps/ui/src/components/SessionInfo.tsx"
+    ],
+    "requirements": [
+      "Type the WebSocket payloads in TypeScript.",
+      "Handle reconnects gracefully.",
+      "Display stale/disconnected state clearly when the socket drops.",
+      "Do not bury critical debug data behind tabs or modals in this iteration."
+    ]
+  },
+  "developer_workflow_requirements": [
+    "Add Makefile targets for installing and running the UI, e.g. ui-install, run-ui, run-full.",
+    "run-full should start backend and frontend together in a practical local-dev workflow.",
+    "Document local ports clearly. If you use localhost:3000 for the UI, state it in docs and reports.",
+    "Make frontend build and lint commands explicit in package.json and docs."
+  ],
+  "testing_requirements": {
+    "python_tests": [
+      "WebSocket endpoint connection and message schema tests using FastAPI TestClient or equivalent.",
+      "Latest annotated frame endpoint test.",
+      "UI bootstrap endpoint test.",
+      "Text-input endpoint test.",
+      "Mic toggle endpoint test if implemented.",
+      "Existing 386+ tests must still pass unless the test count increases."
+    ],
+    "frontend_tests": [
+      "Component test or integration test for ActivityFeed rendering and color mapping.",
+      "Component test for BayMaxFace state transitions.",
+      "Component test for MemoryPanel rendering scores and empty states.",
+      "WebSocket hook/store test for snapshot and event handling.",
+      "npm run build must succeed."
+    ],
+    "manual_local_tests": [
+      "Known user appears in frame; name and confidence show in left column.",
+      "Event feed shows recognition, retrieval, planning, dialogue, TTS, and cooldown in order.",
+      "Retrieved memories appear before a grounded reply is shown.",
+      "Affect plot moves when expression changes if affect backend is available; otherwise UI shows unknown/unavailable honestly.",
+      "Last response panel matches spoken/text output.",
+      "Safety gate event appears when a diagnosis-style prompt is asked.",
+      "Walking away pauses or ends the session and this is visible in the feed.",
+      "Reconnect behavior is graceful if backend is restarted."
+    ],
+    "test_honesty_rules": [
+      "Do not claim the UI works live unless a real local browser/manual test was run.",
+      "If Sol is headless and browser interaction is impossible there, say so explicitly and separate local browser verification from Sol backend tests.",
+      "Do not mark affect visualization as verified if the affect backend was null/unavailable in the tested environment."
+    ]
+  },
+  "artifact_requirements": {
+    "root": "artifacts/verification_010b/",
+    "must_include": [
+      "manifest.json",
+      "summary.md",
+      "ws_sample.jsonl",
+      "event_feed_sample.json",
+      "ui_bootstrap_state.json",
+      "frontend_build.log",
+      "backend_test.log",
+      "screenshots/overview.png",
+      "screenshots/activity_feed.png",
+      "screenshots/memory_panel.png"
+    ],
+    "notes": [
+      "If real screenshots cannot be produced on Sol, generate them during local laptop verification and say where they were captured.",
+      "Keep machine-specific bulky artifacts out of git if needed, but commit the manifest and summary at minimum and document where the full artifacts live."
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1001",
+      "title": "Preflight: ensure 009.1 hotfix state is present",
+      "actions": [
+        "Verify that affect runtime wiring and report/env fixes from 009.1 are present in the working branch before UI work starts.",
+        "If not present on the base branch, bring them into this branch and document that clearly."
+      ],
+      "acceptance_criteria": [
+        "The UI is built on top of the actual latest runtime state, not a stale branch."
+      ]
+    },
+    {
+      "id": "T1002",
+      "title": "Add backend live-observability endpoints",
+      "actions": [
+        "Implement /ws/live for runtime snapshots and pipeline events.",
+        "Implement /v1/live/frame/latest for the latest annotated frame.",
+        "Implement /v1/live/ui-state for bootstrap state.",
+        "Implement /v1/live/text-input for typed turns.",
+        "Implement /v1/live/mic/toggle if speech input control is practical."
+      ],
+      "acceptance_criteria": [
+        "Backend endpoints exist and reflect real runtime state.",
+        "WebSocket messages are structured and documented."
+      ]
+    },
+    {
+      "id": "T1003",
+      "title": "Build the frontend app shell",
+      "actions": [
+        "Scaffold a Vite + React + TypeScript frontend app under apps/ui/.",
+        "Integrate Tailwind CSS and a dark theme.",
+        "Set up API/WebSocket configuration and reconnect handling."
+      ],
+      "acceptance_criteria": [
+        "npm install, npm run dev, and npm run build work.",
+        "The frontend can connect to the backend and render bootstrap state."
+      ]
+    },
+    {
+      "id": "T1004",
+      "title": "Implement the three-column diagnostic layout",
+      "actions": [
+        "Build the left, center, and right panels as separate components.",
+        "Render the latest annotated frame from the backend in the left panel.",
+        "Render posture, engagement, affect plot, and session stats.",
+        "Render activity feed, last response, and input controls in the center.",
+        "Render memory hits, semantic facts, and memory stats on the right."
+      ],
+      "acceptance_criteria": [
+        "All critical state is visible on one screen without tabs.",
+        "The app remains readable at common laptop widths."
+      ]
+    },
+    {
+      "id": "T1005",
+      "title": "Add Bay-Max face and live activity feed",
+      "actions": [
+        "Implement an SVG face with state-driven blink/eyes/mouth animation.",
+        "Drive face state from pipeline status such as idle/listening/thinking/speaking/cooldown.",
+        "Implement a color-coded scrolling activity feed using WebSocket event messages."
+      ],
+      "acceptance_criteria": [
+        "The avatar state changes visibly with runtime state.",
+        "The activity feed clearly shows the processing pipeline."
+      ]
+    },
+    {
+      "id": "T1006",
+      "title": "Wire memory and safety visibility",
+      "actions": [
+        "Show top retrieved memories with scores in the right panel.",
+        "Show the strategy selected by the planner if available.",
+        "Show cooldown and safety-gate events in the activity feed.",
+        "Show backend/model names in a debug-friendly way without clutter."
+      ],
+      "acceptance_criteria": [
+        "A tester can tell which memories were used and when safety or cooldown changed behavior."
+      ]
+    },
+    {
+      "id": "T1007",
+      "title": "Add developer workflow and documentation",
+      "actions": [
+        "Add Makefile/package workflow for run-ui and run-full.",
+        "Document frontend setup, ports, and local testing steps.",
+        "Update README, ARCHITECTURE, ROADMAP, CHANGELOG, PROJECT_MEMORY, project_state.json, MODEL_STACK, and LOCAL_TESTING.",
+        "Add COMPANION_UI_ARCHITECTURE.md and WEBSOCKET_PROTOCOL.md."
+      ],
+      "acceptance_criteria": [
+        "Docs reflect the actual implementation and how to run it locally.",
+        "ROADMAP and project_state.json accurately mark iteration status."
+      ]
+    },
+    {
+      "id": "T1008",
+      "title": "Tests, artifacted verification, report, commit, and push",
+      "actions": [
+        "Run backend tests, frontend tests, lint, and build.",
+        "Perform local browser verification on a laptop/workstation if possible.",
+        "Capture required artifacts and screenshots.",
+        "Write reports/iteration-010b.md and reports/iteration-010b.json.",
+        "Commit and push the branch."
+      ],
+      "acceptance_criteria": [
+        "All required tests pass or are honestly marked blocked.",
+        "Verification artifacts exist.",
+        "The branch is pushed."
+      ]
+    }
+  ],
+  "report_requirements": {
+    "markdown_path": "reports/iteration-010b.md",
+    "json_path": "reports/iteration-010b.json",
+    "must_include": [
+      "branch_name",
+      "latest_commit_sha",
+      "summary",
+      "frontend_stack",
+      "backend_endpoints_added",
+      "tasks_completed",
+      "tasks_partial",
+      "tasks_not_done",
+      "files_created",
+      "files_modified",
+      "commands_run",
+      "backend_tests_run",
+      "frontend_tests_run",
+      "manual_browser_tests",
+      "artifact_locations",
+      "known_issues",
+      "deviations_from_prompt",
+      "next_recommended_tasks",
+      "risks",
+      "open_questions",
+      "doc_parity_check"
+    ]
+  },
+  "iteration_report_json_schema": {
+    "iteration": "010b",
+    "branch_name": "string",
+    "latest_commit_sha": "string",
+    "status": "completed|partial|blocked",
+    "summary": "string",
+    "frontend_stack": ["string"],
+    "backend_endpoints_added": [
+      {
+        "path": "string",
+        "type": "http|websocket",
+        "notes": "string"
+      }
+    ],
+    "tasks_completed": [
+      {
+        "id": "string",
+        "title": "string",
+        "evidence": ["string"]
+      }
+    ],
+    "tasks_partial": [
+      {
+        "id": "string",
+        "reason": "string",
+        "remaining_work": ["string"]
+      }
+    ],
+    "tasks_not_done": [
+      {
+        "id": "string",
+        "reason": "string"
+      }
+    ],
+    "files_created": ["string"],
+    "files_modified": ["string"],
+    "commands_run": ["string"],
+    "backend_tests_run": [
+      {
+        "command": "string",
+        "result": "passed|failed",
+        "notes": "string"
+      }
+    ],
+    "frontend_tests_run": [
+      {
+        "command": "string",
+        "result": "passed|failed",
+        "notes": "string"
+      }
+    ],
+    "manual_browser_tests": [
+      {
+        "case": "string",
+        "result": "passed|failed|ambiguous|not_run",
+        "notes": "string"
+      }
+    ],
+    "artifact_locations": ["string"],
+    "known_issues": ["string"],
+    "deviations_from_prompt": ["string"],
+    "risks": ["string"],
+    "open_questions": ["string"],
+    "next_recommended_tasks": ["string"],
+    "doc_parity_check": {
+      "readme_matches_install_flow": "true|false",
+      "roadmap_matches_iteration_status": "true|false",
+      "architecture_matches_code": "true|false",
+      "notes": "string"
+    }
+  },
+  "honesty_rules": [
+    "Do not claim the live UI works unless it was opened in a real browser and exercised locally.",
+    "Do not fake screenshots, WebSocket transcripts, commit hashes, or test results.",
+    "If the browser-side camera view is not implemented because the backend-owned frame route is used instead, state that clearly and explain why.",
+    "If the mic button is UI-only or partially wired, state that honestly."
+  ],
+  "definition_of_done": [
+    "The branch is pushed.",
+    "The backend exposes live telemetry needed by the UI.",
+    "The frontend builds and runs locally.",
+    "The three-column cockpit UI exists on one screen.",
+    "The activity feed shows real pipeline events.",
+    "The memory panel shows real retrieved memories with scores.",
+    "The Bay-Max face animates from runtime state.",
+    "The docs are updated and match the code.",
+    "Verification artifacts exist.",
+    "reports/iteration-010b.md and reports/iteration-010b.json exist."
+  ]
+}

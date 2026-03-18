@@ -98,13 +98,42 @@ src/baymax/          # Core library
   tts/               # Text-to-speech (Kokoro, Piper, Null backends)
   audio/             # Speech input (microphone, VAD, ASR, echo suppression)
   orchestrator/      # End-to-end flow coordination
-apps/api/            # FastAPI application
+apps/api/            # FastAPI application + WebSocket telemetry
+apps/ui/             # Companion diagnostic UI (Vite + React + TypeScript)
 apps/demo/           # Gradio demo application
 tests/               # Test suite
 docs/                # Documentation and ADRs
 scripts/             # Developer utility scripts
 reports/             # Iteration reports
 ```
+
+## Companion UI (Iteration 010b)
+
+Bay-Max includes a diagnostic web UI for real-time runtime visualization:
+
+```bash
+# Install UI dependencies
+make ui-install
+
+# Start the backend API
+make run-api
+
+# In another terminal, start the live runtime
+make live-webcam
+
+# In a third terminal, start the UI
+make run-ui
+
+# Open http://localhost:3000
+```
+
+The UI shows three columns:
+- **What Bay-Max Sees**: Live camera feed, identity, posture, engagement, affect
+- **What Bay-Max is Doing**: Animated face, activity feed, last response, input controls
+- **What Bay-Max Remembers**: Retrieved memories, semantic facts, memory stats
+
+See [docs/COMPANION_UI_ARCHITECTURE.md](docs/COMPANION_UI_ARCHITECTURE.md) for UI architecture.
+See [docs/WEBSOCKET_PROTOCOL.md](docs/WEBSOCKET_PROTOCOL.md) for WebSocket telemetry protocol.
 
 ## Development
 

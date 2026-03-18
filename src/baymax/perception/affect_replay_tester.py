@@ -5,15 +5,13 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import cv2
-import numpy as np
 
+from baymax.perception.affect_artifacts import AffectArtifactLogger
 from baymax.perception.emotion import get_emotion_analyzer
 from baymax.perception.emotion_smoother import AffectSmoother
-from baymax.perception.affect_artifacts import AffectArtifactLogger
-from baymax.schemas.perception import EmotionResult
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +96,7 @@ class AffectReplayTester:
             return {"error": f"Sequence file not found: {sequence_file}"}
 
         try:
-            with open(sequence_file, "r", encoding="utf-8") as f:
+            with open(sequence_file, encoding="utf-8") as f:
                 sequence_data = json.load(f)
         except Exception as e:
             logger.error("Error loading sequence file: %s", e)
