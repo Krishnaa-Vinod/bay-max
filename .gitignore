@@ -66,6 +66,9 @@ Thumbs.db
 # Bay-Max specific
 baymax.db
 artifacts/
+# Allow verification manifests and summaries in artifacts (for review)
+!artifacts/verification_*/manifest.json
+!artifacts/verification_*/summary.md
 *.mp4
 *.avi
 *.mov

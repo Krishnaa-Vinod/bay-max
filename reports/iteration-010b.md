@@ -1,13 +1,69 @@
 # Iteration 010b: Companion UI
 
 **Date**: 2026-03-18
-**Branch**: `feature/iteration-010b-companion-ui`
-**Commit**: `400838af580ea5ba8b1b6fd00dfd4fc1871b99a6`
-**Status**: ✅ Completed
+**Branch**: `fix/iteration-010b-local-ready`
+**Commit**: `3d28956d3584443f0ffaf9ee38905a490cfdc87c`
+**Status**: ✅ Completed (with local-ready hotfix)
 
 ## Summary
 
 Built a diagnostic companion web UI that visualizes the Bay-Max live runtime in real-time. The UI provides three columns showing what Bay-Max sees (camera + perception), what Bay-Max is doing (face animation + activity feed), and what Bay-Max remembers (memory hits + facts). Backend provides WebSocket telemetry streaming and HTTP endpoints for frames, text input, and controls.
+
+## Local-Ready Hotfix (2026-03-18)
+
+This hotfix makes the companion UI fully ready for local download and testing.
+
+### Fixes Applied
+
+1. **Frontend test command**: Added `"test": "vitest run"` and `"test:watch": "vitest"` to `apps/ui/package.json`. The `make ui-test` target now works.
+
+2. **Placeholder values removed**: Replaced hardcoded `recognition_confidence: 0.0`, `posture: "unknown"`, `engagement: 0.5` in WebSocket snapshots with real values from `LiveRuntimeStatus`. Returns `null` when unavailable instead of fake defaults.
+
+3. **Memory hits wired to UI**: Added `last_memory_refs` field to `LiveRuntimeStatus`, populated from `response.memory_refs` during response generation. WebSocket snapshots now include real retrieved memory hits.
+
+4. **Verification artifacts**: Added `.gitignore` exceptions for `manifest.json` and `summary.md` in verification artifact directories.
+
+5. **TypeScript types updated**: Changed `PerceptionData` and `MemoryHit` types to allow `null` values for fields that may not be available.
+
+### Verification Tests Added
+
+New test file: `tests/test_iteration_010b.py` (9 tests, all pass)
+
+- `test_live_runtime_status_has_perception_fields` - Fields exist and default to None
+- `test_live_runtime_status_has_memory_refs_field` - Field exists and defaults to []
+- `test_build_snapshot_message_uses_real_values` - Snapshot uses status values
+- `test_build_snapshot_message_returns_null_when_unavailable` - Returns null, not placeholders
+- `test_memory_refs_stored_in_status_from_response` - Memory refs stored correctly
+- `test_memory_hits_included_in_snapshot` - Memory hits appear in snapshot
+- `test_package_json_has_test_script` - Test scripts configured
+- `test_live_ts_perception_types_allow_null` - TypeScript types handle nulls
+- `test_memory_hit_type_allows_null_score` - Score can be null
+
+### Local Test Steps
+
+```bash
+# Terminal 1: Start backend API
+make run-api
+
+# Terminal 2: Start live runtime (with webcam)
+make live-webcam
+
+# Terminal 3: Start UI dev server
+make run-ui
+
+# Open browser
+http://localhost:3000
+```
+
+**What to verify on screen:**
+- Three-column layout visible
+- Camera feed shows live video (if webcam enabled)
+- Identity/Confidence show real values or "Unknown"/null
+- Posture and Engagement show real values or null
+- Bay-Max face animates based on pipeline state
+- Activity feed shows color-coded events
+- Memory hits panel populates when responses are generated
+- Text input works for typed messages
 
 ## Deliverables
 

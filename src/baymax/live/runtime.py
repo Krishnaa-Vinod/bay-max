@@ -135,6 +135,12 @@ class LiveRuntime:
         self._speech_input_task: asyncio.Task | None = None
         self._speech_consumer_task: asyncio.Task | None = None
 
+        # Perception state tracking for UI (iteration 010b hotfix)
+        self._last_recognition_confidence: float | None = None
+        self._last_posture: str | None = None
+        self._last_engagement: str | None = None
+        self._last_engagement_score: float | None = None
+
         # Overlay settings
         self._enable_overlay = settings.enable_live_overlay
         self._debug_overlay = getattr(
@@ -694,6 +700,11 @@ class LiveRuntime:
         # Update status
         self._status.current_user_id = user_id
         self._status.current_user_display_name = user_name
+        # Track perception values for UI (iteration 010b hotfix)
+        self._last_recognition_confidence = confidence if confidence > 0 else None
+        self._last_posture = posture.value if posture != PostureLabel.UNKNOWN else None
+        self._last_engagement = engagement_level.value if engagement_level else None
+        # engagement_score not directly available in this path; left as None
 
     async def _generate_proactive_response(
         self,
@@ -729,6 +740,9 @@ class LiveRuntime:
             self._status.last_response_text = response.message
             self._status.last_response_at = datetime.utcnow()
             self._last_memory_refs_count = len(response.memory_refs)
+            # Track memory refs for UI (iteration 010b hotfix)
+            refs = response.memory_refs[:10] if response.memory_refs else []
+            self._status.last_memory_refs = refs
 
             # Log artifacts
             self._artifact_logger.log_response(
@@ -891,6 +905,12 @@ class LiveRuntime:
             last = self._event_engine.events[-1]
             self._status.last_event = last.event_type.value
             self._status.last_event_at = last.timestamp
+
+        # Perception tracking for UI (iteration 010b hotfix)
+        self._status.recognition_confidence = self._last_recognition_confidence
+        self._status.posture = self._last_posture
+        self._status.engagement = self._last_engagement
+        self._status.engagement_score = self._last_engagement_score
 
         # Speech output status
         qs = self._speech_service.queue_status()

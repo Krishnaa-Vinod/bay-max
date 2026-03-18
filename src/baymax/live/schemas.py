@@ -41,6 +41,11 @@ class LiveRuntimeStatus(BaseModel):
     session_status: SessionLifecycleState = SessionLifecycleState.IDLE
     current_user_id: UUID | None = None
     current_user_display_name: str | None = None
+    # Perception tracking for UI (iteration 010b hotfix)
+    recognition_confidence: float | None = None
+    posture: str | None = None
+    engagement: str | None = None
+    engagement_score: float | None = None
     last_event: str | None = None
     last_event_at: datetime | None = None
     last_response_text: str | None = None
@@ -70,6 +75,8 @@ class LiveRuntimeStatus(BaseModel):
     emotion_confidence: float = 0.0
     emotion_stable_duration_sec: float = 0.0
     emotion_debug_summary: str = ""
+    # Iteration 010b: memory hits for UI
+    last_memory_refs: list[str] = Field(default_factory=list)
 
 
 class LiveFrameResult(BaseModel):

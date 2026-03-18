@@ -24,9 +24,9 @@ export interface PerceptionData {
   face_detected: boolean;
   user_name: string | null;
   user_id: string | null;
-  recognition_confidence: number;
-  posture: string;
-  engagement: number;
+  recognition_confidence: number | null;
+  posture: string | null;
+  engagement: number | null;
   valence: number;
   arousal: number;
   affect_confidence: number;
@@ -56,7 +56,7 @@ export interface TTSState {
 // Memory hit
 export interface MemoryHit {
   text: string;
-  score: number;
+  score: number | null;
   type?: string;
 }
 

@@ -1,0 +1,96 @@
+{
+  "artifact_set": "verification_010b",
+  "iteration": "010b",
+  "created_at": "2026-03-18T20:00:00Z",
+  "updated_at": "2026-03-18T21:00:00Z",
+  "branch": "fix/iteration-010b-local-ready",
+  "environment": "Sol (headless HPC)",
+  "purpose": "Verify iteration 010b companion UI implementation with local-ready hotfix",
+  "contents": [
+    {
+      "file": "manifest.json",
+      "type": "metadata",
+      "description": "This manifest file"
+    },
+    {
+      "file": "summary.md",
+      "type": "report",
+      "description": "Human-readable verification summary"
+    },
+    {
+      "file": "backend_test.log",
+      "type": "test_output",
+      "description": "Backend pytest run output"
+    },
+    {
+      "file": "frontend_build.log",
+      "type": "build_output",
+      "description": "Frontend npm build output"
+    },
+    {
+      "file": "ws_sample.jsonl",
+      "type": "telemetry",
+      "description": "Sample WebSocket messages (simulated)"
+    },
+    {
+      "file": "event_feed_sample.json",
+      "type": "telemetry",
+      "description": "Sample activity feed events"
+    },
+    {
+      "file": "ui_bootstrap_state.json",
+      "type": "telemetry",
+      "description": "Sample UI bootstrap state from /v1/live/ui-state"
+    },
+    {
+      "file": "screenshots/placeholder_note.md",
+      "type": "documentation",
+      "description": "Note about screenshot generation requirements"
+    }
+  ],
+  "test_summary": {
+    "backend_tests": {
+      "total": 390,
+      "passed": 384,
+      "failed": 6,
+      "notes": "Failures are expected on headless environment (MediaPipe, FasterWhisper models not installed)"
+    },
+    "iteration_010b_tests": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "notes": "All hotfix verification tests pass"
+    },
+    "frontend_tests": {
+      "status": "not_run",
+      "reason": "npm not available in Sol environment"
+    },
+    "lint": {
+      "backend": "passed (all modified files clean)",
+      "frontend": "requires npm"
+    }
+  },
+  "hotfix_verification": {
+    "placeholder_values_removed": true,
+    "memory_hits_wired": true,
+    "test_script_added": true,
+    "typescript_types_nullable": true,
+    "verification_tests_pass": true
+  },
+  "manual_verification_status": {
+    "browser_tests": "not_run_on_sol",
+    "reason": "Sol is headless - requires local machine with browser, webcam, and display",
+    "recommendation": "Run 'make run-full' on laptop with webcam to verify full workflow"
+  },
+  "notes": [
+    "Backend endpoints implemented and unit tested",
+    "Frontend code complete but not browser-tested on this machine",
+    "WebSocket telemetry schema documented in docs/WEBSOCKET_PROTOCOL.md",
+    "Full workflow requires: Terminal 1 (make run-api), Terminal 2 (make live-webcam), Terminal 3 (make run-ui)",
+    "Screenshots require actual browser run - placeholders provided",
+    "Affect visualization requires affect backend enabled (MediaPipe) - falls back gracefully to null",
+    "HOTFIX: Placeholder values replaced with real/null values",
+    "HOTFIX: Memory hits now flow from responses to WebSocket snapshot",
+    "HOTFIX: Test scripts added to package.json"
+  ]
+}
