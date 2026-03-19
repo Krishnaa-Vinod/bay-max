@@ -25,7 +25,7 @@ from baymax.live.session_supervisor import SessionSupervisor
 from baymax.orchestrator.service import Orchestrator
 from baymax.perception.emotion import EmotionAnalyzer, get_emotion_analyzer
 from baymax.perception.emotion_smoother import AffectSmoother
-from baymax.tts.provider import get_tts_provider
+from baymax.tts.provider import NullTTSProvider, get_tts_provider
 from baymax.tts.speech_service import SpeechService
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class LiveRuntime:
     def __init__(
         self,
         orchestrator: Orchestrator | None = None,
-        db_path: str = "baymax_live.db",
+        db_path: str = "baymax.db",
     ) -> None:
         settings = get_settings()
         self._settings = settings
@@ -74,17 +74,21 @@ class LiveRuntime:
         )
 
         # Speech service (TTS)
+        self._tts_init_error: str | None = None
         if settings.tts_enabled:
-            tts_provider = get_tts_provider(
-                backend=settings.tts_backend,
-                voice=settings.tts_voice,
-                device=settings.tts_device,
-                model_dir=settings.model_dir,
-                sample_rate=settings.tts_rate,
-            )
+            try:
+                tts_provider = get_tts_provider(
+                    backend=settings.tts_backend,
+                    voice=settings.tts_voice,
+                    device=settings.tts_device,
+                    model_dir=settings.model_dir,
+                    sample_rate=settings.tts_rate,
+                )
+            except Exception as exc:
+                self._tts_init_error = str(exc)
+                logger.warning("Failed to initialize TTS provider, using null fallback: %s", exc)
+                tts_provider = NullTTSProvider()
         else:
-            from baymax.tts.provider import NullTTSProvider
-
             tts_provider = NullTTSProvider()
 
         self._speech_service = SpeechService(
@@ -493,6 +497,7 @@ class LiveRuntime:
                 user_id=user_id,
                 source="speech",
             )
+            self._status.turn_count += 1
 
             # Generate response
             response = await self._orch.respond(
@@ -508,6 +513,7 @@ class LiveRuntime:
                 text=response.message,
                 user_id=user_id,
             )
+            self._status.turn_count += 1
 
             # Record cooldown
             self._status.last_response_text = response.message
@@ -564,10 +570,10 @@ class LiveRuntime:
                     self._status.last_tts_error = ""
                     tts_detail = "TTS synth ok; playback ok"
                 else:
-                    self._status.last_tts_result = "synth_ok_playback_failed"
-                    self._status.last_tts_error = speech_result.playback_error or "Playback failed"
+                    self._status.last_tts_result = "synth_ok_no_playback"
+                    self._status.last_tts_error = speech_result.playback_error or "Playback unavailable"
                     tts_detail = (
-                        f"TTS synth ok; playback failed: {self._status.last_tts_error}"
+                        f"TTS synth ok; playback unavailable: {self._status.last_tts_error}"
                     )
                     if speech_result.wav_path:
                         tts_detail += f"; wav: {speech_result.wav_path}"
@@ -587,7 +593,7 @@ class LiveRuntime:
 
                     await broadcast_event(build_event_message(
                         stage="tts",
-                        status="complete" if speech_result.playback_ok else "error",
+                        status="complete",
                         detail=tts_detail,
                         event_type="speech_event",
                     ))
@@ -729,6 +735,7 @@ class LiveRuntime:
                 session = await self._orch.create_session(user_id=user_id)
                 self._supervisor.set_session_id(session.id)
                 self._sessions_created += 1
+                self._status.turn_count = 0
                 logger.info("Created session: %s", session.id)
 
                 # Snapshot on session start
@@ -839,6 +846,7 @@ class LiveRuntime:
                 text=response.message,
                 user_id=user_id,
             )
+            self._status.turn_count += 1
 
             # Record cooldown
             self._scheduler.record_response(event)
@@ -1039,6 +1047,8 @@ class LiveRuntime:
         self._status.tts_backend = self._speech_service.provider.name()
         self._status.tts_voice = self._settings.tts_voice
         self._status.tts_voice_preset = self._settings.tts_voice_preset
+        if self._tts_init_error and not self._status.last_tts_error:
+            self._status.last_tts_error = f"TTS fallback active: {self._tts_init_error}"
 
         # Speech input status (Iteration 008)
         if self._speech_input_service is not None:

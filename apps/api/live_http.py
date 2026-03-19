@@ -91,6 +91,7 @@ class UIBootstrapState(BaseModel):
     # Stats
     frame_count: int = 0
     analysis_count: int = 0
+    turn_count: int = 0
     uptime_sec: float = 0.0
 
     # Last known state
@@ -307,6 +308,7 @@ async def get_ui_state() -> UIBootstrapState:
         # Stats
         state.frame_count = status.frame_count
         state.analysis_count = status.analysis_count
+        state.turn_count = status.turn_count
         state.uptime_sec = status.uptime_sec
 
         # Last known state
@@ -372,6 +374,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             user_id=user_id,
             source="ui_text",
         )
+        _live_runtime._status.turn_count += 1
 
         # Generate response
         response = await _orchestrator.respond(
@@ -387,6 +390,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             text=response.message,
             user_id=user_id,
         )
+        _live_runtime._status.turn_count += 1
 
         # Update runtime status
         _live_runtime._status.last_response_text = response.message
@@ -438,7 +442,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             session_id=str(session_id),
             response_text=response.message,
             memory_refs=[
-                {"text": ref, "score": 0.0} for ref in response.memory_refs
+                {"text": ref, "score": None} for ref in response.memory_refs
             ],
             strategy=response.strategy.value if response.strategy else "",
             backend=response.backend,

@@ -43,6 +43,17 @@ orchestrator = Orchestrator()
 _live_runtime = None
 
 
+def get_active_orchestrator() -> Orchestrator:
+    """Return the orchestrator currently backing API requests.
+
+    When local live runtime is active, API and live telemetry must share the same
+    orchestrator instance and DB state.
+    """
+    if _live_runtime is not None:
+        return _live_runtime._orch
+    return orchestrator
+
+
 def set_live_runtime(runtime):
     """Set the live runtime reference for status queries."""
     global _live_runtime
@@ -52,18 +63,21 @@ def set_live_runtime(runtime):
     live_http.set_live_runtime(runtime)
     if runtime is not None:
         live_http.set_orchestrator(runtime._orch)
+    else:
+        live_http.set_orchestrator(orchestrator)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await orchestrator.initialize()
+    active_orchestrator = get_active_orchestrator()
+    await active_orchestrator.initialize()
     # Keep live HTTP orchestrator aligned with the active runtime when present.
     if _live_runtime is not None:
         live_http.set_orchestrator(_live_runtime._orch)
     else:
         live_http.set_orchestrator(orchestrator)
     yield
-    await orchestrator.shutdown()
+    await active_orchestrator.shutdown()
 
 
 app = FastAPI(
@@ -99,19 +113,19 @@ async def healthz() -> dict[str, str]:
 @app.post("/v1/users", response_model=UserProfile, status_code=201)
 async def create_user(request: UserProfileCreate) -> UserProfile:
     """Create a new user profile."""
-    return await orchestrator.create_user(request)
+    return await get_active_orchestrator().create_user(request)
 
 
 @app.get("/v1/users", response_model=list[UserProfile])
 async def list_users() -> list[UserProfile]:
     """List all active users."""
-    return await orchestrator.list_users()
+    return await get_active_orchestrator().list_users()
 
 
 @app.get("/v1/users/{user_id}", response_model=UserProfile)
 async def get_user(user_id: UUID) -> UserProfile:
     """Fetch a user profile."""
-    user = await orchestrator.get_user(user_id)
+    user = await get_active_orchestrator().get_user(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -126,7 +140,8 @@ async def enroll_face(user_id: UUID, file: UploadFile = File(...)) -> FaceEnroll
 
     Expects a single image file (JPEG/PNG). The image must contain exactly one face.
     """
-    user = await orchestrator.get_user(user_id)
+    orch = get_active_orchestrator()
+    user = await orch.get_user(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -137,7 +152,7 @@ async def enroll_face(user_id: UUID, file: UploadFile = File(...)) -> FaceEnroll
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image file")
 
-    return await orchestrator.enroll_face(user_id, frame)
+    return await orch.enroll_face(user_id, frame)
 
 
 # --- Sessions ---
@@ -146,13 +161,13 @@ async def enroll_face(user_id: UUID, file: UploadFile = File(...)) -> FaceEnroll
 @app.post("/v1/sessions", response_model=Session, status_code=201)
 async def create_session(request: SessionCreate) -> Session:
     """Create a new interaction session."""
-    return await orchestrator.create_session(user_id=request.user_id)
+    return await get_active_orchestrator().create_session(user_id=request.user_id)
 
 
 @app.get("/v1/sessions/{session_id}/state", response_model=InteractionState)
 async def get_session_state(session_id: UUID) -> InteractionState:
     """Get the current interaction state for a session."""
-    state = await orchestrator.get_session_state(session_id)
+    state = await get_active_orchestrator().get_session_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return state
@@ -164,7 +179,8 @@ async def get_session_state(session_id: UUID) -> InteractionState:
 @app.post("/v1/sessions/{session_id}/frames", response_model=FrameAnalysisResult)
 async def analyze_frame(session_id: UUID, file: UploadFile = File(...)) -> FrameAnalysisResult:
     """Submit a frame for face detection and recognition."""
-    session = await orchestrator.get_session_state(session_id)
+    orch = get_active_orchestrator()
+    session = await orch.get_session_state(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -175,7 +191,7 @@ async def analyze_frame(session_id: UUID, file: UploadFile = File(...)) -> Frame
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image file")
 
-    return await orchestrator.analyze_frame(session_id, frame)
+    return await orch.analyze_frame(session_id, frame)
 
 
 # --- Memory ---
@@ -184,7 +200,7 @@ async def analyze_frame(session_id: UUID, file: UploadFile = File(...)) -> Frame
 @app.post("/v1/memory/query", response_model=MemoryQueryResult)
 async def query_memories(request: MemoryQuery) -> MemoryQueryResult:
     """Retrieve memories for a user."""
-    return await orchestrator.query_memories(
+    return await get_active_orchestrator().query_memories(
         user_id=request.user_id,
         query=request.query,
         limit=request.limit,
@@ -200,13 +216,13 @@ async def query_memories(request: MemoryQuery) -> MemoryQueryResult:
 @app.get("/v1/dialogue/backends", response_model=DialogueBackendInfo)
 async def get_dialogue_backends() -> DialogueBackendInfo:
     """Return configured and available dialogue backends."""
-    return orchestrator.get_dialogue_backends()
+    return get_active_orchestrator().get_dialogue_backends()
 
 
 @app.post("/v1/respond", response_model=SupportiveResponse)
 async def respond(request: RespondRequest) -> SupportiveResponse:
     """Generate a supportive personalized response."""
-    return await orchestrator.respond(
+    return await get_active_orchestrator().respond(
         session_id=request.session_id,
         user_id=request.user_id,
         context=request.context,
@@ -231,10 +247,11 @@ class ChatTurnRequest(BaseModel):
 )
 async def add_turn(session_id: UUID, request: ChatTurnRequest) -> ChatTurn:
     """Add a typed conversation turn to a session."""
-    session = await orchestrator.get_session_state(session_id)
+    orch = get_active_orchestrator()
+    session = await orch.get_session_state(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return await orchestrator.add_turn(
+    return await orch.add_turn(
         session_id=session_id,
         role=request.role,
         text=request.text,
@@ -248,7 +265,7 @@ async def add_turn(session_id: UUID, request: ChatTurnRequest) -> ChatTurn:
 )
 async def get_turns(session_id: UUID) -> list[ChatTurn]:
     """Get all chat turns for a session."""
-    return await orchestrator.get_turns(session_id)
+    return await get_active_orchestrator().get_turns(session_id)
 
 
 # --- Iteration 004: Consolidation ---
@@ -268,7 +285,7 @@ async def consolidate_session(
     session_id: UUID, request: ConsolidateRequest
 ) -> ConsolidationResult:
     """Consolidate a session into episodic memories and semantic facts."""
-    return await orchestrator.consolidate(
+    return await get_active_orchestrator().consolidate(
         session_id=session_id,
         user_id=request.user_id,
     )
@@ -283,10 +300,11 @@ async def consolidate_session(
 )
 async def get_memory_summary(user_id: UUID) -> MemorySummaryResponse:
     """Get a summary of all memories for a user."""
-    user = await orchestrator.get_user(user_id)
+    orch = get_active_orchestrator()
+    user = await orch.get_user(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return await orchestrator.get_memory_summary(user_id)
+    return await orch.get_memory_summary(user_id)
 
 
 # --- Iteration 004: Semantic Memory Query ---
@@ -306,7 +324,7 @@ class SemanticQueryRequest(BaseModel):
 )
 async def query_memory_semantic(request: SemanticQueryRequest) -> list[MemoryHit]:
     """Search memories using semantic similarity."""
-    return await orchestrator.query_memory_semantic(
+    return await get_active_orchestrator().query_memory_semantic(
         user_id=request.user_id,
         query=request.query,
         top_k=request.top_k,
@@ -323,7 +341,7 @@ async def query_memory_semantic(request: SemanticQueryRequest) -> list[MemoryHit
 async def correct_memory(request: MemoryCorrectionRequest) -> MemoryCorrectionResult:
     """Apply a correction to a semantic fact (confirm, reject, or update)."""
     try:
-        return await orchestrator.correct_memory(request)
+        return await get_active_orchestrator().correct_memory(request)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

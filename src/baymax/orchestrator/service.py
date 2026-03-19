@@ -71,6 +71,7 @@ class Orchestrator:
 
     def __init__(self, db_path: str = "baymax.db") -> None:
         self.store = SQLiteMetadataStore(db_path=db_path)
+        self._initialized = False
         self.state_manager = StateManager()
         self.planner = SupportivePlanner()
         self.tracker = SimpleTracker()
@@ -245,10 +246,13 @@ class Orchestrator:
 
     async def initialize(self) -> None:
         """Initialize the orchestrator and its dependencies."""
+        if self._initialized:
+            return
         await self.store.initialize()
         # Pre-load enrolled embeddings
         self._enrolled_embeddings = await self.store.get_all_face_embeddings()
         logger.info("Loaded %d enrolled face embeddings", len(self._enrolled_embeddings))
+        self._initialized = True
 
     async def create_user(self, request: UserProfileCreate) -> UserProfile:
         """Create a new user profile."""
@@ -1017,4 +1021,7 @@ class Orchestrator:
 
     async def shutdown(self) -> None:
         """Shut down the orchestrator."""
+        if not self._initialized:
+            return
         await self.store.close()
+        self._initialized = False

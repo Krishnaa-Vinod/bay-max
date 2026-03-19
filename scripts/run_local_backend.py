@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
         description="Bay-Max single-process local backend",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--host", default="0.0.0.0", help="FastAPI host")
+    parser.add_argument("--host", default="127.0.0.1", help="FastAPI host")
     parser.add_argument("--port", type=int, default=8000, help="FastAPI port")
     parser.add_argument(
         "--mode",
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--replay", type=str, default=None, help="Replay video/folder path")
     parser.add_argument("--max-frames", type=int, default=0, help="Max frames to process (0 = unlimited)")
     parser.add_argument("--max-run-sec", type=float, default=0.0, help="Max runtime in seconds (0 = unlimited)")
-    parser.add_argument("--db-path", type=str, default="baymax_live.db", help="SQLite db path")
+    parser.add_argument("--db-path", type=str, default="baymax.db", help="SQLite db path")
     parser.add_argument("--no-overlay", action="store_true", help="Disable overlay rendering")
     parser.add_argument("--no-speech-input", action="store_true", help="Disable speech input")
     parser.add_argument("--stt-backend", type=str, default=None, help="STT backend override")

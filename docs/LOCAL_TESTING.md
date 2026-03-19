@@ -160,7 +160,7 @@ Opens on `http://0.0.0.0:7860`. The Interact tab now shows backend, model_name, 
 
 ## Smoke Test Checklist (Iteration 005)
 
-1. `pip install -e ".[dev]"` completes without errors
+1. `pip install -e ".[all]"` completes without errors
 2. `make lint` passes (0 errors)
 3. `make test` passes (194 tests)
 4. `curl http://localhost:8000/v1/dialogue/backends` returns JSON with `available_backends`, `active_backend`
@@ -223,7 +223,7 @@ Outputs: `./artifacts/smoke_test_005.json`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BAYMAX_LIVE_SOURCE` | `webcam` | Frame source: `webcam` or `replay` |
-| `BAYMAX_LIVE_CAMERA_INDEX` | `0` | Webcam device index |
+| `BAYMAX_LIVE_CAMERA_INDEX` | `2` | Webcam device index (host-dependent; adjust if needed) |
 | `BAYMAX_PREVIEW_FPS` | `8` | Frame read rate (preview loop) |
 | `BAYMAX_ANALYSIS_INTERVAL_SEC` | `2.0` | Seconds between full analyses |
 | `BAYMAX_PRESENCE_MIN_CONSECUTIVE_FRAMES` | `2` | Frames needed to confirm presence |
@@ -315,7 +315,7 @@ snapshots/            - Annotated JPEG frames at key events (if camera available
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BAYMAX_TTS_BACKEND` | `kokoro` | TTS backend: `kokoro`, `piper`, or `null` |
-| `BAYMAX_TTS_VOICE` | `af_heart` | Voice ID for TTS synthesis |
+| `BAYMAX_TTS_VOICE` | `am_michael` | Voice ID for TTS synthesis |
 | `BAYMAX_TTS_SAMPLE_RATE` | `24000` | Audio sample rate in Hz |
 | `BAYMAX_TTS_OUTPUT_DIR` | `./artifacts/tts_output` | Directory for generated WAV files |
 | `BAYMAX_TTS_ENABLE_PLAYBACK` | `true` | Play audio through speakers |
@@ -384,7 +384,7 @@ make verify-007        # Run iteration 007 verification script
 |----------|---------|-------------|
 | `BAYMAX_ENABLE_SPEECH_INPUT` | `true` | Enable/disable speech input globally |
 | `BAYMAX_MIC_BACKEND` | `sounddevice` | Microphone backend |
-| `BAYMAX_MIC_SAMPLE_RATE` | `16000` | Audio sample rate in Hz |
+| `BAYMAX_MIC_SAMPLE_RATE` | `48000` | Audio sample rate in Hz |
 | `BAYMAX_MIC_CHANNELS` | `1` | Audio channels (mono) |
 | `BAYMAX_MIC_DEVICE` | `default` | Microphone device ID |
 | `BAYMAX_VAD_BACKEND` | `silero` | VAD backend: `silero` or `null` |

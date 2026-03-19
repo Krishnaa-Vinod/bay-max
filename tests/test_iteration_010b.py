@@ -90,6 +90,38 @@ class TestLiveSnapshotNonPlaceholderValues:
         # Memory hits should be empty list when none available
         assert snapshot['memory_hits'] == []
 
+    def test_snapshot_uses_runtime_turn_count(self):
+        from apps.api.live_ws import build_snapshot_message
+
+        status = LiveRuntimeStatus(
+            live_mode_active=True,
+            session_status=SessionLifecycleState.ACTIVE,
+            turn_count=7,
+        )
+
+        with patch('apps.api.live_ws._live_runtime', None):
+            snapshot = build_snapshot_message(status)
+
+        assert snapshot['session']['turn_count'] == 7
+
+
+class TestActiveOrchestratorRouting:
+    def test_main_prefers_runtime_orchestrator_when_present(self):
+        from apps.api import main as api_main
+
+        runtime_orch = MagicMock()
+        runtime = MagicMock()
+        runtime._orch = runtime_orch
+
+        with patch.object(api_main, '_live_runtime', runtime):
+            assert api_main.get_active_orchestrator() is runtime_orch
+
+    def test_main_uses_global_orchestrator_without_runtime(self):
+        from apps.api import main as api_main
+
+        with patch.object(api_main, '_live_runtime', None):
+            assert api_main.get_active_orchestrator() is api_main.orchestrator
+
 
 class TestMemoryHitsUIPath:
     """Verify retrieved memory hits flow through to the UI data path."""
@@ -127,6 +159,44 @@ class TestMemoryHitsUIPath:
         for hit in snapshot['memory_hits']:
             assert 'text' in hit
             assert 'score' in hit
+
+
+class TestTextInputMemoryScoreTruthfulness:
+    def test_text_input_returns_null_memory_scores_when_unavailable(self):
+        from apps.api import live_http
+
+        user_id = uuid4()
+        session_id = uuid4()
+
+        runtime = MagicMock()
+        runtime.supervisor.current_session_id = session_id
+        runtime.status.current_user_id = user_id
+        runtime._status.last_tts_result = ""
+        runtime._status.last_tts_error = ""
+        runtime._status.last_tts_wav_path = ""
+        runtime._status.last_memory_refs = []
+        runtime._status.turn_count = 0
+        runtime.speech_service = None
+
+        response_obj = MagicMock(
+            message="hello",
+            memory_refs=["fact-a"],
+            strategy=MagicMock(value="greet"),
+            backend="rule_based",
+            model_name="",
+            fallback_used=False,
+        )
+
+        orch = MagicMock()
+        orch.add_turn = AsyncMock(return_value=None)
+        orch.respond = AsyncMock(return_value=response_obj)
+
+        with patch.object(live_http, '_live_runtime', runtime), patch.object(live_http, '_orchestrator', orch):
+            payload = asyncio.run(live_http.submit_text_input(live_http.TextInputRequest(text="hi")))
+
+        assert payload.success is True
+        assert payload.memory_refs[0]["score"] is None
+        assert runtime._status.turn_count == 2
 
 
 class TestPackageJsonTestScript:
