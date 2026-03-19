@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { LiveWebSocket, ConnectionState } from '@/lib/ws';
 import { getUIState } from '@/lib/api';
-import type { SnapshotMessage, PipelineEvent, ActivityEvent } from '@/types/live';
+import type { SnapshotMessage, PipelineEvent, ActivityEvent, TextInputResponse } from '@/types/live';
 
 // Components
 import { CameraFeed } from '@/components/CameraFeed';
@@ -133,7 +133,7 @@ function App() {
     });
   }, []);
 
-  const handleTextSubmitSuccess = useCallback((userText: string, response: { response_text: string; memory_refs: Array<{ text: string; score: number | null }>; session_id: string | null }) => {
+  const handleTextSubmitSuccess = useCallback((userText: string, response: TextInputResponse) => {
     addUiEvent({
       timestamp: new Date(),
       stage: 'text_input',
@@ -150,6 +150,28 @@ function App() {
       type: 'pipeline_event',
     });
 
+    addUiEvent({
+      timestamp: new Date(),
+      stage: 'dialogue_backend',
+      status: response.fallback_used ? 'blocked' : 'complete',
+      detail: response.fallback_used
+        ? `LLM unavailable - using rule-based fallback (${response.backend})`
+        : `Backend: ${response.backend}${response.model_name ? ` (${response.model_name})` : ''}`,
+      type: 'pipeline_event',
+    });
+
+    if (response.tts_result) {
+      addUiEvent({
+        timestamp: new Date(),
+        stage: 'tts',
+        status: response.tts_error ? 'error' : 'complete',
+        detail: response.tts_error
+          ? `${response.tts_result}: ${response.tts_error}${response.tts_wav_path ? `; wav: ${response.tts_wav_path}` : ''}`
+          : response.tts_result,
+        type: 'speech_event',
+      });
+    }
+
     setSnapshot((prev) => {
       if (!prev) return prev;
       return {
@@ -160,6 +182,20 @@ function App() {
         },
         last_response: response.response_text,
         memory_hits: response.memory_refs,
+        dialogue: {
+          ...prev.dialogue,
+          active_backend: response.backend || prev.dialogue.active_backend,
+          active_model: response.model_name || prev.dialogue.active_model,
+          fallback_warning: response.fallback_used
+            ? 'LLM unavailable — using rule-based fallback'
+            : '',
+        },
+        tts: {
+          ...prev.tts,
+          last_result: response.tts_result || prev.tts.last_result,
+          last_error: response.tts_error || '',
+          last_wav_path: response.tts_wav_path || prev.tts.last_wav_path,
+        },
       };
     });
 
@@ -239,6 +275,13 @@ function App() {
             pipeline_state: state.live_mode_active ? 'IDLE' : 'OFFLINE',
             last_response: state.last_response,
             last_spoken_text: '',
+            dialogue: {
+              active_backend: state.dialogue_backend,
+              active_model: state.dialogue_model,
+              requested_backend: state.dialogue_requested_backend,
+              requested_model: state.dialogue_requested_model,
+              fallback_warning: state.dialogue_fallback_warning,
+            },
             memory_hits: [],
             cooldown_remaining_sec: 0,
             last_event: state.last_event,
@@ -259,7 +302,12 @@ function App() {
             tts: {
               backend: state.tts_backend,
               voice: state.tts_voice,
+              voice_preset: state.tts_voice_preset,
               queue_depth: 0,
+              last_result: state.tts_last_result,
+              last_error: state.tts_last_error,
+              last_wav_path: state.tts_last_wav_path,
+              last_playback_ok: state.tts_last_playback_ok,
             },
           };
         });
@@ -273,6 +321,13 @@ function App() {
 
   // Frame refresh URL with cache busting
   const frameUrl = `/v1/live/frame/latest?t=${snapshot?.frame_count ?? 0}`;
+  const micStateLabel = !snapshot?.speech_input.enabled
+    ? 'disabled'
+    : snapshot.speech_input.speaking_lock
+      ? 'speaking-lock'
+      : snapshot.speech_input.listening
+        ? 'listening'
+        : 'processing';
 
   return (
     <div className="min-h-screen bg-baymax-bg text-white p-4">
@@ -376,6 +431,45 @@ function App() {
             isSpeaking={snapshot?.pipeline_state === 'SPEAKING'}
           />
 
+          <div className="bg-baymax-bg rounded p-3 text-xs text-gray-300 space-y-1">
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-400">Dialogue:</span>
+              <span className="text-cyan-300 text-right">
+                {snapshot?.dialogue.active_backend || 'unknown'}
+                {snapshot?.dialogue.active_model ? ` / ${snapshot.dialogue.active_model}` : ''}
+              </span>
+            </div>
+            {!!snapshot?.dialogue.fallback_warning && (
+              <div className="text-amber-300 border border-amber-700/50 bg-amber-900/20 rounded px-2 py-1">
+                {snapshot.dialogue.fallback_warning}
+              </div>
+            )}
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-400">Mic state:</span>
+              <span className="text-white">{micStateLabel}</span>
+            </div>
+            {!snapshot?.speech_input.enabled && (
+              <div className="text-red-300">Speech unavailable: {snapshot?.speech_input.disabled_reason || 'unavailable'}</div>
+            )}
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-400">TTS:</span>
+              <span className="text-white">{snapshot?.tts.backend || 'none'} / {snapshot?.tts.voice || 'n/a'}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-400">Voice preset:</span>
+              <span className="text-white">{snapshot?.tts.voice_preset || 'default'}</span>
+            </div>
+            {!!snapshot?.tts.last_result && (
+              <div className="text-gray-200">TTS status: {snapshot.tts.last_result}</div>
+            )}
+            {!!snapshot?.tts.last_error && (
+              <div className="text-red-300">Playback or synth error: {snapshot.tts.last_error}</div>
+            )}
+            {!!snapshot?.tts.last_wav_path && (
+              <div className="text-blue-300 break-all">WAV: {snapshot.tts.last_wav_path}</div>
+            )}
+          </div>
+
           {/* Activity feed */}
           <ActivityFeed events={events} />
 
@@ -392,6 +486,8 @@ function App() {
             speechEnabled={snapshot?.speech_input.enabled ?? false}
             speechDisabledReason={snapshot?.speech_input.disabled_reason ?? ''}
             isListening={snapshot?.speech_input.listening ?? false}
+            speakingLockActive={snapshot?.speech_input.speaking_lock ?? false}
+            vadActive={snapshot?.speech_input.vad_active ?? false}
             onSubmitSuccess={handleTextSubmitSuccess}
             onMicToggled={handleMicToggled}
           />
@@ -408,6 +504,8 @@ function App() {
             memoryHits={snapshot?.memory_hits ?? []}
             userId={snapshot?.perception.user_id ?? null}
             refreshKey={memoryRefreshKey}
+            recognitionState={snapshot?.perception.recognition_state ?? 'no_face'}
+            sessionBinding={snapshot?.session_binding ?? 'anonymous'}
           />
         </div>
       </div>

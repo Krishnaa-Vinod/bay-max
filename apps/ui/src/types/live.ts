@@ -53,7 +53,20 @@ export interface SpeechInputState {
 export interface TTSState {
   backend: string;
   voice: string;
+  voice_preset: string;
   queue_depth: number;
+  last_result: string;
+  last_error: string;
+  last_wav_path: string;
+  last_playback_ok: boolean | null;
+}
+
+export interface DialogueState {
+  active_backend: string;
+  active_model: string;
+  requested_backend: string;
+  requested_model: string;
+  fallback_warning: string;
 }
 
 // Memory hit
@@ -72,6 +85,7 @@ export interface SnapshotMessage {
   pipeline_state: PipelineState;
   last_response: string;
   last_spoken_text: string;
+  dialogue: DialogueState;
   memory_hits: MemoryHit[];
   cooldown_remaining_sec: number;
   last_event: string;
@@ -113,8 +127,16 @@ export interface UIBootstrapState {
   user_name: string | null;
   dialogue_backend: string;
   dialogue_model: string;
+  dialogue_requested_backend: string;
+  dialogue_requested_model: string;
+  dialogue_fallback_warning: string;
   tts_backend: string;
   tts_voice: string;
+  tts_voice_preset: string;
+  tts_last_result: string;
+  tts_last_error: string;
+  tts_last_wav_path: string;
+  tts_last_playback_ok: boolean | null;
   stt_backend: string;
   affect_backend: string;
   speech_input_enabled: boolean;
@@ -140,6 +162,12 @@ export interface TextInputResponse {
   response_text: string;
   memory_refs: MemoryHit[];
   strategy: string;
+  backend: string;
+  model_name: string;
+  fallback_used: boolean;
+  tts_result: string;
+  tts_error: string;
+  tts_wav_path: string;
   error: string | null;
 }
 
@@ -170,6 +198,8 @@ export interface MemoryData {
     total_sessions: number;
   };
   empty_reason: 'no active user' | 'no retrieved memories yet' | 'memory service error' | '';
+  recognition_reason?: string;
+  memory_unavailable_hint?: string;
   error?: string | null;
 }
 

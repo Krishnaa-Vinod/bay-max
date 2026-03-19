@@ -38,6 +38,9 @@ class SpeechSynthesisResult(BaseModel):
     duration_sec: float = 0.0
     text: str = ""
     error: str | None = None
+    synthesis_ok: bool = False
+    playback_ok: bool | None = None
+    playback_error: str | None = None
     synthesized_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC)
     )

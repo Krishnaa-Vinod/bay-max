@@ -13,6 +13,14 @@ vi.mock('../src/lib/api', () => ({
     memories: [],
     facts: [],
     stats: { total_memories: 0, total_facts: 0, total_sessions: 0 },
+    empty_reason: 'no active user',
+  }),
+  getUsers: vi.fn().mockResolvedValue([]),
+  inspectDebugMemoryForUser: vi.fn().mockResolvedValue({
+    memories: [],
+    facts: [],
+    stats: { total_memories: 0, total_facts: 0, total_sessions: 0 },
+    empty_reason: 'no active user',
   }),
 }));
 
@@ -107,8 +115,16 @@ describe('BayMaxFace', () => {
 
 describe('MemoryPanel', () => {
   it('renders empty state when no memories', () => {
-    render(<MemoryPanel memoryHits={[]} userId={null} />);
-    expect(screen.getByText('No memories retrieved')).toBeInTheDocument();
+    render(
+      <MemoryPanel
+        memoryHits={[]}
+        userId={null}
+        refreshKey={0}
+        recognitionState="no_face"
+        sessionBinding="anonymous"
+      />
+    );
+    expect(screen.getAllByText('no active user').length).toBeGreaterThan(0);
   });
 
   it('renders memory hits with scores', () => {
@@ -117,7 +133,15 @@ describe('MemoryPanel', () => {
       { text: 'User works from home', score: 0.82 },
     ];
 
-    render(<MemoryPanel memoryHits={memoryHits} userId="user-123" />);
+    render(
+      <MemoryPanel
+        memoryHits={memoryHits}
+        userId="user-123"
+        refreshKey={0}
+        recognitionState="recognized_enrolled"
+        sessionBinding="identified_user"
+      />
+    );
 
     expect(screen.getByText('User likes coffee')).toBeInTheDocument();
     expect(screen.getByText('User works from home')).toBeInTheDocument();
@@ -127,7 +151,15 @@ describe('MemoryPanel', () => {
   });
 
   it('shows no user identified when userId is null', () => {
-    render(<MemoryPanel memoryHits={[]} userId={null} />);
-    expect(screen.getByText('No user identified')).toBeInTheDocument();
+    render(
+      <MemoryPanel
+        memoryHits={[]}
+        userId={null}
+        refreshKey={0}
+        recognitionState="unknown_user"
+        sessionBinding="anonymous"
+      />
+    );
+    expect(screen.getByText(/Memory unavailable until an enrolled user is recognized/i)).toBeInTheDocument();
   });
 });

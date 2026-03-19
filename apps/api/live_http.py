@@ -63,8 +63,16 @@ class UIBootstrapState(BaseModel):
     # Backend info
     dialogue_backend: str = ""
     dialogue_model: str = ""
+    dialogue_requested_backend: str = ""
+    dialogue_requested_model: str = ""
+    dialogue_fallback_warning: str = ""
     tts_backend: str = ""
     tts_voice: str = ""
+    tts_voice_preset: str = ""
+    tts_last_result: str = ""
+    tts_last_error: str = ""
+    tts_last_wav_path: str = ""
+    tts_last_playback_ok: bool | None = None
     stt_backend: str = ""
     affect_backend: str = ""
 
@@ -108,6 +116,12 @@ class TextInputResponse(BaseModel):
     response_text: str = ""
     memory_refs: list[dict] = Field(default_factory=list)
     strategy: str = ""
+    backend: str = ""
+    model_name: str = ""
+    fallback_used: bool = False
+    tts_result: str = ""
+    tts_error: str = ""
+    tts_wav_path: str = ""
     error: str | None = None
 
 
@@ -142,6 +156,8 @@ class MemoryRecentResponse(BaseModel):
     facts: list[dict[str, Any]] = Field(default_factory=list)
     stats: MemoryStats = Field(default_factory=MemoryStats)
     empty_reason: str = ""
+    recognition_reason: str = ""
+    memory_unavailable_hint: str = ""
     error: str | None = None
 
 
@@ -158,6 +174,32 @@ def _resolve_speech_disabled_reason() -> str:
         return status.speech_disabled_reason
 
     return "Speech input unavailable"
+
+
+def _resolve_memory_unavailable_reason() -> tuple[str, str]:
+    """Return explicit recognition reason and memory availability hint."""
+    hint = "Memory unavailable until an enrolled user is recognized."
+    if _live_runtime is None:
+        return ("live runtime not active", hint)
+
+    status = _live_runtime.status
+    state = status.recognition_state
+
+    if state == "no_face":
+        return ("no face detected", hint)
+    if state == "unknown_user":
+        return ("face detected, unknown user", hint)
+    if state == "below_threshold":
+        conf = status.recognition_confidence
+        if conf is not None:
+            return (
+                f"recognized below threshold ({conf:.2f} < {status.face_match_threshold:.2f})",
+                hint,
+            )
+        return ("recognized below threshold", hint)
+    if state == "recognized_enrolled":
+        return ("recognized enrolled user", "")
+    return ("no active user", hint)
 
 
 @router.get("/frame/latest")
@@ -234,12 +276,19 @@ async def get_ui_state() -> UIBootstrapState:
         state.user_name = status.current_user_display_name
 
         # Backend info
-        if _orchestrator is not None:
-            state.dialogue_backend = _orchestrator.dialogue.backend_name
-            state.dialogue_model = _orchestrator.dialogue.model_name
+        state.dialogue_backend = status.dialogue_backend
+        state.dialogue_model = status.dialogue_model
+        state.dialogue_requested_backend = status.dialogue_requested_backend
+        state.dialogue_requested_model = status.dialogue_requested_model
+        state.dialogue_fallback_warning = status.dialogue_fallback_warning
 
         state.tts_backend = status.tts_backend
         state.tts_voice = status.tts_voice
+        state.tts_voice_preset = status.tts_voice_preset
+        state.tts_last_result = status.last_tts_result
+        state.tts_last_error = status.last_tts_error
+        state.tts_last_wav_path = status.last_tts_wav_path
+        state.tts_last_playback_ok = status.last_tts_playback_ok
         state.stt_backend = status.stt_backend
         state.affect_backend = status.affect_backend
 
@@ -267,6 +316,13 @@ async def get_ui_state() -> UIBootstrapState:
         # Session ID
         session_id = _live_runtime.supervisor.current_session_id
         state.session_id = str(session_id) if session_id else None
+
+    elif _orchestrator is not None:
+        state.dialogue_backend = _orchestrator.dialogue.backend_name
+        state.dialogue_model = _orchestrator.dialogue.model_name
+        state.dialogue_requested_backend = _orchestrator.dialogue_requested_backend
+        state.dialogue_requested_model = _orchestrator.dialogue_requested_model
+        state.dialogue_fallback_warning = _orchestrator.dialogue_fallback_warning
 
     return state
 
@@ -349,6 +405,17 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
                 )
             except Exception as e:
                 logger.warning("TTS failed for text input response: %s", e)
+                _live_runtime._status.last_tts_result = "runtime_error"
+                _live_runtime._status.last_tts_error = str(e)
+
+                from apps.api.live_ws import broadcast_event, build_event_message
+
+                await broadcast_event(build_event_message(
+                    stage="tts",
+                    status="error",
+                    detail=f"TTS runtime error: {e}",
+                    event_type="speech_event",
+                ))
 
         # Broadcast event
         from apps.api.live_ws import broadcast_event, build_event_message
@@ -374,6 +441,12 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
                 {"text": ref, "score": 0.0} for ref in response.memory_refs
             ],
             strategy=response.strategy.value if response.strategy else "",
+            backend=response.backend,
+            model_name=response.model_name,
+            fallback_used=response.fallback_used,
+            tts_result=_live_runtime._status.last_tts_result,
+            tts_error=_live_runtime._status.last_tts_error,
+            tts_wav_path=_live_runtime._status.last_tts_wav_path,
         )
 
     except Exception as e:
@@ -480,42 +553,118 @@ async def get_recent_memories() -> MemoryRecentResponse:
         )
 
     if _live_runtime is None:
-        return MemoryRecentResponse(empty_reason="no active user")
+        reason, hint = _resolve_memory_unavailable_reason()
+        return MemoryRecentResponse(empty_reason="no active user", recognition_reason=reason, memory_unavailable_hint=hint)
 
     user_id = _live_runtime.status.current_user_id
     if user_id is None:
-        return MemoryRecentResponse(empty_reason="no active user")
+        reason, hint = _resolve_memory_unavailable_reason()
+        return MemoryRecentResponse(
+            empty_reason="no active user",
+            recognition_reason=reason,
+            memory_unavailable_hint=hint,
+        )
 
     try:
         # Get memory summary
         summary = await _orchestrator.get_memory_summary(user_id)
         memories = [
             {
-                "text": m.text,
-                "type": m.memory_type.value,
-                "created_at": m.created_at.isoformat(),
+                "text": m.content,
+                "type": "episodic",
+                "created_at": m.timestamp.isoformat(),
             }
-            for m in (summary.recent_memories or [])[:10]
+            for m in (summary.recent_episodic or [])[:10]
         ]
         facts = [
-            {"key": f.key, "value": f.value, "confidence": f.confidence}
-            for f in (summary.semantic_facts or [])[:10]
+            {"key": "fact", "value": f.content, "confidence": f.confidence}
+            for f in (summary.confirmed_facts or [])[:10]
         ]
         empty_reason = "" if memories else "no retrieved memories yet"
+        recognition_reason, hint = _resolve_memory_unavailable_reason()
 
         return MemoryRecentResponse(
             memories=memories,
             facts=facts,
             stats=MemoryStats(
-                total_memories=summary.total_memories,
-                total_facts=summary.total_facts,
-                total_sessions=summary.total_sessions,
+                total_memories=summary.episodic_count,
+                total_facts=summary.semantic_count,
+                total_sessions=len(summary.session_summaries),
             ),
             empty_reason=empty_reason,
+            recognition_reason=recognition_reason,
+            memory_unavailable_hint=hint,
         )
     except Exception as e:
         logger.warning("Failed to get recent memories: %s", e)
         return MemoryRecentResponse(
             empty_reason="memory service error",
             error=str(e),
+        )
+
+
+@router.get("/memory/debug/inspect/{user_id}", response_model=MemoryRecentResponse)
+async def debug_inspect_user_memory(user_id: str) -> MemoryRecentResponse:
+    """DEBUG ONLY: inspect memory for a selected enrolled user.
+
+    This endpoint is intended for local debugging when live recognition is flaky.
+    """
+    if _orchestrator is None:
+        return MemoryRecentResponse(
+            empty_reason="memory service error",
+            error="Orchestrator not available",
+            recognition_reason="DEBUG ONLY",
+        )
+
+    try:
+        from uuid import UUID
+
+        parsed = UUID(user_id)
+    except Exception:
+        return MemoryRecentResponse(
+            empty_reason="memory service error",
+            error=f"Invalid user_id: {user_id}",
+            recognition_reason="DEBUG ONLY",
+        )
+
+    user = await _orchestrator.get_user(parsed)
+    if user is None:
+        return MemoryRecentResponse(
+            empty_reason="no active user",
+            error=f"User not found: {user_id}",
+            recognition_reason="DEBUG ONLY",
+            memory_unavailable_hint="Select an enrolled user for debug inspection.",
+        )
+
+    try:
+        summary = await _orchestrator.get_memory_summary(parsed)
+        memories = [
+            {
+                "text": m.content,
+                "type": "episodic",
+                "created_at": m.timestamp.isoformat(),
+            }
+            for m in (summary.recent_episodic or [])[:20]
+        ]
+        facts = [
+            {"key": "fact", "value": f.content, "confidence": f.confidence}
+            for f in (summary.confirmed_facts or [])[:20]
+        ]
+        return MemoryRecentResponse(
+            memories=memories,
+            facts=facts,
+            stats=MemoryStats(
+                total_memories=summary.episodic_count,
+                total_facts=summary.semantic_count,
+                total_sessions=len(summary.session_summaries),
+            ),
+            empty_reason="" if (memories or facts) else "no retrieved memories yet",
+            recognition_reason="DEBUG ONLY: selected enrolled user",
+            memory_unavailable_hint="Bypasses live recognition state for local diagnostics.",
+        )
+    except Exception as e:
+        return MemoryRecentResponse(
+            empty_reason="memory service error",
+            error=str(e),
+            recognition_reason="DEBUG ONLY",
         )

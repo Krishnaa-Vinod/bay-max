@@ -123,6 +123,8 @@ class BaymaxSettings(BaseSettings):
 
     # TTS backend: "null" | "kokoro" | "piper"
     tts_backend: str = "kokoro"
+    # Voice preset label (style preset, not voice cloning)
+    tts_voice_preset: str = "baymax_inspired_calm"
     tts_voice: str = "af_heart"
     tts_rate: int = 24000
     tts_enabled: bool = True

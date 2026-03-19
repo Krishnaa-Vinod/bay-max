@@ -1,4 +1,4 @@
-.PHONY: help install install-vector install-dialogue install-tts install-speech install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts live-webcam-speech verify-007 verify-008 ui-install run-ui run-full run-local-backend run-local-full ui-build ui-test clean
+.PHONY: help install install-vector install-dialogue install-tts install-speech install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts live-webcam-speech verify-007 verify-008 ui-install run-ui run-full run-local-backend run-local-backend-basic run-local-backend-voice run-local-backend-full run-local-full ui-build ui-test clean
 
 help:
 	@echo "Bay-Max development commands:"
@@ -11,7 +11,10 @@ help:
 	@echo "  make lint              - Run ruff linter"
 	@echo "  make test              - Run pytest test suite"
 	@echo "  make run-api           - Start FastAPI server on port 8000"
-	@echo "  make run-local-backend - Recommended: single-process API + live runtime"
+	@echo "  make run-local-backend - Recommended: full mode (TTS + speech input + grounded dialogue preference)"
+	@echo "  make run-local-backend-basic - Local backend basic mode (text only)"
+	@echo "  make run-local-backend-voice - Local backend voice mode (TTS only)"
+	@echo "  make run-local-backend-full - Local backend full mode (TTS + speech input)"
 	@echo "  make run-local-full    - Recommended: local backend + UI dev server"
 	@echo "  make run-demo          - Start Gradio demo on port 7860"
 	@echo "  make smoke-test        - Run local dialogue smoke-test script"
@@ -57,14 +60,23 @@ run-api:
 	uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 run-local-backend:
-	python scripts/run_local_backend.py
+	python scripts/run_local_backend.py --mode full
+
+run-local-backend-basic:
+	python scripts/run_local_backend.py --mode basic
+
+run-local-backend-voice:
+	python scripts/run_local_backend.py --mode voice
+
+run-local-backend-full:
+	python scripts/run_local_backend.py --mode full
 
 run-local-full:
 	@echo "Starting recommended local workflow..."
-	@echo "  Local backend (API + runtime): http://localhost:8000"
+	@echo "  Local backend (API + runtime, full mode): http://localhost:8000"
 	@echo "  Companion UI: http://localhost:3000"
 	@bash -c 'set -e; \
-	  python scripts/run_local_backend.py > /tmp/baymax-local-backend.log 2>&1 & \
+	  python scripts/run_local_backend.py --mode full > /tmp/baymax-local-backend.log 2>&1 & \
 	  BACK_PID=$$!; \
 	  trap "kill $$BACK_PID" EXIT; \
 	  cd apps/ui && npm run dev'

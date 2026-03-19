@@ -281,7 +281,7 @@ class LiveRuntime:
                     self._consume_transcriptions()
                 )
             else:
-                self._speech_start_error = "Microphone or VAD startup failed"
+                self._speech_start_error = self._speech_input_service.last_error or "Microphone or VAD startup failed"
                 logger.warning("Speech input failed to start")
 
         # Create frame source
@@ -523,6 +523,23 @@ class LiveRuntime:
         self, text: str, session_id: UUID | None, trigger: str
     ) -> None:
         """Synthesize and play TTS, managing speaking lock for echo suppression."""
+        self._status.last_tts_result = "requested"
+        self._status.last_tts_error = ""
+        self._status.last_tts_wav_path = ""
+        self._status.last_tts_playback_ok = None
+
+        try:
+            from apps.api.live_ws import broadcast_event, build_event_message
+
+            await broadcast_event(build_event_message(
+                stage="tts",
+                status="in_progress",
+                detail=f"TTS requested ({self._speech_service.provider.name()}:{self._settings.tts_voice})",
+                event_type="speech_event",
+            ))
+        except Exception:
+            pass
+
         # Engage speaking lock
         if self._speech_input_service is not None:
             self._speech_input_service.set_speaking_lock(True)
@@ -534,7 +551,23 @@ class LiveRuntime:
                 session_id=str(session_id) if session_id else None,
                 trigger_event=trigger,
             )
+            self._status.last_tts_wav_path = speech_result.wav_path or ""
+            self._status.last_tts_playback_ok = speech_result.playback_ok
+
             if speech_result.success:
+                if speech_result.playback_ok is True:
+                    self._status.last_tts_result = "synth_ok_playback_ok"
+                    self._status.last_tts_error = ""
+                    tts_detail = "TTS synth ok; playback ok"
+                else:
+                    self._status.last_tts_result = "synth_ok_playback_failed"
+                    self._status.last_tts_error = speech_result.playback_error or "Playback failed"
+                    tts_detail = (
+                        f"TTS synth ok; playback failed: {self._status.last_tts_error}"
+                    )
+                    if speech_result.wav_path:
+                        tts_detail += f"; wav: {speech_result.wav_path}"
+
                 self._artifact_logger.log_speech_event(
                     text=text,
                     backend=speech_result.backend,
@@ -544,7 +577,21 @@ class LiveRuntime:
                     session_id=str(session_id) if session_id else None,
                     trigger_event=trigger,
                 )
+
+                try:
+                    from apps.api.live_ws import broadcast_event, build_event_message
+
+                    await broadcast_event(build_event_message(
+                        stage="tts",
+                        status="complete" if speech_result.playback_ok else "error",
+                        detail=tts_detail,
+                        event_type="speech_event",
+                    ))
+                except Exception:
+                    pass
             else:
+                self._status.last_tts_result = "synth_failed"
+                self._status.last_tts_error = speech_result.error or "Synthesis failed"
                 self._artifact_logger.log_speech_event(
                     text=text,
                     backend=speech_result.backend,
@@ -555,8 +602,32 @@ class LiveRuntime:
                     session_id=str(session_id) if session_id else None,
                     trigger_event=trigger,
                 )
+                try:
+                    from apps.api.live_ws import broadcast_event, build_event_message
+
+                    await broadcast_event(build_event_message(
+                        stage="tts",
+                        status="error",
+                        detail=f"TTS synth failed: {self._status.last_tts_error}",
+                        event_type="speech_event",
+                    ))
+                except Exception:
+                    pass
         except Exception as exc:
             logger.warning("TTS error (non-fatal): %s", exc)
+            self._status.last_tts_result = "runtime_error"
+            self._status.last_tts_error = str(exc)
+            try:
+                from apps.api.live_ws import broadcast_event, build_event_message
+
+                await broadcast_event(build_event_message(
+                    stage="tts",
+                    status="error",
+                    detail=f"TTS runtime error: {exc}",
+                    event_type="speech_event",
+                ))
+            except Exception:
+                pass
         finally:
             # Release speaking lock (triggers cooldown)
             if self._speech_input_service is not None:
@@ -951,6 +1022,11 @@ class LiveRuntime:
             if self._status.current_user_id is not None
             else "anonymous"
         )
+        self._status.dialogue_backend = self._orch.dialogue.backend_name
+        self._status.dialogue_model = self._orch.dialogue.model_name
+        self._status.dialogue_requested_backend = self._orch.dialogue_requested_backend
+        self._status.dialogue_requested_model = self._orch.dialogue_requested_model
+        self._status.dialogue_fallback_warning = self._orch.dialogue_fallback_warning
 
         # Speech output status
         qs = self._speech_service.queue_status()
@@ -958,6 +1034,7 @@ class LiveRuntime:
         self._status.speech_queue_depth = qs.queue_depth
         self._status.tts_backend = self._speech_service.provider.name()
         self._status.tts_voice = self._settings.tts_voice
+        self._status.tts_voice_preset = self._settings.tts_voice_preset
 
         # Speech input status (Iteration 008)
         if self._speech_input_service is not None:

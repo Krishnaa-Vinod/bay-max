@@ -223,6 +223,40 @@ class TestRuleBasedDialogueProvider:
     def test_is_available_always_true(self):
         assert RuleBasedDialogue().is_available() is True
 
+    def test_negative_user_text_is_validating_not_cheerful_invalidation(self):
+        rb = RuleBasedDialogue()
+        state = make_state()
+        memories = MemoryQueryResult(user_id=uuid4(), query="")
+        ctx = GroundedPromptContext(
+            session_id=state.session_id,
+            strategy=ResponseStrategy.ENCOURAGE,
+            context="The user typed: I am feeling low",
+        )
+
+        response = rb.generate(ResponseStrategy.ENCOURAGE, state, memories, ctx)
+
+        text = response.message.lower()
+        assert response.strategy == ResponseStrategy.EMPATHIZE
+        assert "doing well" not in text
+        assert "keep it up" not in text
+        assert any(token in text for token in ["hear", "low", "heavy", "difficult", "tough"])
+
+    def test_recall_intent_uses_memory_when_available(self):
+        rb = RuleBasedDialogue()
+        uid = uuid4()
+        state = make_state(user_id=uid)
+        memories = make_memories(uid)
+        ctx = GroundedPromptContext(
+            session_id=state.session_id,
+            strategy=ResponseStrategy.ENCOURAGE,
+            context="The user typed: What do you remember about me?",
+        )
+
+        response = rb.generate(ResponseStrategy.ENCOURAGE, state, memories, ctx)
+
+        assert response.strategy == ResponseStrategy.RECALL
+        assert "i remember" in response.message.lower()
+
 
 # ---- T504: Prompt builder ----
 
