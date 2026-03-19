@@ -319,6 +319,10 @@ class LiveRuntime:
             logger.error("Failed to open frame source: %s", e)
             return self._build_summary(source_type)
 
+        if source_type == "webcam":
+            active_source = getattr(frame_source, "resolved_source", settings.live_camera_index)
+            self._status.source = f"webcam:{active_source}"
+
         analysis_interval = settings.analysis_interval_sec
         last_analysis_time = 0.0
         max_run_sec = settings.live_max_run_sec

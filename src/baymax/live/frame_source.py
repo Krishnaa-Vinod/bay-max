@@ -19,6 +19,7 @@ class OpenCVFrameSource(FrameSource):
         target_fps: int = 8,
     ) -> None:
         self._source = source
+        self._resolved_source: int | str = source
         self._target_fps = target_fps
         self._cap = None
         self._is_open = False
@@ -26,6 +27,65 @@ class OpenCVFrameSource(FrameSource):
         self._last_frame_time = 0.0
         self._frame_count = 0
         self._is_video_file = isinstance(source, str)
+
+    @property
+    def resolved_source(self) -> int | str:
+        return self._resolved_source
+
+    def _open_camera_with_fallback(self, cv2_module) -> None:
+        """Open preferred camera index and choose the best fallback camera."""
+        preferred = int(self._source)
+        candidates = [preferred] + [idx for idx in range(0, 8) if idx != preferred]
+        opened: list[tuple[float, int, object]] = []
+
+        for idx in candidates:
+            cap = cv2_module.VideoCapture(idx)
+            if not cap.isOpened():
+                cap.release()
+                continue
+
+            ret, frame = cap.read()
+            if not ret:
+                cap.release()
+                continue
+
+            gray = cv2_module.cvtColor(frame, cv2_module.COLOR_BGR2GRAY)
+            score = float(np.var(gray))
+            opened.append((score, idx, cap))
+
+        if not opened:
+            raise RuntimeError(f"Failed to open webcam source: {preferred}")
+
+        preferred_entry = next((entry for entry in opened if entry[1] == preferred), None)
+        best_entry = max(opened, key=lambda entry: entry[0])
+
+        selected = preferred_entry
+        if selected is None:
+            selected = best_entry
+        else:
+            # If preferred camera feed is very flat/noisy-black compared to another,
+            # pick the more informative stream.
+            preferred_score = selected[0]
+            best_score = best_entry[0]
+            if best_entry[1] != preferred and best_score > max(preferred_score * 1.8, 60.0):
+                selected = best_entry
+
+        for score, idx, cap in opened:
+            if idx == selected[1]:
+                continue
+            cap.release()
+
+        self._cap = selected[2]
+        self._resolved_source = selected[1]
+        if self._resolved_source != preferred:
+            logger.warning(
+                "Requested camera index %d looked invalid for face use; using fallback camera %d",
+                preferred,
+                self._resolved_source,
+            )
+            return
+
+        logger.info("Using preferred camera index %d", preferred)
 
     def open(self) -> None:
         try:
@@ -35,16 +95,22 @@ class OpenCVFrameSource(FrameSource):
                 "OpenCV is required for live mode. "
                 "Install with: pip install opencv-python-headless"
             )
-        self._cap = cv2.VideoCapture(self._source)
-        if not self._cap.isOpened():
-            raise RuntimeError(
-                f"Failed to open video source: {self._source}"
-            )
+
+        if isinstance(self._source, int):
+            self._open_camera_with_fallback(cv2)
+        else:
+            self._cap = cv2.VideoCapture(self._source)
+            if not self._cap.isOpened():
+                raise RuntimeError(
+                    f"Failed to open video source: {self._source}"
+                )
+            self._resolved_source = self._source
+
         self._is_open = True
         self._frame_count = 0
         logger.info(
             "Opened frame source: %s (target_fps=%d)",
-            self._source,
+            self._resolved_source,
             self._target_fps,
         )
 
