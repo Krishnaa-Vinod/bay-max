@@ -96,6 +96,7 @@ class LiveRuntime:
             output_dir=settings.tts_output_dir,
             enable_playback=settings.enable_audio_playback,
             audio_backend=settings.audio_backend,
+            output_device=settings.audio_output_device,
         )
 
         # Iteration 008: Speech input service

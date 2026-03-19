@@ -141,6 +141,7 @@ class BaymaxSettings(BaseSettings):
     # Audio playback
     enable_audio_playback: bool = True
     audio_backend: str = "sounddevice"
+    audio_output_device: str = "default"
 
     # Kokoro-specific
     kokoro_voice: str = "am_michael"

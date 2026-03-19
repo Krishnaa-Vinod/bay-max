@@ -27,13 +27,27 @@ class MicrophoneCapture:
     ) -> None:
         self._sample_rate = sample_rate
         self._channels = channels
-        self._device = device if device != "default" else None
+        self._device = self._normalize_device(device)
         self._chunk_duration_ms = chunk_duration_ms
         self._chunk_size = int(sample_rate * chunk_duration_ms / 1000)
         self._queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=100)
         self._stream = None
         self._running = False
         self._available = self._check_available()
+
+    @staticmethod
+    def _normalize_device(device: str | int | None) -> str | int | None:
+        if device is None:
+            return None
+        if isinstance(device, int):
+            return device
+        text = str(device).strip().lower()
+        if text in {"", "default", "auto", "none"}:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return device
 
     @property
     def is_available(self) -> bool:

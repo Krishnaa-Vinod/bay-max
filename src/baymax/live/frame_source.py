@@ -33,59 +33,40 @@ class OpenCVFrameSource(FrameSource):
         return self._resolved_source
 
     def _open_camera_with_fallback(self, cv2_module) -> None:
-        """Open preferred camera index and choose the best fallback camera."""
+        """Open preferred camera index and fall back only if unavailable."""
         preferred = int(self._source)
-        candidates = [preferred] + [idx for idx in range(0, 8) if idx != preferred]
-        opened: list[tuple[float, int, object]] = []
+        preferred_cap = cv2_module.VideoCapture(preferred)
+        if preferred_cap.isOpened():
+            ret, _ = preferred_cap.read()
+            if ret:
+                self._cap = preferred_cap
+                self._resolved_source = preferred
+                logger.info("Using preferred camera index %d", preferred)
+                return
+            preferred_cap.release()
+        else:
+            preferred_cap.release()
 
-        for idx in candidates:
+        for idx in [i for i in range(0, 8) if i != preferred]:
             cap = cv2_module.VideoCapture(idx)
             if not cap.isOpened():
                 cap.release()
                 continue
 
-            ret, frame = cap.read()
+            ret, _ = cap.read()
             if not ret:
                 cap.release()
                 continue
-
-            gray = cv2_module.cvtColor(frame, cv2_module.COLOR_BGR2GRAY)
-            score = float(np.var(gray))
-            opened.append((score, idx, cap))
-
-        if not opened:
-            raise RuntimeError(f"Failed to open webcam source: {preferred}")
-
-        preferred_entry = next((entry for entry in opened if entry[1] == preferred), None)
-        best_entry = max(opened, key=lambda entry: entry[0])
-
-        selected = preferred_entry
-        if selected is None:
-            selected = best_entry
-        else:
-            # If preferred camera feed is very flat/noisy-black compared to another,
-            # pick the more informative stream.
-            preferred_score = selected[0]
-            best_score = best_entry[0]
-            if best_entry[1] != preferred and best_score > max(preferred_score * 1.8, 60.0):
-                selected = best_entry
-
-        for score, idx, cap in opened:
-            if idx == selected[1]:
-                continue
-            cap.release()
-
-        self._cap = selected[2]
-        self._resolved_source = selected[1]
-        if self._resolved_source != preferred:
+            self._cap = cap
+            self._resolved_source = idx
             logger.warning(
-                "Requested camera index %d looked invalid for face use; using fallback camera %d",
+                "Requested camera index %d unavailable; using fallback camera %d",
                 preferred,
                 self._resolved_source,
             )
             return
 
-        logger.info("Using preferred camera index %d", preferred)
+        raise RuntimeError(f"Failed to open webcam source: {preferred}")
 
     def open(self) -> None:
         try:

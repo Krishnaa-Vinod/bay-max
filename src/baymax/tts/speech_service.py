@@ -40,6 +40,7 @@ class SpeechService:
         output_dir: str = "./artifacts/tts",
         enable_playback: bool = True,
         audio_backend: str = "sounddevice",
+        output_device: str | int | None = None,
         max_queue_size: int = 5,
     ) -> None:
         self._provider = provider or get_tts_provider(
@@ -52,6 +53,7 @@ class SpeechService:
         self._output_dir = output_dir
         self._enable_playback = enable_playback
         self._audio_backend = audio_backend
+        self._output_device = self._normalize_output_device(output_device)
         self._sample_rate = sample_rate
         self._max_queue_size = max_queue_size
 
@@ -66,6 +68,20 @@ class SpeechService:
         self._total_errors = 0
         self._events: list[SpeechEvent] = []
         self._playback_lock = asyncio.Lock()
+
+    @staticmethod
+    def _normalize_output_device(output_device: str | int | None) -> int | None:
+        if output_device is None:
+            return None
+        if isinstance(output_device, int):
+            return output_device
+        text = str(output_device).strip().lower()
+        if text in {"", "default", "auto", "none"}:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
 
     @property
     def provider(self) -> TTSProvider:
@@ -186,17 +202,18 @@ class SpeechService:
             try:
                 await loop.run_in_executor(
                     None,
-                    lambda: sd.play(data, samplerate),
+                    lambda: sd.play(data, samplerate, device=self._output_device),
                 )
                 await loop.run_in_executor(None, sd.wait)
             except Exception as exc:
                 if "Invalid sample rate" not in str(exc):
                     raise
 
-                out_device = None
-                default_devices = sd.default.device
-                if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
-                    out_device = default_devices[1]
+                out_device = self._output_device
+                if out_device is None:
+                    default_devices = sd.default.device
+                    if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
+                        out_device = default_devices[1]
 
                 output_info = sd.query_devices(out_device, "output")
                 target_rate = int(round(float(output_info.get("default_samplerate", samplerate))))
@@ -228,7 +245,7 @@ class SpeechService:
 
                 await loop.run_in_executor(
                     None,
-                    lambda: sd.play(resampled, target_rate),
+                    lambda: sd.play(resampled, target_rate, device=out_device),
                 )
                 await loop.run_in_executor(None, sd.wait)
 
