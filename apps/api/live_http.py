@@ -413,8 +413,10 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
 
         if request.action == "start":
             if not current_listening:
-                await speech_input.start()
-            new_listening = True
+                started = await speech_input.start()
+                new_listening = started and speech_input.status().listening
+            else:
+                new_listening = True
         elif request.action == "stop":
             if current_listening:
                 await speech_input.stop()
@@ -424,12 +426,22 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
                 await speech_input.stop()
                 new_listening = False
             else:
-                await speech_input.start()
-                new_listening = True
+                started = await speech_input.start()
+                new_listening = started and speech_input.status().listening
         else:
             return MicToggleResponse(
                 success=False,
                 error=f"Unknown action: {request.action}",
+            )
+
+        if not new_listening and request.action in ("start", "toggle"):
+            reason = _resolve_speech_disabled_reason()
+            return MicToggleResponse(
+                success=False,
+                listening=False,
+                mic_mode=speech_input.status().mic_mode,
+                disabled_reason=reason,
+                error=f"Unable to start speech input: {reason}",
             )
 
         # Broadcast event
