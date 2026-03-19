@@ -50,6 +50,11 @@ class LiveRuntimeStatus(BaseModel):
     engagement: str | None = None
     engagement_score: float | None = None
     session_binding: str = "anonymous"
+    dialogue_backend: str = ""
+    dialogue_model: str = ""
+    dialogue_requested_backend: str = ""
+    dialogue_requested_model: str = ""
+    dialogue_fallback_warning: str = ""
     last_event: str | None = None
     last_event_at: datetime | None = None
     last_response_text: str | None = None
@@ -62,6 +67,11 @@ class LiveRuntimeStatus(BaseModel):
     speech_queue_depth: int = 0
     tts_backend: str = ""
     tts_voice: str = ""
+    tts_voice_preset: str = ""
+    last_tts_result: str = ""
+    last_tts_error: str = ""
+    last_tts_wav_path: str = ""
+    last_tts_playback_ok: bool | None = None
     # Iteration 008 — speech input state
     speech_input_enabled: bool = False
     listening: bool = False

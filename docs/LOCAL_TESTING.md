@@ -12,13 +12,13 @@ pip install -e ".[all]"
 
 This installs `torch`, `facenet-pytorch`, `opencv-python`, and `mediapipe` alongside dev dependencies.
 
-## Recommended Local Workflow (Stabilized)
+## Recommended Local Workflow (Full Experience)
 
 Use a single backend process so API and live runtime share state in one Python process.
 
 ```bash
 # Terminal 1
-make run-local-backend
+make run-local-backend-full
 
 # Terminal 2
 make run-ui
@@ -31,6 +31,27 @@ Alternative one-command workflow:
 ```bash
 make run-local-full
 ```
+
+Explicit local backend modes:
+
+```bash
+# basic: no speech
+make run-local-backend-basic
+
+# voice: TTS only
+make run-local-backend-voice
+
+# full: TTS + speech input
+make run-local-backend-full
+```
+
+Full mode dialogue preference order:
+1. Ollama (if reachable)
+2. Transformers (if explicitly configured)
+3. Rule-based fallback
+
+If fallback is active, the UI shows a warning badge:
+LLM unavailable - using rule-based fallback
 
 Advanced/debug split-process workflow (not recommended for daily local usage):
 

@@ -1,4 +1,10 @@
-"""Rule-based dialogue provider — baseline fallback."""
+"""Rule-based dialogue provider — baseline fallback.
+
+This provider is intentionally lightweight but should remain context-aware,
+memory-aware, and emotionally safe when LLM backends are unavailable.
+"""
+
+import re
 
 from baymax.core.enums import ResponseStrategy
 from baymax.dialogue.interfaces import DialogueProvider
@@ -44,6 +50,42 @@ class RuleBasedDialogue(DialogueProvider):
     def __init__(self) -> None:
         self._turn_counter: int = 0
 
+    _NEGATIVE_CUES = (
+        "feeling low",
+        "i feel low",
+        "sad",
+        "down",
+        "depressed",
+        "hopeless",
+        "stressed",
+        "stress",
+        "anxious",
+        "overwhelmed",
+        "burned out",
+        "tired",
+        "lonely",
+    )
+
+    _RECALL_CUES = (
+        "remember",
+        "recall",
+        "memory",
+        "memories",
+        "what do you remember",
+        "what did we discuss",
+        "last time",
+        "previous",
+    )
+
+    _GREET_CUES = (
+        "hello",
+        "hi",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    )
+
     @property
     def backend_name(self) -> str:
         return "rule_based"
@@ -62,26 +104,131 @@ class RuleBasedDialogue(DialogueProvider):
         memories: MemoryQueryResult,
         prompt_context: GroundedPromptContext | None = None,
     ) -> SupportiveResponse:
-        templates = _TEMPLATES.get(strategy, _TEMPLATES[ResponseStrategy.ENCOURAGE])
+        latest_user_text = self._extract_latest_user_text(prompt_context)
+        inferred = self._infer_intent_and_tone(latest_user_text)
+
+        effective_strategy = strategy
+        if inferred == "recall":
+            effective_strategy = ResponseStrategy.RECALL
+        elif inferred in {"negative", "stress"} and strategy in {
+            ResponseStrategy.ENCOURAGE,
+            ResponseStrategy.CHECK_IN,
+            ResponseStrategy.SUGGEST,
+        }:
+            # Prevent cheerful invalidation for clearly negative user text.
+            effective_strategy = ResponseStrategy.EMPATHIZE
+        elif inferred == "greet" and strategy == ResponseStrategy.ENCOURAGE:
+            effective_strategy = ResponseStrategy.GREET
+
+        templates = _TEMPLATES.get(effective_strategy, _TEMPLATES[ResponseStrategy.ENCOURAGE])
         template = templates[self._turn_counter % len(templates)]
         self._turn_counter += 1
 
-        # Fill in memory reference if available
-        message = template
-        if "{memory}" in template and memories.total_count > 0:
-            if memories.episodic_memories:
-                memory_ref = memories.episodic_memories[0].content
-            elif memories.semantic_facts:
-                memory_ref = memories.semantic_facts[0].content
-            else:
-                memory_ref = "our previous conversation"
-            message = template.format(memory=memory_ref)
+        memory_ref = self._select_memory_ref(memories, prompt_context)
+
+        # Build a short, calm Baymax-inspired response for high-signal user text.
+        if inferred in {"negative", "stress"}:
+            message = self._build_supportive_negative(message_seed=template, user_text=latest_user_text, memory_ref=memory_ref)
+        elif inferred == "recall":
+            message = self._build_recall(memory_ref)
+        else:
+            message = template
+            if "{memory}" in template:
+                message = template.format(memory=memory_ref or "our previous conversation")
 
         return SupportiveResponse(
             session_id=state.session_id,
             user_id=state.user_id,
-            strategy=strategy,
+            strategy=effective_strategy,
             message=message,
             backend="rule_based",
             model_name="",
+        )
+
+    def _extract_latest_user_text(self, prompt_context: GroundedPromptContext | None) -> str:
+        if prompt_context is None:
+            return ""
+
+        # Prefer explicit latest USER turn when available.
+        for turn in reversed(prompt_context.recent_turns):
+            if str(turn.get("role", "")).lower() == "user":
+                text = str(turn.get("text", "")).strip()
+                if text:
+                    return text
+
+        context = (prompt_context.context or "").strip()
+        if not context:
+            return ""
+
+        # Context often arrives as "The user typed: ..." or "The user said: ...".
+        prefixes = (
+            "the user typed:",
+            "the user said:",
+            "user typed:",
+            "user said:",
+        )
+        lowered = context.lower()
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                return context[len(prefix):].strip()
+        return context
+
+    def _infer_intent_and_tone(self, user_text: str) -> str:
+        if not user_text:
+            return "neutral"
+
+        lowered = re.sub(r"\s+", " ", user_text.lower()).strip()
+        if any(cue in lowered for cue in self._RECALL_CUES):
+            return "recall"
+        if any(cue in lowered for cue in self._NEGATIVE_CUES):
+            if "stress" in lowered or "stressed" in lowered or "overwhelmed" in lowered:
+                return "stress"
+            return "negative"
+        if any(lowered.startswith(cue) or f" {cue}" in lowered for cue in self._GREET_CUES):
+            return "greet"
+        return "neutral"
+
+    def _select_memory_ref(
+        self,
+        memories: MemoryQueryResult,
+        prompt_context: GroundedPromptContext | None,
+    ) -> str | None:
+        if prompt_context and prompt_context.memory_refs:
+            return prompt_context.memory_refs[0]
+        if memories.episodic_memories:
+            return memories.episodic_memories[0].content
+        if memories.semantic_facts:
+            return memories.semantic_facts[0].content
+        return None
+
+    def _build_supportive_negative(
+        self,
+        message_seed: str,
+        user_text: str,
+        memory_ref: str | None,
+    ) -> str:
+        if "stress" in user_text.lower() or "stressed" in user_text.lower() or "overwhelmed" in user_text.lower():
+            base = "That sounds stressful. Thank you for telling me."
+            follow = "We can take this one small step at a time."
+        else:
+            base = "I hear you. Feeling low can be heavy."
+            follow = "You do not need to carry it alone right now."
+
+        if memory_ref:
+            return f"{base} {follow} I remember: {memory_ref}."
+
+        # Keep wording calm and literal in Baymax-inspired style.
+        if "difficult" in message_seed.lower() or "tough" in message_seed.lower():
+            return f"{base} {message_seed}"
+        return f"{base} {follow}"
+
+    def _build_recall(self, memory_ref: str | None) -> str:
+        if memory_ref:
+            return (
+                f"I remember this: {memory_ref}. "
+                "Would you like to continue from there?"
+            )
+        return (
+            "I do not have a clear memory to cite yet. "
+            "If you share a detail now, I can keep it for later recall."
         )

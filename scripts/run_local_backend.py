@@ -8,10 +8,13 @@ runtime-bound state and SQLite access stay coherent for local development.
 
 import argparse
 import asyncio
+import importlib.util
 import logging
 import os
 import signal
 import sys
+import urllib.error
+import urllib.request
 from contextlib import suppress
 
 # Ensure the project root is on the path
@@ -26,6 +29,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--host", default="0.0.0.0", help="FastAPI host")
     parser.add_argument("--port", type=int, default=8000, help="FastAPI port")
+    parser.add_argument(
+        "--mode",
+        choices=["basic", "voice", "full"],
+        default="full",
+        help="Runtime mode: basic(no speech), voice(TTS only), full(TTS + speech input)",
+    )
     parser.add_argument("--replay", type=str, default=None, help="Replay video/folder path")
     parser.add_argument("--max-frames", type=int, default=0, help="Max frames to process (0 = unlimited)")
     parser.add_argument("--max-run-sec", type=float, default=0.0, help="Max runtime in seconds (0 = unlimited)")
@@ -42,6 +51,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def apply_env_overrides(args: argparse.Namespace) -> None:
+    _apply_mode_overrides(args.mode)
+
     if args.replay:
         os.environ["BAYMAX_LIVE_VIDEO_REPLAY_PATH"] = args.replay
         os.environ["BAYMAX_LIVE_SOURCE"] = "replay"
@@ -61,6 +72,68 @@ def apply_env_overrides(args: argparse.Namespace) -> None:
         os.environ["BAYMAX_TTS_ENABLED"] = "false"
     if args.no_playback:
         os.environ["BAYMAX_ENABLE_AUDIO_PLAYBACK"] = "false"
+
+
+def _apply_mode_overrides(mode: str) -> None:
+    """Apply recommended local mode env defaults.
+
+    Modes:
+      - basic: no speech input, no TTS playback/synthesis
+      - voice: TTS enabled, speech input disabled
+      - full: TTS + speech input enabled (if dependencies are available)
+    """
+    if mode == "basic":
+        os.environ["BAYMAX_TTS_ENABLED"] = "false"
+        os.environ["BAYMAX_ENABLE_SPEECH_INPUT"] = "false"
+        return
+
+    if mode == "voice":
+        os.environ["BAYMAX_TTS_ENABLED"] = "true"
+        os.environ["BAYMAX_ENABLE_SPEECH_INPUT"] = "false"
+        return
+
+    # full
+    os.environ["BAYMAX_TTS_ENABLED"] = "true"
+    os.environ["BAYMAX_ENABLE_SPEECH_INPUT"] = "true"
+    _select_dialogue_backend_for_full_mode()
+
+
+def _ollama_is_available(base_url: str) -> bool:
+    tags_url = base_url.rstrip("/") + "/api/tags"
+    req = urllib.request.Request(tags_url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            return 200 <= getattr(resp, "status", 0) < 300
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def _select_dialogue_backend_for_full_mode() -> None:
+    """Prefer grounded dialogue backends for full local mode.
+
+    Priority:
+      1) Ollama (if server reachable)
+      2) Transformers (if explicitly configured and package is installed)
+      3) Rule-based fallback
+    """
+    explicit = os.getenv("BAYMAX_DIALOGUE_BACKEND", "").strip().lower()
+    if explicit and explicit != "auto_local":
+        return
+
+    ollama_base = os.getenv("BAYMAX_OLLAMA_BASE_URL", "http://localhost:11434")
+    if _ollama_is_available(ollama_base):
+        os.environ["BAYMAX_DIALOGUE_BACKEND"] = "ollama"
+        if not os.getenv("BAYMAX_OLLAMA_MODEL", "").strip():
+            os.environ["BAYMAX_OLLAMA_MODEL"] = "qwen2.5:1.5b"
+        return
+
+    hf_model = os.getenv("BAYMAX_HF_CHAT_MODEL", "").strip()
+    has_transformers = importlib.util.find_spec("transformers") is not None
+    if hf_model and has_transformers:
+        os.environ["BAYMAX_DIALOGUE_BACKEND"] = "transformers"
+        return
+
+    os.environ["BAYMAX_DIALOGUE_BACKEND"] = "rule_based"
 
 
 async def run_local_backend(args: argparse.Namespace) -> int:
@@ -142,6 +215,13 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
     apply_env_overrides(args)
+    logging.getLogger(__name__).info(
+        "Local mode=%s dialogue_backend=%s tts_enabled=%s speech_input=%s",
+        args.mode,
+        os.getenv("BAYMAX_DIALOGUE_BACKEND", "rule_based"),
+        os.getenv("BAYMAX_TTS_ENABLED", "true"),
+        os.getenv("BAYMAX_ENABLE_SPEECH_INPUT", "true"),
+    )
     raise SystemExit(asyncio.run(run_local_backend(args)))
 
 

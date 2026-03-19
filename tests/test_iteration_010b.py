@@ -1,7 +1,11 @@
 """Tests for Iteration 010b: Companion UI hotfixes for local readiness."""
 
+import os
+import asyncio
+import importlib.util
+from pathlib import Path
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 from uuid import uuid4
 
@@ -174,3 +178,153 @@ class TestFrontendTypesNullable:
             content = f.read()
 
         assert 'score: number | null' in content
+
+
+class TestTTSVisibilityFields:
+    """Verify TTS observability fields are present and propagated."""
+
+    def test_runtime_status_has_tts_result_fields(self):
+        status = LiveRuntimeStatus()
+        assert hasattr(status, 'last_tts_result')
+        assert hasattr(status, 'last_tts_error')
+        assert hasattr(status, 'last_tts_wav_path')
+        assert hasattr(status, 'last_tts_playback_ok')
+
+    def test_snapshot_includes_tts_diagnostics(self):
+        from apps.api.live_ws import build_snapshot_message
+
+        status = LiveRuntimeStatus(
+            live_mode_active=True,
+            tts_backend='kokoro',
+            tts_voice='af_heart',
+            tts_voice_preset='baymax_inspired_calm',
+            last_tts_result='synth_ok_playback_failed',
+            last_tts_error='no output device',
+            last_tts_wav_path='/tmp/test.wav',
+            last_tts_playback_ok=False,
+        )
+
+        with patch('apps.api.live_ws._live_runtime', None):
+            snapshot = build_snapshot_message(status)
+
+        assert snapshot['tts']['last_result'] == 'synth_ok_playback_failed'
+        assert snapshot['tts']['last_error'] == 'no output device'
+        assert snapshot['tts']['last_wav_path'] == '/tmp/test.wav'
+        assert snapshot['tts']['last_playback_ok'] is False
+
+
+class TestSpeechDisabledReasonPropagation:
+    def test_resolve_speech_disabled_reason_prefers_runtime_reason(self):
+        from apps.api import live_http
+
+        status = LiveRuntimeStatus(
+            speech_input_enabled=False,
+            speech_disabled_reason='Speech input dependency/init error: missing sounddevice',
+        )
+        runtime = MagicMock()
+        runtime.status = status
+
+        with patch.object(live_http, '_live_runtime', runtime):
+            reason = live_http._resolve_speech_disabled_reason()
+
+        assert 'missing sounddevice' in reason
+
+
+class TestMemoryReasonMapping:
+    def test_memory_reason_for_no_face(self):
+        from apps.api import live_http
+
+        runtime = MagicMock()
+        runtime.status = LiveRuntimeStatus(recognition_state='no_face')
+        with patch.object(live_http, '_live_runtime', runtime):
+            reason, hint = live_http._resolve_memory_unavailable_reason()
+        assert reason == 'no face detected'
+        assert 'Memory unavailable until an enrolled user is recognized.' in hint
+
+    def test_memory_reason_for_unknown_user(self):
+        from apps.api import live_http
+
+        runtime = MagicMock()
+        runtime.status = LiveRuntimeStatus(recognition_state='unknown_user')
+        with patch.object(live_http, '_live_runtime', runtime):
+            reason, _ = live_http._resolve_memory_unavailable_reason()
+        assert reason == 'face detected, unknown user'
+
+
+class TestDebugMemoryInspectorEndpoint:
+    def test_debug_memory_inspector_returns_data_for_selected_user(self):
+        from apps.api import live_http
+        from baymax.schemas.memory import EpisodicMemory, MemorySummaryResponse
+
+        user_id = uuid4()
+
+        orch = MagicMock()
+        orch.get_user = AsyncMock(return_value=MagicMock(id=user_id, display_name='Alice'))
+        orch.get_memory_summary = AsyncMock(return_value=MemorySummaryResponse(
+            user_id=user_id,
+            episodic_count=1,
+            semantic_count=0,
+            session_summaries=[],
+            recent_episodic=[
+                EpisodicMemory(
+                    user_id=user_id,
+                    session_id=uuid4(),
+                    content='User prefers evening check-ins',
+                    salience=0.8,
+                )
+            ],
+            confirmed_facts=[],
+        ))
+
+        with patch.object(live_http, '_orchestrator', orch):
+            payload = asyncio.run(live_http.debug_inspect_user_memory(str(user_id)))
+
+        assert payload.error is None
+        assert payload.recognition_reason.startswith('DEBUG ONLY')
+        assert payload.stats.total_memories == 1
+        assert payload.memories[0]['text'] == 'User prefers evening check-ins'
+
+
+class TestLocalBackendModes:
+    @staticmethod
+    def _load_local_backend_module():
+        module_path = Path(__file__).resolve().parent.parent / 'scripts' / 'run_local_backend.py'
+        spec = importlib.util.spec_from_file_location('baymax_run_local_backend', module_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_basic_mode_disables_tts_and_speech(self, monkeypatch):
+        run_local_backend = self._load_local_backend_module()
+
+        monkeypatch.delenv('BAYMAX_TTS_ENABLED', raising=False)
+        monkeypatch.delenv('BAYMAX_ENABLE_SPEECH_INPUT', raising=False)
+
+        run_local_backend._apply_mode_overrides('basic')
+
+        assert os.environ['BAYMAX_TTS_ENABLED'] == 'false'
+        assert os.environ['BAYMAX_ENABLE_SPEECH_INPUT'] == 'false'
+
+    def test_full_mode_prefers_ollama_when_available(self, monkeypatch):
+        run_local_backend = self._load_local_backend_module()
+
+        monkeypatch.delenv('BAYMAX_DIALOGUE_BACKEND', raising=False)
+        monkeypatch.setattr(run_local_backend, '_ollama_is_available', lambda _: True)
+
+        run_local_backend._apply_mode_overrides('full')
+
+        assert os.environ['BAYMAX_DIALOGUE_BACKEND'] == 'ollama'
+        assert os.environ['BAYMAX_ENABLE_SPEECH_INPUT'] == 'true'
+
+    def test_full_mode_falls_back_to_rule_based(self, monkeypatch):
+        run_local_backend = self._load_local_backend_module()
+
+        monkeypatch.delenv('BAYMAX_DIALOGUE_BACKEND', raising=False)
+        monkeypatch.delenv('BAYMAX_HF_CHAT_MODEL', raising=False)
+        monkeypatch.setattr(run_local_backend, '_ollama_is_available', lambda _: False)
+        monkeypatch.setattr(run_local_backend.importlib.util, 'find_spec', lambda _: None)
+
+        run_local_backend._apply_mode_overrides('full')
+
+        assert os.environ['BAYMAX_DIALOGUE_BACKEND'] == 'rule_based'

@@ -115,8 +115,8 @@ Bay-Max includes a diagnostic web UI for real-time runtime visualization:
 # Install UI dependencies
 make ui-install
 
-# Recommended local path: one backend process (API + live runtime)
-make run-local-backend
+# Recommended local full experience path: one backend process (API + live runtime)
+make run-local-backend-full
 
 # In another terminal, start the UI
 make run-ui
@@ -129,6 +129,23 @@ One-command option (backend + UI together):
 ```bash
 make run-local-full
 ```
+
+Local backend modes:
+
+```bash
+# basic: text only (no speech input, no TTS)
+make run-local-backend-basic
+
+# voice: TTS only
+make run-local-backend-voice
+
+# full: TTS + speech input, with dialogue preference
+# Ollama if available, else Transformers if explicitly configured, else rule_based fallback
+make run-local-backend-full
+```
+
+In full mode, if dialogue falls back to rule-based, the UI shows:
+LLM unavailable - using rule-based fallback
 
 Advanced/debug only (split-process, easier to misconfigure):
 

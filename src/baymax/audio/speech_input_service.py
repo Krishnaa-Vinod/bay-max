@@ -109,6 +109,7 @@ class SpeechInputService:
         self._listening = False
         self._last_heard_text = ""
         self._last_transcription_latency = 0.0
+        self._last_error = ""
 
         # Push-to-talk state
         self._ptt_recording = False
@@ -133,6 +134,10 @@ class SpeechInputService:
     @property
     def output_queue(self) -> asyncio.Queue[TranscriptionResult]:
         return self._output_queue
+
+    @property
+    def last_error(self) -> str:
+        return self._last_error
 
     def set_speaking_lock(self, locked: bool) -> None:
         """Set or release the speaking lock (called by TTS/SpeechService)."""
@@ -172,14 +177,18 @@ class SpeechInputService:
         if self._running:
             return True
 
+        self._last_error = ""
+
         # Load VAD model
         if isinstance(self._vad, SileroVAD):
             if not self._vad.load_model():
+                self._last_error = "VAD model failed to load"
                 logger.warning("VAD model load failed, speech input will not work")
                 return False
 
         # Start microphone
         if not self._mic.start():
+            self._last_error = "Microphone start failed (device unavailable or permission denied)"
             logger.warning("Microphone start failed, speech input will not work")
             return False
 

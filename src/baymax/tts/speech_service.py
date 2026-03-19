@@ -98,6 +98,7 @@ class SpeechService:
         output_path = os.path.join(self._output_dir, filename)
 
         result = self._provider.synthesize(text, output_path)
+        result.synthesis_ok = result.success
         self._total_synthesized += 1
 
         event = SpeechEvent(
@@ -134,6 +135,9 @@ class SpeechService:
         )
         if result.success and result.wav_path and self._enable_playback:
             await self._play_audio(result)
+        elif result.success and result.wav_path and not self._enable_playback:
+            result.playback_ok = False
+            result.playback_error = "Playback disabled by configuration"
         return result
 
     async def _play_audio(self, result: SpeechSynthesisResult) -> None:
@@ -146,6 +150,8 @@ class SpeechService:
             try:
                 played = await self._do_playback(result.wav_path or "")
                 if played:
+                    result.playback_ok = True
+                    result.playback_error = None
                     self._total_played += 1
                     self._last_spoken_text = result.text
                     self._last_spoken_at = datetime.now(UTC)
@@ -154,9 +160,15 @@ class SpeechService:
                             UTC
                         )
                         play_event.event_type = "speech_played"
+                else:
+                    result.playback_ok = False
+                    if not result.playback_error:
+                        result.playback_error = "Playback unavailable"
             except Exception as exc:
                 logger.warning("Audio playback failed: %s", exc)
                 self._total_errors += 1
+                result.playback_ok = False
+                result.playback_error = str(exc)
             finally:
                 self._is_playing = False
 
@@ -182,11 +194,15 @@ class SpeechService:
             )
             self._last_spoken_text = self._events[-1].text if self._events else ""
             self._last_spoken_at = datetime.now(UTC)
+            if self._events:
+                self._events[-1].error = "sounddevice not available"
             return False
         except OSError as exc:
             logger.warning("Audio device error: %s — WAV saved: %s", exc, wav_path)
             self._last_spoken_text = self._events[-1].text if self._events else ""
             self._last_spoken_at = datetime.now(UTC)
+            if self._events:
+                self._events[-1].error = str(exc)
             return False
 
     async def drain_queue(self) -> int:

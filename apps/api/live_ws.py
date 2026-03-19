@@ -161,6 +161,13 @@ def build_snapshot_message(
         "pipeline_state": _get_pipeline_state(status),
         "last_response": status.last_response_text or "",
         "last_spoken_text": status.last_spoken_text or "",
+        "dialogue": {
+            "active_backend": status.dialogue_backend,
+            "active_model": status.dialogue_model,
+            "requested_backend": status.dialogue_requested_backend,
+            "requested_model": status.dialogue_requested_model,
+            "fallback_warning": status.dialogue_fallback_warning,
+        },
         "memory_hits": resolved_memory_hits or [],
         "cooldown_remaining_sec": round(cooldown_remaining, 1),
         "last_event": status.last_event or "",
@@ -181,7 +188,12 @@ def build_snapshot_message(
         "tts": {
             "backend": status.tts_backend,
             "voice": status.tts_voice,
+            "voice_preset": status.tts_voice_preset,
             "queue_depth": status.speech_queue_depth,
+            "last_result": status.last_tts_result,
+            "last_error": status.last_tts_error,
+            "last_wav_path": status.last_tts_wav_path,
+            "last_playback_ok": status.last_tts_playback_ok,
         },
     }
 

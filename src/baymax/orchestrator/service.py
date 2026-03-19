@@ -107,10 +107,19 @@ class Orchestrator:
         self._enable_rule_based_fallback = settings.enable_rule_based_fallback
         self._enable_safe_health_mode = settings.enable_safe_health_mode
         self._dialogue_active_model = get_active_model(settings)
+        self._dialogue_requested_backend = settings.dialogue_backend
+        self._dialogue_requested_model = get_active_model(settings)
+        self._dialogue_fallback_warning = ""
 
         # Initialise the dialogue provider via factory (with fallback support)
         self.dialogue: DialogueProvider = create_dialogue_provider(settings)
         self._fallback_dialogue = RuleBasedDialogue()
+
+        if (
+            self.dialogue.backend_name == "rule_based"
+            and self._dialogue_requested_backend.lower() != "rule_based"
+        ):
+            self._dialogue_fallback_warning = "LLM unavailable — using rule-based fallback"
 
         # Perception backends (lazy-loaded)
         self._detector: FaceDetector | None = None
@@ -725,6 +734,21 @@ class Orchestrator:
             active_model=self.dialogue.model_name,
             fallback_enabled=self._enable_rule_based_fallback,
         )
+
+    @property
+    def dialogue_requested_backend(self) -> str:
+        """Configured dialogue backend before runtime fallback resolution."""
+        return self._dialogue_requested_backend
+
+    @property
+    def dialogue_requested_model(self) -> str:
+        """Configured dialogue model before runtime fallback resolution."""
+        return self._dialogue_requested_model
+
+    @property
+    def dialogue_fallback_warning(self) -> str:
+        """Human-readable fallback warning for UI surfaces."""
+        return self._dialogue_fallback_warning
 
     # --- Iteration 004: Memory-aware responses (T406) + Iteration 005: Grounded dialogue ---
 

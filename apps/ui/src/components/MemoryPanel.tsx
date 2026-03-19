@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { MemoryHit } from '@/types/live';
-import { getRecentMemories } from '@/lib/api';
+import { getRecentMemories, getUsers, inspectDebugMemoryForUser } from '@/lib/api';
 
 interface MemoryPanelProps {
   memoryHits: MemoryHit[];
   userId: string | null;
   refreshKey: number;
+  recognitionState: 'no_face' | 'unknown_user' | 'below_threshold' | 'recognized_enrolled';
+  sessionBinding: 'anonymous' | 'identified_user';
 }
 
 interface Fact {
@@ -20,16 +22,21 @@ interface MemoryStats {
   total_sessions: number;
 }
 
-export function MemoryPanel({ memoryHits, userId, refreshKey }: MemoryPanelProps) {
+export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, sessionBinding }: MemoryPanelProps) {
   const [facts, setFacts] = useState<Fact[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [emptyReason, setEmptyReason] = useState('no active user');
   const [memoryError, setMemoryError] = useState<string | null>(null);
+  const [recognitionReason, setRecognitionReason] = useState('no face detected');
+  const [memoryUnavailableHint, setMemoryUnavailableHint] = useState('Memory unavailable until an enrolled user is recognized.');
+  const [debugUsers, setDebugUsers] = useState<Array<{ id: string; display_name: string }>>([]);
+  const [debugUserId, setDebugUserId] = useState<string>('');
+  const [debugMode, setDebugMode] = useState(false);
 
   // Fetch memories when user changes
   useEffect(() => {
-    if (!userId) {
+    if (!userId && !debugMode) {
       setFacts([]);
       setStats(null);
       setEmptyReason('no active user');
@@ -40,10 +47,14 @@ export function MemoryPanel({ memoryHits, userId, refreshKey }: MemoryPanelProps
     const fetchMemories = async () => {
       setLoading(true);
       try {
-        const data = await getRecentMemories();
+        const data = debugMode && debugUserId
+          ? await inspectDebugMemoryForUser(debugUserId)
+          : await getRecentMemories();
         setFacts(data.facts);
         setStats(data.stats);
         setEmptyReason(data.empty_reason || '');
+        setRecognitionReason(data.recognition_reason || '');
+        setMemoryUnavailableHint(data.memory_unavailable_hint || '');
         setMemoryError(data.error ?? null);
       } catch (error) {
         setMemoryError(error instanceof Error ? error.message : 'Failed to fetch memories');
@@ -56,7 +67,22 @@ export function MemoryPanel({ memoryHits, userId, refreshKey }: MemoryPanelProps
     fetchMemories();
     const interval = setInterval(fetchMemories, 5000);
     return () => clearInterval(interval);
-  }, [userId, refreshKey]);
+  }, [userId, refreshKey, debugMode, debugUserId]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const users = await getUsers();
+        setDebugUsers(users);
+        if (!debugUserId && users.length > 0) {
+          setDebugUserId(users[0].id);
+        }
+      } catch {
+        // Optional debug control only.
+      }
+    };
+    loadUsers();
+  }, [debugUserId]);
 
   const retrievedEmptyReason = memoryError
     ? 'memory service error'
@@ -70,6 +96,23 @@ export function MemoryPanel({ memoryHits, userId, refreshKey }: MemoryPanelProps
           <span>Retrieved Memories</span>
           <span>{memoryHits.length} hits</span>
         </div>
+        <div className="text-xs text-gray-500 mb-2">
+          {recognitionReason || (
+            recognitionState === 'recognized_enrolled'
+              ? 'recognized enrolled user'
+              : recognitionState === 'below_threshold'
+                ? 'recognized below threshold'
+                : recognitionState === 'unknown_user'
+                  ? 'face detected, unknown user'
+                  : 'no face detected'
+          )}
+          {sessionBinding === 'anonymous' ? ' | binding: anonymous' : ' | binding: identified_user'}
+        </div>
+        {sessionBinding === 'anonymous' && (
+          <div className="text-xs text-amber-300 mb-2">
+            {memoryUnavailableHint || 'Memory unavailable until an enrolled user is recognized.'}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto bg-baymax-bg rounded p-2 space-y-2">
           {memoryHits.length === 0 ? (
             <div className="text-center text-gray-500 text-sm py-4">
@@ -94,6 +137,32 @@ export function MemoryPanel({ memoryHits, userId, refreshKey }: MemoryPanelProps
             ))
           )}
         </div>
+      </div>
+
+      {/* Debug-only memory inspector */}
+      <div className="bg-baymax-bg rounded p-3 border border-amber-700/40">
+        <div className="text-xs text-amber-300 mb-2">DEBUG ONLY: Memory Inspector</div>
+        <div className="flex items-center gap-2 mb-2">
+          <label className="text-xs text-gray-300 flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={debugMode}
+              onChange={(e) => setDebugMode(e.target.checked)}
+            />
+            Inspect selected enrolled user
+          </label>
+        </div>
+        <select
+          className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white"
+          value={debugUserId}
+          onChange={(e) => setDebugUserId(e.target.value)}
+          disabled={!debugMode || debugUsers.length === 0}
+        >
+          {debugUsers.length === 0 && <option value="">No enrolled users found</option>}
+          {debugUsers.map((u) => (
+            <option key={u.id} value={u.id}>{u.display_name} ({u.id.slice(0, 8)})</option>
+          ))}
+        </select>
       </div>
 
       {/* Semantic facts */}

@@ -68,3 +68,28 @@ export async function getRecentMemories(): Promise<MemoryData> {
   }
   return response.json();
 }
+
+export async function inspectDebugMemoryForUser(userId: string): Promise<MemoryData> {
+  const response = await fetch(`${API_BASE}/memory/debug/inspect/${encodeURIComponent(userId)}`);
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, `Failed to inspect debug memory: ${response.statusText}`);
+    throw new Error(message);
+  }
+  return response.json();
+}
+
+export async function getUsers(): Promise<Array<{ id: string; display_name: string }>> {
+  const response = await fetch('/v1/users');
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, `Failed to fetch users: ${response.statusText}`);
+    throw new Error(message);
+  }
+  const data = await response.json();
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data.map((item: any) => ({
+    id: String(item.id),
+    display_name: String(item.display_name ?? 'unknown'),
+  }));
+}

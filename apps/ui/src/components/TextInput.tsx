@@ -7,6 +7,8 @@ interface TextInputProps {
   speechEnabled: boolean;
   speechDisabledReason: string;
   isListening: boolean;
+  speakingLockActive: boolean;
+  vadActive: boolean;
   onSubmitSuccess?: (userText: string, response: TextInputResponse) => void;
   onMicToggled?: (listening: boolean) => void;
 }
@@ -20,6 +22,8 @@ export function TextInput({
   speechEnabled,
   speechDisabledReason,
   isListening,
+  speakingLockActive,
+  vadActive,
   onSubmitSuccess,
   onMicToggled,
 }: TextInputProps) {
@@ -160,6 +164,18 @@ export function TextInput({
           Speech input disabled: {speechDisabledReason || 'Unavailable in current backend runtime.'}
         </div>
       )}
+      <div className="text-xs text-gray-500 mt-1">
+        Mic state:{' '}
+        {!speechEnabled
+          ? 'disabled'
+          : speakingLockActive
+            ? 'speaking-lock'
+            : isListening
+              ? 'listening'
+              : vadActive
+                ? 'processing'
+                : 'processing'}
+      </div>
     </div>
   );
 }
