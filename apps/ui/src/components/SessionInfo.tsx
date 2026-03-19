@@ -4,6 +4,7 @@ import clsx from 'clsx';
 interface SessionInfoProps {
   sessionId: string | null;
   sessionState: SessionState;
+  sessionBinding: 'anonymous' | 'identified_user';
   duration: number;
   turnCount: number;
   lastEvent: string;
@@ -18,6 +19,7 @@ function formatDuration(seconds: number): string {
 export function SessionInfo({
   sessionId,
   sessionState,
+  sessionBinding,
   duration,
   turnCount,
   lastEvent,
@@ -52,6 +54,15 @@ export function SessionInfo({
         <div className="flex justify-between">
           <span className="text-gray-400">Turns:</span>
           <span className="text-white">{turnCount}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Binding:</span>
+          <span className={clsx('text-xs', {
+            'text-cyan-300': sessionBinding === 'identified_user',
+            'text-gray-400': sessionBinding === 'anonymous',
+          })}>
+            {sessionBinding === 'identified_user' ? 'user-linked' : 'anonymous'}
+          </span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Last Event:</span>

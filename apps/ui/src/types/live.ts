@@ -22,6 +22,8 @@ export interface SessionInfo {
 // Perception data in snapshot
 export interface PerceptionData {
   face_detected: boolean;
+  recognition_state: 'no_face' | 'unknown_user' | 'below_threshold' | 'recognized_enrolled';
+  face_match_threshold: number;
   user_name: string | null;
   user_id: string | null;
   recognition_confidence: number | null;
@@ -38,6 +40,7 @@ export interface PerceptionData {
 // Speech input state
 export interface SpeechInputState {
   enabled: boolean;
+  disabled_reason: string;
   listening: boolean;
   vad_active: boolean;
   stt_backend: string;
@@ -76,6 +79,7 @@ export interface SnapshotMessage {
   analysis_count: number;
   uptime_sec: number;
   speech_input: SpeechInputState;
+  session_binding: 'anonymous' | 'identified_user';
   tts: TTSState;
 }
 
@@ -114,8 +118,13 @@ export interface UIBootstrapState {
   stt_backend: string;
   affect_backend: string;
   speech_input_enabled: boolean;
+  speech_disabled_reason: string;
   affect_enabled: boolean;
   tts_enabled: boolean;
+  face_detected: boolean;
+  recognition_state: 'no_face' | 'unknown_user' | 'below_threshold' | 'recognized_enrolled';
+  face_match_threshold: number;
+  session_binding: 'anonymous' | 'identified_user';
   frame_count: number;
   analysis_count: number;
   uptime_sec: number;
@@ -139,6 +148,7 @@ export interface MicToggleResponse {
   success: boolean;
   listening: boolean;
   mic_mode: string;
+  disabled_reason: string;
   error: string | null;
 }
 
@@ -159,6 +169,8 @@ export interface MemoryData {
     total_facts: number;
     total_sessions: number;
   };
+  empty_reason: 'no active user' | 'no retrieved memories yet' | 'memory service error' | '';
+  error?: string | null;
 }
 
 // Activity feed event (derived from PipelineEvent for UI)

@@ -42,10 +42,14 @@ class LiveRuntimeStatus(BaseModel):
     current_user_id: UUID | None = None
     current_user_display_name: str | None = None
     # Perception tracking for UI (iteration 010b hotfix)
+    face_detected: bool = False
+    recognition_state: str = "no_face"
+    face_match_threshold: float = 0.0
     recognition_confidence: float | None = None
     posture: str | None = None
     engagement: str | None = None
     engagement_score: float | None = None
+    session_binding: str = "anonymous"
     last_event: str | None = None
     last_event_at: datetime | None = None
     last_response_text: str | None = None
@@ -63,6 +67,7 @@ class LiveRuntimeStatus(BaseModel):
     listening: bool = False
     vad_active: bool = False
     stt_backend: str = ""
+    speech_disabled_reason: str = ""
     speaking_lock_active: bool = False
     last_heard_text: str = ""
     transcription_latency_ms: float = 0.0

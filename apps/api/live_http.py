@@ -70,8 +70,15 @@ class UIBootstrapState(BaseModel):
 
     # Feature flags
     speech_input_enabled: bool = False
+    speech_disabled_reason: str = ""
     affect_enabled: bool = False
     tts_enabled: bool = False
+
+    # Recognition/session diagnostics
+    face_detected: bool = False
+    recognition_state: str = "no_face"
+    face_match_threshold: float = 0.0
+    session_binding: str = "anonymous"
 
     # Stats
     frame_count: int = 0
@@ -116,7 +123,41 @@ class MicToggleResponse(BaseModel):
     success: bool
     listening: bool = False
     mic_mode: str = ""
+    disabled_reason: str = ""
     error: str | None = None
+
+
+class MemoryStats(BaseModel):
+    """Memory stats for UI panel."""
+
+    total_memories: int = 0
+    total_facts: int = 0
+    total_sessions: int = 0
+
+
+class MemoryRecentResponse(BaseModel):
+    """Recent memory payload for UI panel."""
+
+    memories: list[dict[str, Any]] = Field(default_factory=list)
+    facts: list[dict[str, Any]] = Field(default_factory=list)
+    stats: MemoryStats = Field(default_factory=MemoryStats)
+    empty_reason: str = ""
+    error: str | None = None
+
+
+def _resolve_speech_disabled_reason() -> str:
+    """Return precise reason when speech input is unavailable."""
+    if _live_runtime is None:
+        return "Live runtime not active"
+
+    status = _live_runtime.status
+    if status.speech_input_enabled:
+        return ""
+
+    if status.speech_disabled_reason:
+        return status.speech_disabled_reason
+
+    return "Speech input unavailable"
 
 
 @router.get("/frame/latest")
@@ -204,8 +245,15 @@ async def get_ui_state() -> UIBootstrapState:
 
         # Feature flags
         state.speech_input_enabled = status.speech_input_enabled
+        state.speech_disabled_reason = status.speech_disabled_reason
         state.affect_enabled = status.affect_enabled
         state.tts_enabled = bool(status.tts_backend and status.tts_backend != "null")
+
+        # Recognition/session diagnostics
+        state.face_detected = status.face_detected
+        state.recognition_state = status.recognition_state
+        state.face_match_threshold = status.face_match_threshold
+        state.session_binding = status.session_binding
 
         # Stats
         state.frame_count = status.frame_count
@@ -247,10 +295,17 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
     user_id = _live_runtime.status.current_user_id
 
     if session_id is None:
-        return TextInputResponse(
-            success=False,
-            error="No active session",
-        )
+        try:
+            created = await _orchestrator.create_session(user_id=user_id)
+            _live_runtime.supervisor.attach_active_session(created.id, user_id)
+            session_id = created.id
+            logger.info("Created session %s from text input", session_id)
+        except Exception as e:
+            logger.error("Failed to auto-create session for text input: %s", e)
+            return TextInputResponse(
+                success=False,
+                error=f"No active session and failed to create one: {e}",
+            )
 
     try:
         # Add user turn
@@ -304,6 +359,13 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             detail=f"Response: {response.message[:50]}...",
         ))
 
+        await broadcast_event(build_event_message(
+            stage="memory",
+            status="complete",
+            detail=f"Retrieved {len(refs)} memory hit(s) for response",
+            event_type="memory_event",
+        ))
+
         return TextInputResponse(
             success=True,
             session_id=str(session_id),
@@ -334,6 +396,7 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
     if _live_runtime is None:
         return MicToggleResponse(
             success=False,
+            disabled_reason="Live runtime not active",
             error="Live runtime not active",
         )
 
@@ -341,6 +404,7 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
     if speech_input is None:
         return MicToggleResponse(
             success=False,
+            disabled_reason=_resolve_speech_disabled_reason(),
             error="Speech input not enabled",
         )
 
@@ -349,8 +413,10 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
 
         if request.action == "start":
             if not current_listening:
-                await speech_input.start()
-            new_listening = True
+                started = await speech_input.start()
+                new_listening = started and speech_input.status().listening
+            else:
+                new_listening = True
         elif request.action == "stop":
             if current_listening:
                 await speech_input.stop()
@@ -360,12 +426,22 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
                 await speech_input.stop()
                 new_listening = False
             else:
-                await speech_input.start()
-                new_listening = True
+                started = await speech_input.start()
+                new_listening = started and speech_input.status().listening
         else:
             return MicToggleResponse(
                 success=False,
                 error=f"Unknown action: {request.action}",
+            )
+
+        if not new_listening and request.action in ("start", "toggle"):
+            reason = _resolve_speech_disabled_reason()
+            return MicToggleResponse(
+                success=False,
+                listening=False,
+                mic_mode=speech_input.status().mic_mode,
+                disabled_reason=reason,
+                error=f"Unable to start speech input: {reason}",
             )
 
         # Broadcast event
@@ -382,51 +458,64 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
             success=True,
             listening=new_listening,
             mic_mode=speech_input.status().mic_mode,
+            disabled_reason="",
         )
 
     except Exception as e:
         logger.error("Mic toggle failed: %s", e)
         return MicToggleResponse(
             success=False,
+            disabled_reason=_resolve_speech_disabled_reason(),
             error=str(e),
         )
 
 
-@router.get("/memory/recent")
-async def get_recent_memories() -> dict[str, Any]:
+@router.get("/memory/recent", response_model=MemoryRecentResponse)
+async def get_recent_memories() -> MemoryRecentResponse:
     """Get recent memory hits for display in the UI."""
     if _orchestrator is None:
-        return {"memories": [], "facts": [], "stats": {}}
+        return MemoryRecentResponse(
+            empty_reason="memory service error",
+            error="Orchestrator not available",
+        )
 
     if _live_runtime is None:
-        return {"memories": [], "facts": [], "stats": {}}
+        return MemoryRecentResponse(empty_reason="no active user")
 
     user_id = _live_runtime.status.current_user_id
     if user_id is None:
-        return {"memories": [], "facts": [], "stats": {}}
+        return MemoryRecentResponse(empty_reason="no active user")
 
     try:
         # Get memory summary
         summary = await _orchestrator.get_memory_summary(user_id)
-        return {
-            "memories": [
-                {
-                    "text": m.text,
-                    "type": m.memory_type.value,
-                    "created_at": m.created_at.isoformat(),
-                }
-                for m in (summary.recent_memories or [])[:10]
-            ],
-            "facts": [
-                {"key": f.key, "value": f.value, "confidence": f.confidence}
-                for f in (summary.semantic_facts or [])[:10]
-            ],
-            "stats": {
-                "total_memories": summary.total_memories,
-                "total_facts": summary.total_facts,
-                "total_sessions": summary.total_sessions,
-            },
-        }
+        memories = [
+            {
+                "text": m.text,
+                "type": m.memory_type.value,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in (summary.recent_memories or [])[:10]
+        ]
+        facts = [
+            {"key": f.key, "value": f.value, "confidence": f.confidence}
+            for f in (summary.semantic_facts or [])[:10]
+        ]
+        empty_reason = "" if memories else "no retrieved memories yet"
+
+        return MemoryRecentResponse(
+            memories=memories,
+            facts=facts,
+            stats=MemoryStats(
+                total_memories=summary.total_memories,
+                total_facts=summary.total_facts,
+                total_sessions=summary.total_sessions,
+            ),
+            empty_reason=empty_reason,
+        )
     except Exception as e:
         logger.warning("Failed to get recent memories: %s", e)
-        return {"memories": [], "facts": [], "stats": {}, "error": str(e)}
+        return MemoryRecentResponse(
+            empty_reason="memory service error",
+            error=str(e),
+        )

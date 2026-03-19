@@ -6,15 +6,31 @@ import type { UIBootstrapState, TextInputResponse, MicToggleResponse, MemoryData
 
 const API_BASE = '/v1/live';
 
+async function extractErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json();
+    if (typeof data?.detail === 'string' && data.detail) {
+      return data.detail;
+    }
+    if (typeof data?.error === 'string' && data.error) {
+      return data.error;
+    }
+  } catch {
+    // ignore json parse errors and use fallback
+  }
+  return fallback;
+}
+
 export async function getUIState(): Promise<UIBootstrapState> {
   const response = await fetch(`${API_BASE}/ui-state`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch UI state: ${response.statusText}`);
+    const message = await extractErrorMessage(response, `Failed to fetch UI state: ${response.statusText}`);
+    throw new Error(message);
   }
   return response.json();
 }
 
-export async function getLatestFrameUrl(): string {
+export function getLatestFrameUrl(): string {
   return `${API_BASE}/frame/latest?t=${Date.now()}`;
 }
 
@@ -25,7 +41,8 @@ export async function submitTextInput(text: string): Promise<TextInputResponse> 
     body: JSON.stringify({ text }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to submit text input: ${response.statusText}`);
+    const message = await extractErrorMessage(response, `Failed to submit text input: ${response.statusText}`);
+    throw new Error(message);
   }
   return response.json();
 }
@@ -37,7 +54,8 @@ export async function toggleMicrophone(action: 'start' | 'stop' | 'toggle'): Pro
     body: JSON.stringify({ action }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to toggle microphone: ${response.statusText}`);
+    const message = await extractErrorMessage(response, `Failed to toggle microphone: ${response.statusText}`);
+    throw new Error(message);
   }
   return response.json();
 }
@@ -45,7 +63,8 @@ export async function toggleMicrophone(action: 'start' | 'stop' | 'toggle'): Pro
 export async function getRecentMemories(): Promise<MemoryData> {
   const response = await fetch(`${API_BASE}/memory/recent`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch memories: ${response.statusText}`);
+    const message = await extractErrorMessage(response, `Failed to fetch memories: ${response.statusText}`);
+    throw new Error(message);
   }
   return response.json();
 }

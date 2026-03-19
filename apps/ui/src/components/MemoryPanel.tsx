@@ -5,6 +5,7 @@ import { getRecentMemories } from '@/lib/api';
 interface MemoryPanelProps {
   memoryHits: MemoryHit[];
   userId: string | null;
+  refreshKey: number;
 }
 
 interface Fact {
@@ -19,16 +20,20 @@ interface MemoryStats {
   total_sessions: number;
 }
 
-export function MemoryPanel({ memoryHits, userId }: MemoryPanelProps) {
+export function MemoryPanel({ memoryHits, userId, refreshKey }: MemoryPanelProps) {
   const [facts, setFacts] = useState<Fact[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [emptyReason, setEmptyReason] = useState('no active user');
+  const [memoryError, setMemoryError] = useState<string | null>(null);
 
   // Fetch memories when user changes
   useEffect(() => {
     if (!userId) {
       setFacts([]);
       setStats(null);
+      setEmptyReason('no active user');
+      setMemoryError(null);
       return;
     }
 
@@ -38,18 +43,24 @@ export function MemoryPanel({ memoryHits, userId }: MemoryPanelProps) {
         const data = await getRecentMemories();
         setFacts(data.facts);
         setStats(data.stats);
+        setEmptyReason(data.empty_reason || '');
+        setMemoryError(data.error ?? null);
       } catch (error) {
-        console.error('Failed to fetch memories:', error);
+        setMemoryError(error instanceof Error ? error.message : 'Failed to fetch memories');
+        setEmptyReason('memory service error');
       } finally {
         setLoading(false);
       }
     };
 
     fetchMemories();
-    // Refresh every 10 seconds
-    const interval = setInterval(fetchMemories, 10000);
+    const interval = setInterval(fetchMemories, 5000);
     return () => clearInterval(interval);
-  }, [userId]);
+  }, [userId, refreshKey]);
+
+  const retrievedEmptyReason = memoryError
+    ? 'memory service error'
+    : (!userId ? 'no active user' : 'no retrieved memories yet');
 
   return (
     <div className="flex-1 flex flex-col gap-4 overflow-hidden">
@@ -62,7 +73,7 @@ export function MemoryPanel({ memoryHits, userId }: MemoryPanelProps) {
         <div className="flex-1 overflow-y-auto bg-baymax-bg rounded p-2 space-y-2">
           {memoryHits.length === 0 ? (
             <div className="text-center text-gray-500 text-sm py-4">
-              No memories retrieved
+              {retrievedEmptyReason}
             </div>
           ) : (
             memoryHits.map((hit, idx) => (
@@ -98,7 +109,7 @@ export function MemoryPanel({ memoryHits, userId }: MemoryPanelProps) {
             </div>
           ) : facts.length === 0 ? (
             <div className="text-center text-gray-500 text-sm py-4">
-              {userId ? 'No facts stored' : 'No user identified'}
+              {emptyReason || (userId ? 'no retrieved memories yet' : 'no active user')}
             </div>
           ) : (
             facts.map((fact, idx) => (
@@ -122,6 +133,11 @@ export function MemoryPanel({ memoryHits, userId }: MemoryPanelProps) {
       {/* Memory stats */}
       <div className="bg-baymax-bg rounded p-3">
         <div className="text-xs text-gray-400 mb-2">Memory Stats</div>
+        {memoryError && (
+          <div className="text-xs text-red-400 mb-2">
+            {memoryError}
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2 text-center">
           <div>
             <div className="text-lg font-bold text-white">

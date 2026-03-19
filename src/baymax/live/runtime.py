@@ -97,6 +97,8 @@ class LiveRuntime:
         # Iteration 008: Speech input service
         self._speech_input_service = None
         self._speech_input_enabled = settings.enable_speech_input
+        self._speech_init_error: str | None = None
+        self._speech_start_error: str | None = None
         if self._speech_input_enabled:
             try:
                 from baymax.audio.speech_input_service import SpeechInputService
@@ -121,6 +123,7 @@ class LiveRuntime:
             except Exception as exc:
                 logger.warning("Failed to init SpeechInputService: %s", exc)
                 self._speech_input_service = None
+                self._speech_init_error = str(exc)
 
         # Runtime state
         self._status = LiveRuntimeStatus()
@@ -137,6 +140,8 @@ class LiveRuntime:
 
         # Perception state tracking for UI (iteration 010b hotfix)
         self._last_recognition_confidence: float | None = None
+        self._last_face_detected: bool = False
+        self._last_recognition_state: str = "no_face"
         self._last_posture: str | None = None
         self._last_engagement: str | None = None
         self._last_engagement_score: float | None = None
@@ -157,9 +162,19 @@ class LiveRuntime:
 
         if self._affect_enabled:
             try:
+                # Get model path for MediaPipe face landmarker
+                model_path = None
+                if settings.affect_backend == "mediapipe":
+                    import os
+                    model_path = os.path.join(settings.model_dir, "face_landmarker.task")
+                    if not os.path.exists(model_path):
+                        logger.warning("MediaPipe model not found at %s, will attempt auto-download", model_path)
+                        model_path = None
+
                 self._affect_analyzer = get_emotion_analyzer(
                     backend=settings.affect_backend,
                     device=settings.affect_device,
+                    model_path=model_path,
                 )
                 self._affect_smoother = AffectSmoother(
                     alpha=settings.affect_smoothing_alpha,
@@ -257,6 +272,7 @@ class LiveRuntime:
         if self._speech_input_service is not None:
             started = await self._speech_input_service.start()
             if started:
+                self._speech_start_error = None
                 logger.info("Speech input started")
                 self._speech_input_task = asyncio.create_task(
                     self._speech_input_service.run_loop()
@@ -265,6 +281,7 @@ class LiveRuntime:
                     self._consume_transcriptions()
                 )
             else:
+                self._speech_start_error = "Microphone or VAD startup failed"
                 logger.warning("Speech input failed to start")
 
         # Create frame source
@@ -335,10 +352,13 @@ class LiveRuntime:
                     self._analysis_count += 1
                     await self._process_analysis_frame(frame)
 
-                # Render overlay if enabled
+                # Always update status
+                self._update_status()
+
+                # Render overlay if enabled, otherwise use raw frame
+                display_frame = frame
                 if self._enable_overlay:
                     try:
-                        self._update_status()
                         annotated = render_overlay(
                             frame=frame,
                             status=self._status,
@@ -349,15 +369,9 @@ class LiveRuntime:
                             posture=self._status.session_status.value,
                             engagement="medium",
                         )
+                        display_frame = annotated
 
-                        # Update annotated frame for UI endpoint
-                        try:
-                            from apps.api.live_http import update_annotated_frame
-                            update_annotated_frame(annotated)
-                        except ImportError:
-                            pass  # API not running
-
-                        # Show frame (if display available)
+                        # Show frame in OpenCV window (if display available)
                         try:
                             import cv2
                             cv2.imshow("Bay-Max Live", cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR))
@@ -369,6 +383,13 @@ class LiveRuntime:
                             pass  # No display available (headless)
                     except Exception:
                         pass  # Overlay rendering is optional
+
+                # Always update frame for UI endpoint (regardless of overlay setting)
+                try:
+                    from apps.api.live_http import update_annotated_frame
+                    update_annotated_frame(display_frame)
+                except ImportError:
+                    pass  # API not running
 
                 await asyncio.sleep(0.001)  # Yield to event loop
 
@@ -700,6 +721,17 @@ class LiveRuntime:
         # Update status
         self._status.current_user_id = user_id
         self._status.current_user_display_name = user_name
+        self._last_face_detected = person_present
+
+        if not person_present:
+            self._last_recognition_state = "no_face"
+        elif recognized and user_id is not None:
+            self._last_recognition_state = "recognized_enrolled"
+        elif confidence > 0.0:
+            self._last_recognition_state = "below_threshold"
+        else:
+            self._last_recognition_state = "unknown_user"
+
         # Track perception values for UI (iteration 010b hotfix)
         self._last_recognition_confidence = confidence if confidence > 0 else None
         self._last_posture = posture.value if posture != PostureLabel.UNKNOWN else None
@@ -907,10 +939,18 @@ class LiveRuntime:
             self._status.last_event_at = last.timestamp
 
         # Perception tracking for UI (iteration 010b hotfix)
+        self._status.face_detected = self._last_face_detected
+        self._status.recognition_state = self._last_recognition_state
+        self._status.face_match_threshold = self._orch._face_match_threshold
         self._status.recognition_confidence = self._last_recognition_confidence
         self._status.posture = self._last_posture
         self._status.engagement = self._last_engagement
         self._status.engagement_score = self._last_engagement_score
+        self._status.session_binding = (
+            "identified_user"
+            if self._status.current_user_id is not None
+            else "anonymous"
+        )
 
         # Speech output status
         qs = self._speech_service.queue_status()
@@ -930,8 +970,29 @@ class LiveRuntime:
             self._status.last_heard_text = sis.last_heard_text
             self._status.transcription_latency_ms = sis.transcription_latency_ms
             self._status.mic_mode = sis.mic_mode
+            self._status.speech_disabled_reason = (
+                ""
+                if sis.speech_input_enabled
+                else self._speech_start_error or "Speech input service not running"
+            )
         else:
             self._status.speech_input_enabled = False
+            if not self._speech_input_enabled:
+                self._status.speech_disabled_reason = (
+                    "Speech backend disabled (BAYMAX_ENABLE_SPEECH_INPUT=false)"
+                )
+            elif self._settings.stt_backend == "null":
+                self._status.speech_disabled_reason = (
+                    "Speech backend is null (BAYMAX_STT_BACKEND=null)"
+                )
+            elif self._speech_init_error:
+                self._status.speech_disabled_reason = (
+                    f"Speech input dependency/init error: {self._speech_init_error}"
+                )
+            else:
+                self._status.speech_disabled_reason = (
+                    "Speech input service unavailable"
+                )
 
         # Affect analysis status (Iteration 009)
         if self._affect_enabled and self._affect_smoother is not None:
