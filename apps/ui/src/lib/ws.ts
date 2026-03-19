@@ -21,6 +21,7 @@ export class LiveWebSocket {
   private reconnectDelay = 1000;
   private pingInterval: number | null = null;
   private url: string;
+  private hasReceivedSnapshot = false;
 
   constructor(url: string = '/ws/live') {
     // Use relative URL for WebSocket
@@ -39,6 +40,7 @@ export class LiveWebSocket {
     }
 
     this.callbacks.onConnectionChange?.('connecting');
+    this.hasReceivedSnapshot = false;
 
     try {
       this.ws = new WebSocket(this.url);
@@ -46,7 +48,7 @@ export class LiveWebSocket {
       this.ws.onopen = () => {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
-        this.callbacks.onConnectionChange?.('connected');
+        this.callbacks.onConnectionChange?.('connecting');
         this.startPing();
       };
 
@@ -82,6 +84,10 @@ export class LiveWebSocket {
     switch (message.type) {
       case 'bootstrap':
       case 'snapshot':
+        if (!this.hasReceivedSnapshot) {
+          this.hasReceivedSnapshot = true;
+          this.callbacks.onConnectionChange?.('connected');
+        }
         this.callbacks.onSnapshot?.(message as SnapshotMessage);
         break;
       case 'pipeline_event':

@@ -193,6 +193,15 @@ class SessionSupervisor:
         """Set the current session ID (called by the live runtime after creating a session)."""
         self._current_session_id = session_id
 
+    def attach_active_session(self, session_id: UUID, user_id: UUID | None) -> None:
+        """Attach an externally-created active session to supervisor state."""
+        self._current_session_id = session_id
+        self._current_user_id = user_id
+        self._state = SessionLifecycleState.ACTIVE
+        self._consecutive_presence = max(self._consecutive_presence, self._presence_min_frames)
+        self._consecutive_absence = 0
+        self._last_presence_time = time.time()
+
     def force_end(self) -> SessionLifecycleEvent | None:
         """Force-end the current session (e.g. on shutdown)."""
         if self._state in (SessionLifecycleState.ACTIVE, SessionLifecycleState.PAUSED):

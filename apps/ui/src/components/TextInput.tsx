@@ -1,31 +1,58 @@
 import { useState } from 'react';
 import { submitTextInput, toggleMicrophone } from '@/lib/api';
+import type { TextInputResponse } from '@/types/live';
 import clsx from 'clsx';
 
 interface TextInputProps {
   speechEnabled: boolean;
+  speechDisabledReason: string;
   isListening: boolean;
+  onSubmitSuccess?: (userText: string, response: TextInputResponse) => void;
+  onMicToggled?: (listening: boolean) => void;
 }
 
-export function TextInput({ speechEnabled, isListening }: TextInputProps) {
+type InlineState = {
+  kind: 'idle' | 'success' | 'error';
+  message: string;
+};
+
+export function TextInput({
+  speechEnabled,
+  speechDisabledReason,
+  isListening,
+  onSubmitSuccess,
+  onMicToggled,
+}: TextInputProps) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [micLoading, setMicLoading] = useState(false);
+  const [submitState, setSubmitState] = useState<InlineState>({ kind: 'idle', message: '' });
+  const [micState, setMicState] = useState<InlineState>({ kind: 'idle', message: '' });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim() || sending) return;
 
     setSending(true);
+    setSubmitState({ kind: 'idle', message: '' });
     try {
       const response = await submitTextInput(text.trim());
       if (response.success) {
+        const userText = text.trim();
         setText('');
+        setSubmitState({ kind: 'success', message: 'Response generated.' });
+        onSubmitSuccess?.(userText, response);
       } else {
-        console.error('Text input failed:', response.error);
+        setSubmitState({
+          kind: 'error',
+          message: response.error || 'Text submission failed.',
+        });
       }
     } catch (error) {
-      console.error('Failed to submit text:', error);
+      setSubmitState({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to submit text.',
+      });
     } finally {
       setSending(false);
     }
@@ -35,10 +62,24 @@ export function TextInput({ speechEnabled, isListening }: TextInputProps) {
     if (micLoading || !speechEnabled) return;
 
     setMicLoading(true);
+    setMicState({ kind: 'idle', message: '' });
     try {
-      await toggleMicrophone('toggle');
+      const response = await toggleMicrophone('toggle');
+      if (response.success) {
+        const label = response.listening ? 'Listening started.' : 'Listening stopped.';
+        setMicState({ kind: 'success', message: label });
+        onMicToggled?.(response.listening);
+      } else {
+        setMicState({
+          kind: 'error',
+          message: response.error || response.disabled_reason || 'Microphone toggle failed.',
+        });
+      }
     } catch (error) {
-      console.error('Failed to toggle mic:', error);
+      setMicState({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Failed to toggle mic.',
+      });
     } finally {
       setMicLoading(false);
     }
@@ -90,9 +131,33 @@ export function TextInput({ speechEnabled, isListening }: TextInputProps) {
           </svg>
         </button>
       </form>
+      {submitState.kind !== 'idle' && (
+        <div
+          className={clsx(
+            'text-xs mt-2 rounded px-2 py-1',
+            submitState.kind === 'success'
+              ? 'bg-green-900/30 text-green-300 border border-green-700/40'
+              : 'bg-red-900/30 text-red-300 border border-red-700/40'
+          )}
+        >
+          {submitState.message}
+        </div>
+      )}
+      {micState.kind !== 'idle' && (
+        <div
+          className={clsx(
+            'text-xs mt-2 rounded px-2 py-1',
+            micState.kind === 'success'
+              ? 'bg-blue-900/30 text-blue-300 border border-blue-700/40'
+              : 'bg-red-900/30 text-red-300 border border-red-700/40'
+          )}
+        >
+          {micState.message}
+        </div>
+      )}
       {!speechEnabled && (
         <div className="text-xs text-gray-500 mt-1">
-          Speech input is disabled. Enable it in backend settings.
+          Speech input disabled: {speechDisabledReason || 'Unavailable in current backend runtime.'}
         </div>
       )}
     </div>

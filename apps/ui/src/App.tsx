@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { LiveWebSocket, ConnectionState } from '@/lib/ws';
-import type { SnapshotMessage, PipelineEvent, ActivityEvent, MemoryHit } from '@/types/live';
+import { getUIState } from '@/lib/api';
+import type { SnapshotMessage, PipelineEvent, ActivityEvent } from '@/types/live';
 
 // Components
 import { CameraFeed } from '@/components/CameraFeed';
@@ -21,6 +22,11 @@ function App() {
 
   // Snapshot state
   const [snapshot, setSnapshot] = useState<SnapshotMessage | null>(null);
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
+  const hasSeenBootstrapRef = useRef(false);
+  const pendingReconnectRecoveryRef = useRef(false);
+  const lastRecognitionStateRef = useRef<string>('no_face');
+  const lastUserIdRef = useRef<string | null>(null);
 
   // Activity feed
   const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -72,7 +78,103 @@ function App() {
   const handleSnapshot = useCallback((data: SnapshotMessage) => {
     setSnapshot(data);
     updateAffectHistory(data);
+
+    if (!hasSeenBootstrapRef.current) {
+      hasSeenBootstrapRef.current = true;
+    }
+
+    if (pendingReconnectRecoveryRef.current) {
+      pendingReconnectRecoveryRef.current = false;
+      setEvents((prev) => {
+        const withoutWsErrors = prev.filter(
+          (evt) => !(evt.stage === 'websocket' && evt.status === 'error')
+        );
+        return [
+          ...withoutWsErrors,
+          {
+            id: `ws-recovered-${Date.now()}`,
+            timestamp: new Date(),
+            stage: 'websocket',
+            status: 'complete',
+            detail: 'Telemetry recovered after reconnect',
+            type: 'pipeline_event',
+          },
+        ].slice(-MAX_EVENTS);
+      });
+    }
+
+    const recognitionState = data.perception.recognition_state;
+    const userId = data.perception.user_id;
+    const shouldRefreshForRecognition =
+      lastRecognitionStateRef.current !== recognitionState
+      || lastUserIdRef.current !== userId;
+
+    if (shouldRefreshForRecognition) {
+      setMemoryRefreshKey((prev) => prev + 1);
+      lastRecognitionStateRef.current = recognitionState;
+      lastUserIdRef.current = userId;
+    }
   }, [updateAffectHistory]);
+
+  const handleConnectionChange = useCallback((state: ConnectionState) => {
+    setConnectionState(state);
+    if ((state === 'disconnected' || state === 'error') && hasSeenBootstrapRef.current) {
+      pendingReconnectRecoveryRef.current = true;
+    }
+  }, []);
+
+  const addUiEvent = useCallback((event: Omit<ActivityEvent, 'id'>) => {
+    setEvents((prev) => {
+      const next: ActivityEvent = {
+        id: `${event.timestamp.toISOString()}-${event.stage}-${Math.random().toString(36).slice(2, 8)}`,
+        ...event,
+      };
+      return [...prev, next].slice(-MAX_EVENTS);
+    });
+  }, []);
+
+  const handleTextSubmitSuccess = useCallback((userText: string, response: { response_text: string; memory_refs: Array<{ text: string; score: number | null }>; session_id: string | null }) => {
+    addUiEvent({
+      timestamp: new Date(),
+      stage: 'text_input',
+      status: 'complete',
+      detail: `User: ${userText}`,
+      type: 'pipeline_event',
+    });
+
+    addUiEvent({
+      timestamp: new Date(),
+      stage: 'dialogue',
+      status: 'complete',
+      detail: `Assistant: ${response.response_text}`,
+      type: 'pipeline_event',
+    });
+
+    setSnapshot((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        session: {
+          ...prev.session,
+          id: response.session_id ?? prev.session.id,
+        },
+        last_response: response.response_text,
+        memory_hits: response.memory_refs,
+      };
+    });
+
+    setMemoryRefreshKey((prev) => prev + 1);
+  }, [addUiEvent]);
+
+  const handleMicToggled = useCallback((listening: boolean) => {
+    addUiEvent({
+      timestamp: new Date(),
+      stage: 'speech_input',
+      status: 'complete',
+      detail: listening ? 'Listening started' : 'Listening stopped',
+      type: 'speech_event',
+    });
+  }, [addUiEvent]);
 
   // Initialize WebSocket
   useEffect(() => {
@@ -80,13 +182,12 @@ function App() {
     wsRef.current = ws;
 
     ws.setCallbacks({
-      onConnectionChange: setConnectionState,
+      onConnectionChange: handleConnectionChange,
       onSnapshot: handleSnapshot,
       onEvent: addEvent,
       onError: (error) => {
-        console.error('WebSocket error:', error);
         addEvent({
-          type: 'error',
+          type: 'pipeline_event',
           timestamp: new Date().toISOString(),
           stage: 'websocket',
           status: 'error',
@@ -100,7 +201,75 @@ function App() {
     return () => {
       ws.disconnect();
     };
-  }, [handleSnapshot, addEvent]);
+  }, [handleSnapshot, addEvent, handleConnectionChange]);
+
+  useEffect(() => {
+    const bootstrapFromHttp = async () => {
+      try {
+        const state = await getUIState();
+        setSnapshot((prev) => {
+          if (prev) {
+            return prev;
+          }
+          return {
+            type: 'bootstrap',
+            timestamp: state.server_time,
+            session: {
+              id: state.session_id,
+              state: state.session_state,
+              duration_sec: 0,
+              turn_count: 0,
+            },
+            perception: {
+              face_detected: state.face_detected,
+              recognition_state: state.recognition_state,
+              face_match_threshold: state.face_match_threshold,
+              user_name: state.user_name,
+              user_id: state.user_id,
+              recognition_confidence: null,
+              posture: null,
+              engagement: null,
+              valence: 0,
+              arousal: 0,
+              affect_confidence: 0,
+              affect_backend: state.affect_backend,
+              affect_stable_duration_sec: 0,
+              affect_debug: '',
+            },
+            pipeline_state: state.live_mode_active ? 'IDLE' : 'OFFLINE',
+            last_response: state.last_response,
+            last_spoken_text: '',
+            memory_hits: [],
+            cooldown_remaining_sec: 0,
+            last_event: state.last_event,
+            frame_count: state.frame_count,
+            analysis_count: state.analysis_count,
+            uptime_sec: state.uptime_sec,
+            speech_input: {
+              enabled: state.speech_input_enabled,
+              disabled_reason: state.speech_disabled_reason,
+              listening: false,
+              vad_active: false,
+              stt_backend: state.stt_backend,
+              speaking_lock: false,
+              last_heard: '',
+              mic_mode: 'vad',
+            },
+            session_binding: state.session_binding,
+            tts: {
+              backend: state.tts_backend,
+              voice: state.tts_voice,
+              queue_depth: 0,
+            },
+          };
+        });
+      } catch {
+        // WebSocket bootstrap remains primary source of truth.
+      }
+    };
+
+    void bootstrapFromHttp();
+  }, []);
 
   // Frame refresh URL with cache busting
   const frameUrl = `/v1/live/frame/latest?t=${snapshot?.frame_count ?? 0}`;
@@ -151,6 +320,15 @@ function App() {
                   {((snapshot?.perception.recognition_confidence ?? 0) * 100).toFixed(0)}%
                 </span>
               </div>
+              <div className="col-span-2">
+                <span className="text-gray-400">Recognition:</span>
+                <span className="ml-2 text-white">
+                  {snapshot?.perception.recognition_state === 'no_face' && 'no face detected'}
+                  {snapshot?.perception.recognition_state === 'unknown_user' && 'face detected, unknown user'}
+                  {snapshot?.perception.recognition_state === 'below_threshold' && `below threshold (< ${(snapshot?.perception.face_match_threshold ?? 0).toFixed(2)})`}
+                  {snapshot?.perception.recognition_state === 'recognized_enrolled' && 'recognized enrolled user'}
+                </span>
+              </div>
               <div>
                 <span className="text-gray-400">Posture:</span>
                 <span className="ml-2 text-white capitalize">
@@ -179,6 +357,7 @@ function App() {
           <SessionInfo
             sessionId={snapshot?.session.id ?? null}
             sessionState={snapshot?.session.state ?? 'idle'}
+            sessionBinding={snapshot?.session_binding ?? 'anonymous'}
             duration={snapshot?.session.duration_sec ?? 0}
             turnCount={snapshot?.session.turn_count ?? 0}
             lastEvent={snapshot?.last_event ?? ''}
@@ -211,7 +390,10 @@ function App() {
           {/* Input controls */}
           <TextInput
             speechEnabled={snapshot?.speech_input.enabled ?? false}
+            speechDisabledReason={snapshot?.speech_input.disabled_reason ?? ''}
             isListening={snapshot?.speech_input.listening ?? false}
+            onSubmitSuccess={handleTextSubmitSuccess}
+            onMicToggled={handleMicToggled}
           />
         </div>
 
@@ -225,6 +407,7 @@ function App() {
           <MemoryPanel
             memoryHits={snapshot?.memory_hits ?? []}
             userId={snapshot?.perception.user_id ?? null}
+            refreshKey={memoryRefreshKey}
           />
         </div>
       </div>

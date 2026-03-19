@@ -57,8 +57,11 @@ def set_live_runtime(runtime):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await orchestrator.initialize()
-    # Set orchestrator reference for live HTTP endpoints
-    live_http.set_orchestrator(orchestrator)
+    # Keep live HTTP orchestrator aligned with the active runtime when present.
+    if _live_runtime is not None:
+        live_http.set_orchestrator(_live_runtime._orch)
+    else:
+        live_http.set_orchestrator(orchestrator)
     yield
     await orchestrator.shutdown()
 

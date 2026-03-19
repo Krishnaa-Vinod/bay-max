@@ -12,6 +12,46 @@ pip install -e ".[all]"
 
 This installs `torch`, `facenet-pytorch`, `opencv-python`, and `mediapipe` alongside dev dependencies.
 
+## Recommended Local Workflow (Stabilized)
+
+Use a single backend process so API and live runtime share state in one Python process.
+
+```bash
+# Terminal 1
+make run-local-backend
+
+# Terminal 2
+make run-ui
+```
+
+Open `http://localhost:3000`.
+
+Alternative one-command workflow:
+
+```bash
+make run-local-full
+```
+
+Advanced/debug split-process workflow (not recommended for daily local usage):
+
+```bash
+make run-api
+make live-webcam
+make run-ui
+```
+
+## Local Stabilization Smoke Checklist
+
+1. UI opens without bootstrap errors and telemetry transitions to connected after snapshot/bootstrap.
+2. Recognition panel distinguishes: no face, unknown user, below threshold, recognized enrolled user.
+3. Text submit shows inline success or inline backend error (no silent console-only failure).
+4. Successful text submit appends user + assistant activity entries and updates last response immediately.
+5. Memory panel refreshes immediately after text response and user recognition changes.
+6. Memory panel empty state explains one of: `no active user`, `no retrieved memories yet`, `memory service error`.
+7. Speech disabled reason is shown exactly (for example dependency/startup/backend disabled reasons).
+8. When speech is enabled, mic toggle shows listening started/stopped and emits activity feed event.
+9. Reconnect clears stale websocket error rows and adds one recovery event.
+
 ## Environment Variables
 
 Copy `.env.example` and configure:

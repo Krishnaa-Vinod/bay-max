@@ -115,16 +115,27 @@ Bay-Max includes a diagnostic web UI for real-time runtime visualization:
 # Install UI dependencies
 make ui-install
 
-# Start the backend API
-make run-api
+# Recommended local path: one backend process (API + live runtime)
+make run-local-backend
 
-# In another terminal, start the live runtime
-make live-webcam
-
-# In a third terminal, start the UI
+# In another terminal, start the UI
 make run-ui
 
 # Open http://localhost:3000
+```
+
+One-command option (backend + UI together):
+
+```bash
+make run-local-full
+```
+
+Advanced/debug only (split-process, easier to misconfigure):
+
+```bash
+make run-api
+make live-webcam
+make run-ui
 ```
 
 The UI shows three columns:

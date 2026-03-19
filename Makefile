@@ -1,4 +1,4 @@
-.PHONY: help install install-vector install-dialogue install-tts install-speech install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts live-webcam-speech verify-007 verify-008 ui-install run-ui run-full ui-build ui-test clean
+.PHONY: help install install-vector install-dialogue install-tts install-speech install-all lint test run-api run-demo smoke-test real-model-test live-webcam live-replay live-webcam-tts live-webcam-speech verify-007 verify-008 ui-install run-ui run-full run-local-backend run-local-full ui-build ui-test clean
 
 help:
 	@echo "Bay-Max development commands:"
@@ -11,6 +11,8 @@ help:
 	@echo "  make lint              - Run ruff linter"
 	@echo "  make test              - Run pytest test suite"
 	@echo "  make run-api           - Start FastAPI server on port 8000"
+	@echo "  make run-local-backend - Recommended: single-process API + live runtime"
+	@echo "  make run-local-full    - Recommended: local backend + UI dev server"
 	@echo "  make run-demo          - Start Gradio demo on port 7860"
 	@echo "  make smoke-test        - Run local dialogue smoke-test script"
 	@echo "  make real-model-test   - Run real-model smoke-test (requires LLM backend in .env)"
@@ -24,7 +26,7 @@ help:
 	@echo "  make run-ui            - Start companion UI dev server on port 3000"
 	@echo "  make ui-build          - Build companion UI for production"
 	@echo "  make ui-test           - Run companion UI tests"
-	@echo "  make run-full          - Start API + live runtime + UI together"
+	@echo "  make run-full          - Advanced/debug: split API + live runtime workflow"
 	@echo "  make clean             - Remove build artifacts and caches"
 
 install:
@@ -53,6 +55,19 @@ test:
 
 run-api:
 	uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+run-local-backend:
+	python scripts/run_local_backend.py
+
+run-local-full:
+	@echo "Starting recommended local workflow..."
+	@echo "  Local backend (API + runtime): http://localhost:8000"
+	@echo "  Companion UI: http://localhost:3000"
+	@bash -c 'set -e; \
+	  python scripts/run_local_backend.py > /tmp/baymax-local-backend.log 2>&1 & \
+	  BACK_PID=$$!; \
+	  trap "kill $$BACK_PID" EXIT; \
+	  cd apps/ui && npm run dev'
 
 run-demo:
 	python apps/demo/gradio_app.py
@@ -94,11 +109,13 @@ ui-build:
 ui-test:
 	cd apps/ui && npm test
 
-# Full development workflow: API + UI (requires two terminals or background processes)
+# Advanced/debug workflow: split API + runtime + UI (three terminals)
 run-full:
-	@echo "Starting full development stack..."
+	@echo "Starting advanced split-stack workflow..."
 	@echo "  Backend API: http://localhost:8000"
 	@echo "  Companion UI: http://localhost:3000"
+	@echo ""
+	@echo "Recommended instead: make run-local-full"
 	@echo ""
 	@echo "Run in separate terminals:"
 	@echo "  Terminal 1: make run-api"

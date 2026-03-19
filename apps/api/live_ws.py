@@ -138,10 +138,9 @@ def build_snapshot_message(
             "turn_count": turn_count,
         },
         "perception": {
-            "face_detected": (
-                status.current_user_id is not None
-                or status.session_status == SessionLifecycleState.ACTIVE
-            ),
+            "face_detected": status.face_detected,
+            "recognition_state": status.recognition_state,
+            "face_match_threshold": status.face_match_threshold,
             "user_name": status.current_user_display_name,
             "user_id": str(status.current_user_id) if status.current_user_id else None,
             "recognition_confidence": status.recognition_confidence,
@@ -170,6 +169,7 @@ def build_snapshot_message(
         "uptime_sec": round(status.uptime_sec, 1),
         "speech_input": {
             "enabled": status.speech_input_enabled,
+            "disabled_reason": status.speech_disabled_reason,
             "listening": status.listening,
             "vad_active": status.vad_active,
             "stt_backend": status.stt_backend,
@@ -177,6 +177,7 @@ def build_snapshot_message(
             "last_heard": status.last_heard_text or "",
             "mic_mode": status.mic_mode,
         },
+        "session_binding": status.session_binding,
         "tts": {
             "backend": status.tts_backend,
             "voice": status.tts_voice,
