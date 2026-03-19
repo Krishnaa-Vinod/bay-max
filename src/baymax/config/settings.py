@@ -35,7 +35,10 @@ class BaymaxSettings(BaseSettings):
     # Vision / perception
     device: str = "cuda_if_available_else_cpu"
     face_backend: str = "facenet_pytorch"
-    face_match_threshold: float = 0.75
+    face_match_threshold: float = 0.70
+    # Relaxed threshold used briefly after a recent positive match.
+    face_match_relaxed_threshold: float = 0.64
+    face_recognition_grace_sec: float = 3.0
     max_faces_per_frame: int = 5
 
     # Pose estimation
@@ -65,8 +68,8 @@ class BaymaxSettings(BaseSettings):
 
     # --- Iteration 005: Dialogue backend settings ---
 
-    # Backend selector: "rule_based" | "ollama" | "transformers"
-    dialogue_backend: str = "rule_based"
+    # Backend selector: "auto_local" | "rule_based" | "ollama" | "transformers"
+    dialogue_backend: str = "auto_local"
 
     # Enable structured debug fields in responses
     enable_dialogue_debug: bool = False
@@ -102,6 +105,9 @@ class BaymaxSettings(BaseSettings):
     # Source type: "webcam" | "replay"
     live_source: str = "webcam"
     live_camera_index: int = 0
+    live_camera_probe_count: int = 8
+    live_camera_prefer_rgb: bool = True
+    live_camera_min_saturation: float = 12.0
 
     # Frame rate / analysis cadence
     preview_fps: int = 8

@@ -71,10 +71,7 @@ class MicrophoneCapture:
     def _candidate_sample_rates(self, sd) -> list[int]:
         rates: list[int] = [int(self._sample_rate)]
 
-        default_devices = sd.default.device
-        input_device = None
-        if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 1:
-            input_device = default_devices[0]
+        input_device = self._resolve_input_device(sd)
 
         try:
             if input_device is not None and int(input_device) >= 0:
@@ -93,6 +90,29 @@ class MicrophoneCapture:
                 unique.append(rate)
         return unique
 
+    def _resolve_input_device(self, sd) -> int | str | None:
+        if self._device is not None:
+            return self._device
+
+        default_devices = sd.default.device
+        if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 1:
+            default_input = default_devices[0]
+            try:
+                if int(default_input) >= 0:
+                    return int(default_input)
+            except Exception:
+                pass
+
+        try:
+            for idx, dev in enumerate(sd.query_devices()):
+                if int(dev.get("max_input_channels", 0)) > 0:
+                    logger.info("Using fallback microphone device index %d (%s)", idx, dev.get("name", "unknown"))
+                    return idx
+        except Exception:
+            pass
+
+        return None
+
     def start(self) -> bool:
         """Start capturing audio. Returns True on success."""
         if self._running:
@@ -103,6 +123,7 @@ class MicrophoneCapture:
         try:
             import sounddevice as sd
             last_error: Exception | None = None
+            chosen_device = self._resolve_input_device(sd)
             for candidate_rate in self._candidate_sample_rates(sd):
                 candidate_chunk = int(candidate_rate * self._chunk_duration_ms / 1000)
                 try:
@@ -111,7 +132,7 @@ class MicrophoneCapture:
                         channels=self._channels,
                         dtype="float32",
                         blocksize=candidate_chunk,
-                        device=self._device,
+                        device=chosen_device,
                         callback=self._audio_callback,
                     )
                     self._stream.start()

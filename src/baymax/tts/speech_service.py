@@ -199,6 +199,15 @@ class SpeechService:
 
             data, samplerate = sf.read(wav_path, dtype="float32")
             loop = asyncio.get_event_loop()
+
+            def _resolve_output_device() -> int | None:
+                out_device = self._output_device
+                if out_device is None:
+                    default_devices = sd.default.device
+                    if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
+                        out_device = default_devices[1]
+                return out_device
+
             try:
                 await loop.run_in_executor(
                     None,
@@ -206,42 +215,56 @@ class SpeechService:
                 )
                 await loop.run_in_executor(None, sd.wait)
             except Exception as exc:
-                if "Invalid sample rate" not in str(exc):
+                err_text = str(exc)
+                if (
+                    "Invalid sample rate" not in err_text
+                    and "Invalid number of channels" not in err_text
+                ):
                     raise
 
-                out_device = self._output_device
-                if out_device is None:
-                    default_devices = sd.default.device
-                    if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
-                        out_device = default_devices[1]
+                out_device = _resolve_output_device()
 
                 output_info = sd.query_devices(out_device, "output")
                 target_rate = int(round(float(output_info.get("default_samplerate", samplerate))))
-                if target_rate <= 0 or target_rate == samplerate:
+                if target_rate <= 0:
+                    target_rate = int(samplerate)
+
+                max_channels = int(output_info.get("max_output_channels", 0))
+                if max_channels <= 0:
                     raise
 
-                logger.info(
-                    "Resampling playback from %dHz to %dHz for output device compatibility",
-                    samplerate,
-                    target_rate,
-                )
+                compatible_data = data
+                if compatible_data.ndim == 1 and max_channels >= 2:
+                    compatible_data = np.stack([compatible_data, compatible_data], axis=1)
+                elif compatible_data.ndim > 1 and compatible_data.shape[1] > max_channels:
+                    if max_channels == 1:
+                        compatible_data = np.mean(compatible_data, axis=1).astype(np.float32)
+                    else:
+                        compatible_data = compatible_data[:, :max_channels]
 
-                src_len = int(data.shape[0]) if getattr(data, "ndim", 1) > 0 else 0
+                src_len = int(compatible_data.shape[0]) if getattr(compatible_data, "ndim", 1) > 0 else 0
                 if src_len <= 1:
                     raise
 
-                dst_len = max(1, int(round(src_len * target_rate / samplerate)))
-                src_x = np.linspace(0.0, 1.0, src_len, endpoint=False)
-                dst_x = np.linspace(0.0, 1.0, dst_len, endpoint=False)
+                resampled = compatible_data
+                if target_rate != samplerate:
+                    logger.info(
+                        "Resampling playback from %dHz to %dHz for output device compatibility",
+                        samplerate,
+                        target_rate,
+                    )
+                    dst_len = max(1, int(round(src_len * target_rate / samplerate)))
+                    src_x = np.linspace(0.0, 1.0, src_len, endpoint=False)
+                    dst_x = np.linspace(0.0, 1.0, dst_len, endpoint=False)
 
-                if data.ndim == 1:
-                    resampled = np.interp(dst_x, src_x, data).astype(np.float32)
-                else:
-                    channels = [
-                        np.interp(dst_x, src_x, data[:, ch])
-                        for ch in range(data.shape[1])
-                    ]
-                    resampled = np.stack(channels, axis=1).astype(np.float32)
+                    if compatible_data.ndim == 1:
+                        resampled = np.interp(dst_x, src_x, compatible_data).astype(np.float32)
+                    else:
+                        channels = [
+                            np.interp(dst_x, src_x, compatible_data[:, ch])
+                            for ch in range(compatible_data.shape[1])
+                        ]
+                        resampled = np.stack(channels, axis=1).astype(np.float32)
 
                 await loop.run_in_executor(
                     None,

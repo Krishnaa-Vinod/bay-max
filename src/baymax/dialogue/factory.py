@@ -4,7 +4,11 @@ Instantiates the configured DialogueProvider based on settings.
 Falls back to RuleBasedDialogue if the selected backend cannot be initialised.
 """
 
+import importlib.util
+import json
 import logging
+import urllib.error
+import urllib.request
 
 from baymax.config.settings import BaymaxSettings, get_settings
 from baymax.dialogue.interfaces import DialogueProvider
@@ -12,7 +16,55 @@ from baymax.dialogue.rule_based import RuleBasedDialogue
 
 logger = logging.getLogger(__name__)
 
-AVAILABLE_BACKENDS: list[str] = ["rule_based", "ollama", "transformers"]
+AVAILABLE_BACKENDS: list[str] = ["auto_local", "rule_based", "ollama", "transformers"]
+
+
+def _probe_ollama_models(base_url: str) -> list[str]:
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/tags",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if getattr(resp, "status", 0) < 200 or getattr(resp, "status", 0) >= 300:
+                return []
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+            models = payload.get("models", [])
+            names = [str(item.get("name", "")).strip() for item in models]
+            return [name for name in names if name]
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return []
+
+
+def _select_auto_local_backend(settings: BaymaxSettings) -> tuple[str, str]:
+    """Choose a usable local backend in priority order for auto_local mode."""
+    # 1) Prefer Ollama if server is reachable and has at least one model.
+    ollama_models = _probe_ollama_models(settings.ollama_base_url)
+    if ollama_models:
+        if settings.ollama_model and settings.ollama_model in ollama_models:
+            return "ollama", settings.ollama_model
+
+        preferred_prefixes = (
+            "qwen2.5:1.5b",
+            "qwen2.5:3b",
+            "qwen2.5:7b",
+            "qwen2.5",
+            "qwen",
+        )
+        for prefix in preferred_prefixes:
+            match = next((name for name in ollama_models if name.startswith(prefix)), None)
+            if match:
+                return "ollama", match
+
+        return "ollama", ollama_models[0]
+
+    # 2) Try local transformers when package is installed.
+    if importlib.util.find_spec("transformers") is not None:
+        return "transformers", settings.hf_chat_model
+
+    # 3) Last resort.
+    return "rule_based", ""
 
 
 def create_dialogue_provider(
@@ -38,6 +90,17 @@ def create_dialogue_provider(
     backend = settings.dialogue_backend.lower()
     enable_fallback = settings.enable_rule_based_fallback
     enable_debug = settings.enable_dialogue_debug
+
+    if backend == "auto_local":
+        selected_backend, selected_model = _select_auto_local_backend(settings)
+        logger.info(
+            "Resolved auto_local dialogue backend -> %s (%s)",
+            selected_backend,
+            selected_model or "default",
+        )
+        backend = selected_backend
+        if backend == "ollama" and selected_model:
+            settings.ollama_model = selected_model
 
     if backend == "rule_based":
         logger.info("Using rule_based dialogue backend")

@@ -1,6 +1,7 @@
 """Frame source implementations for webcam and video replay."""
 
 import logging
+import os
 import time
 
 import numpy as np
@@ -33,40 +34,72 @@ class OpenCVFrameSource(FrameSource):
         return self._resolved_source
 
     def _open_camera_with_fallback(self, cv2_module) -> None:
-        """Open preferred camera index and fall back only if unavailable."""
+        """Open preferred camera index and prefer RGB-looking streams."""
         preferred = int(self._source)
-        preferred_cap = cv2_module.VideoCapture(preferred)
-        if preferred_cap.isOpened():
-            ret, _ = preferred_cap.read()
-            if ret:
-                self._cap = preferred_cap
-                self._resolved_source = preferred
-                logger.info("Using preferred camera index %d", preferred)
-                return
-            preferred_cap.release()
-        else:
-            preferred_cap.release()
 
-        for idx in [i for i in range(0, 8) if i != preferred]:
+        def _saturation_score(frame: np.ndarray) -> float:
+            if frame.ndim != 3 or frame.shape[2] != 3:
+                return 0.0
+            hsv = cv2_module.cvtColor(frame, cv2_module.COLOR_BGR2HSV)
+            return float(np.mean(hsv[:, :, 1]))
+
+        def _open_candidate(idx: int):
             cap = cv2_module.VideoCapture(idx)
             if not cap.isOpened():
                 cap.release()
-                continue
-
-            ret, _ = cap.read()
+                return None
+            ret, frame = cap.read()
             if not ret:
                 cap.release()
-                continue
-            self._cap = cap
-            self._resolved_source = idx
-            logger.warning(
-                "Requested camera index %d unavailable; using fallback camera %d",
-                preferred,
-                self._resolved_source,
-            )
-            return
+                return None
+            return (_saturation_score(frame), idx, cap)
 
-        raise RuntimeError(f"Failed to open webcam source: {preferred}")
+        probe_count = max(1, int(os.getenv("BAYMAX_LIVE_CAMERA_PROBE_COUNT", "8")))
+        prefer_rgb = os.getenv("BAYMAX_LIVE_CAMERA_PREFER_RGB", "true").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        min_sat = float(os.getenv("BAYMAX_LIVE_CAMERA_MIN_SATURATION", "12.0"))
+
+        candidates = [preferred] + [idx for idx in range(probe_count) if idx != preferred]
+        opened: list[tuple[float, int, object]] = []
+        for idx in candidates:
+            opened_candidate = _open_candidate(idx)
+            if opened_candidate is not None:
+                opened.append(opened_candidate)
+
+        if not opened:
+            raise RuntimeError(f"Failed to open webcam source: {preferred}")
+
+        selected = None
+        preferred_entry = next((entry for entry in opened if entry[1] == preferred), None)
+        best_rgb_entry = max(opened, key=lambda entry: entry[0])
+
+        if preferred_entry is not None and (
+            not prefer_rgb or preferred_entry[0] >= min_sat
+        ):
+            selected = preferred_entry
+        elif prefer_rgb:
+            selected = best_rgb_entry
+        else:
+            selected = opened[0]
+
+        for sat, idx, cap in opened:
+            if idx == selected[1]:
+                continue
+            cap.release()
+
+        self._cap = selected[2]
+        self._resolved_source = selected[1]
+        if self._resolved_source != preferred:
+            logger.warning(
+                "Preferred camera %d appears unavailable/IR-like (sat=%.1f); using RGB candidate %d (sat=%.1f)",
+                preferred,
+                preferred_entry[0] if preferred_entry is not None else -1.0,
+                self._resolved_source,
+                selected[0],
+            )
+        else:
+            logger.info("Using preferred camera index %d", preferred)
 
     def open(self) -> None:
         try:

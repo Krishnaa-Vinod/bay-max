@@ -52,7 +52,7 @@ class FacenetDetector(FaceDetector):
         logger.info("FacenetDetector models loaded successfully")
 
     def detect(self, frame: np.ndarray) -> list[DetectedFace]:
-        """Detect faces and compute embeddings from a BGR/RGB numpy frame.
+        """Detect faces and compute embeddings from an RGB numpy frame.
 
         Args:
             frame: H x W x 3 numpy array (BGR or RGB).
@@ -64,11 +64,8 @@ class FacenetDetector(FaceDetector):
             self.load_model()
         assert self._mtcnn is not None and self._resnet is not None
 
-        # Convert BGR to RGB if needed (assume BGR from OpenCV)
-        if frame.ndim == 3 and frame.shape[2] == 3:
-            rgb = frame[:, :, ::-1].copy()
-        else:
-            rgb = frame
+        # Runtime frame sources already normalize frames to RGB.
+        rgb = frame
 
         pil_image = Image.fromarray(rgb)
 
@@ -121,22 +118,12 @@ class FacenetDetector(FaceDetector):
 class CosineRecognizer(FaceRecognizer):
     """Recognize faces by cosine similarity against enrolled embeddings."""
 
-    def recognize(
+    def best_match(
         self,
         embedding: list[float],
         enrolled: list[FaceEmbeddingRecord],
-        threshold: float = 0.75,
     ) -> tuple[UUID | None, float]:
-        """Match embedding against enrolled users.
-
-        Args:
-            embedding: 512-d face embedding vector.
-            enrolled: List of enrolled FaceEmbeddingRecord.
-            threshold: Minimum cosine similarity for a match.
-
-        Returns:
-            (user_id, confidence) if matched, (None, best_score) otherwise.
-        """
+        """Return best user candidate and cosine score, even below threshold."""
         if not enrolled or not embedding:
             return None, 0.0
 
@@ -159,6 +146,26 @@ class CosineRecognizer(FaceRecognizer):
             if score > best_score:
                 best_score = score
                 best_user_id = record.user_id
+
+        return best_user_id, best_score
+
+    def recognize(
+        self,
+        embedding: list[float],
+        enrolled: list[FaceEmbeddingRecord],
+        threshold: float = 0.75,
+    ) -> tuple[UUID | None, float]:
+        """Match embedding against enrolled users.
+
+        Args:
+            embedding: 512-d face embedding vector.
+            enrolled: List of enrolled FaceEmbeddingRecord.
+            threshold: Minimum cosine similarity for a match.
+
+        Returns:
+            (user_id, confidence) if matched, (None, best_score) otherwise.
+        """
+        best_user_id, best_score = self.best_match(embedding, enrolled)
 
         if best_score >= threshold:
             return best_user_id, best_score

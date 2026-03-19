@@ -87,6 +87,8 @@ class Orchestrator:
                 device = "cpu"
         self._device = device
         self._face_match_threshold = settings.face_match_threshold
+        self._face_match_relaxed_threshold = settings.face_match_relaxed_threshold
+        self._face_recognition_grace_sec = settings.face_recognition_grace_sec
         self._max_faces = settings.max_faces_per_frame
         self._pose_backend = settings.pose_backend
         self._pose_min_confidence = settings.pose_min_confidence
@@ -143,6 +145,7 @@ class Orchestrator:
         # Iteration 004: temporal smoothing buffers
         self._engagement_buffer: dict[UUID, collections.deque] = {}
         self._posture_buffer: dict[UUID, collections.deque] = {}
+        self._recent_recognitions: dict[UUID, tuple[UUID, float]] = {}
 
     def _ensure_detector(self) -> FaceDetector:
         if self._detector is None:
@@ -363,11 +366,20 @@ class Orchestrator:
                 ))
                 continue
 
-            user_id, score = recognizer.recognize(
+            candidate_user_id, score = recognizer.best_match(
                 det.embedding,
                 self._enrolled_embeddings,
-                threshold=self._face_match_threshold,
             )
+
+            user_id: UUID | None = None
+            if candidate_user_id is not None and score >= self._face_match_threshold:
+                user_id = candidate_user_id
+            elif candidate_user_id is not None and score >= self._face_match_relaxed_threshold:
+                recent = self._recent_recognitions.get(session_id)
+                if recent is not None:
+                    recent_user_id, recent_ts = recent
+                    if recent_user_id == candidate_user_id and (time.time() - recent_ts) <= self._face_recognition_grace_sec:
+                        user_id = candidate_user_id
 
             if user_id is not None:
                 user = await self.store.get_user(user_id)
@@ -383,6 +395,7 @@ class Orchestrator:
                     primary_user_id = user_id
                     primary_confidence = score
                     primary_display_name = display_name
+                    self._recent_recognitions[session_id] = (user_id, time.time())
 
                 for track in tracks:
                     if det.embedding == track.embedding:
