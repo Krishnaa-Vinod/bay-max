@@ -16,7 +16,7 @@ class KokoroTTSProvider(TTSProvider):
 
     def __init__(
         self,
-        voice: str = "af_heart",
+        voice: str = "am_michael",
         device: str = "auto",
         model_dir: str = "",
         sample_rate: int = 24000,

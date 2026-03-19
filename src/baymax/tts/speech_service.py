@@ -177,15 +177,61 @@ class SpeechService:
         if not wav_path or not os.path.isfile(wav_path):
             return False
         try:
+            import numpy as np
             import sounddevice as sd
             import soundfile as sf
 
-            data, samplerate = sf.read(wav_path)
+            data, samplerate = sf.read(wav_path, dtype="float32")
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, lambda: sd.play(data, samplerate)
-            )
-            await loop.run_in_executor(None, sd.wait)
+            try:
+                await loop.run_in_executor(
+                    None,
+                    lambda: sd.play(data, samplerate),
+                )
+                await loop.run_in_executor(None, sd.wait)
+            except Exception as exc:
+                if "Invalid sample rate" not in str(exc):
+                    raise
+
+                out_device = None
+                default_devices = sd.default.device
+                if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
+                    out_device = default_devices[1]
+
+                output_info = sd.query_devices(out_device, "output")
+                target_rate = int(round(float(output_info.get("default_samplerate", samplerate))))
+                if target_rate <= 0 or target_rate == samplerate:
+                    raise
+
+                logger.info(
+                    "Resampling playback from %dHz to %dHz for output device compatibility",
+                    samplerate,
+                    target_rate,
+                )
+
+                src_len = int(data.shape[0]) if getattr(data, "ndim", 1) > 0 else 0
+                if src_len <= 1:
+                    raise
+
+                dst_len = max(1, int(round(src_len * target_rate / samplerate)))
+                src_x = np.linspace(0.0, 1.0, src_len, endpoint=False)
+                dst_x = np.linspace(0.0, 1.0, dst_len, endpoint=False)
+
+                if data.ndim == 1:
+                    resampled = np.interp(dst_x, src_x, data).astype(np.float32)
+                else:
+                    channels = [
+                        np.interp(dst_x, src_x, data[:, ch])
+                        for ch in range(data.shape[1])
+                    ]
+                    resampled = np.stack(channels, axis=1).astype(np.float32)
+
+                await loop.run_in_executor(
+                    None,
+                    lambda: sd.play(resampled, target_rate),
+                )
+                await loop.run_in_executor(None, sd.wait)
+
             return True
         except ImportError:
             logger.info(

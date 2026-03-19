@@ -54,6 +54,31 @@ class MicrophoneCapture:
         except (ImportError, OSError):
             return False
 
+    def _candidate_sample_rates(self, sd) -> list[int]:
+        rates: list[int] = [int(self._sample_rate)]
+
+        default_devices = sd.default.device
+        input_device = None
+        if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 1:
+            input_device = default_devices[0]
+
+        try:
+            if input_device is not None and int(input_device) >= 0:
+                device_info = sd.query_devices(int(input_device))
+                default_sr = int(round(float(device_info.get("default_samplerate", 0))))
+                if default_sr > 0:
+                    rates.append(default_sr)
+        except Exception:
+            pass
+
+        rates.extend([48000, 44100, 32000, 24000, 16000])
+
+        unique: list[int] = []
+        for rate in rates:
+            if rate > 0 and rate not in unique:
+                unique.append(rate)
+        return unique
+
     def start(self) -> bool:
         """Start capturing audio. Returns True on success."""
         if self._running:
@@ -63,22 +88,41 @@ class MicrophoneCapture:
             return False
         try:
             import sounddevice as sd
+            last_error: Exception | None = None
+            for candidate_rate in self._candidate_sample_rates(sd):
+                candidate_chunk = int(candidate_rate * self._chunk_duration_ms / 1000)
+                try:
+                    self._stream = sd.InputStream(
+                        samplerate=candidate_rate,
+                        channels=self._channels,
+                        dtype="float32",
+                        blocksize=candidate_chunk,
+                        device=self._device,
+                        callback=self._audio_callback,
+                    )
+                    self._stream.start()
+                    self._sample_rate = candidate_rate
+                    self._chunk_size = candidate_chunk
+                    self._running = True
+                    logger.info(
+                        "Microphone capture started: rate=%d, channels=%d, chunk=%dms",
+                        self._sample_rate,
+                        self._channels,
+                        self._chunk_duration_ms,
+                    )
+                    return True
+                except Exception as exc:
+                    last_error = exc
+                    if self._stream is not None:
+                        try:
+                            self._stream.close()
+                        except Exception:
+                            pass
+                        self._stream = None
 
-            self._stream = sd.InputStream(
-                samplerate=self._sample_rate,
-                channels=self._channels,
-                dtype="float32",
-                blocksize=self._chunk_size,
-                device=self._device,
-                callback=self._audio_callback,
-            )
-            self._stream.start()
-            self._running = True
-            logger.info(
-                "Microphone capture started: rate=%d, channels=%d, chunk=%dms",
-                self._sample_rate, self._channels, self._chunk_duration_ms,
-            )
-            return True
+            if last_error is not None:
+                logger.error("Failed to start microphone: %s", last_error)
+            return False
         except Exception as exc:
             logger.error("Failed to start microphone: %s", exc)
             return False

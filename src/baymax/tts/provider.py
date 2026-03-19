@@ -72,7 +72,7 @@ def get_tts_provider(
         from baymax.tts.kokoro_provider import KokoroTTSProvider
 
         return KokoroTTSProvider(
-            voice=voice or "af_heart",
+            voice=voice or "am_michael",
             device=device,
             model_dir=model_dir,
             sample_rate=sample_rate,

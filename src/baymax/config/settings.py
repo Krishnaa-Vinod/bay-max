@@ -124,8 +124,8 @@ class BaymaxSettings(BaseSettings):
     # TTS backend: "null" | "kokoro" | "piper"
     tts_backend: str = "kokoro"
     # Voice preset label (style preset, not voice cloning)
-    tts_voice_preset: str = "baymax_inspired_calm"
-    tts_voice: str = "af_heart"
+    tts_voice_preset: str = "calm_cheerful_male"
+    tts_voice: str = "am_michael"
     tts_rate: int = 24000
     tts_enabled: bool = True
     tts_device: str = "auto"
@@ -136,7 +136,7 @@ class BaymaxSettings(BaseSettings):
     audio_backend: str = "sounddevice"
 
     # Kokoro-specific
-    kokoro_voice: str = "af_heart"
+    kokoro_voice: str = "am_michael"
 
     # Piper-specific
     piper_model_path: str = ""
