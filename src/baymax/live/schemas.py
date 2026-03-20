@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -33,11 +34,21 @@ class CompanionEventType(StrEnum):
     QUIET_COMPANIONSHIP_DUE = "quiet_companionship_due"
 
 
+class VoiceMode(StrEnum):
+    REALTIME = "realtime_voice"
+    LOCAL_CHAINED = "local_chained_voice"
+    TEXT_ONLY = "text_only"
+
+
 class LiveRuntimeStatus(BaseModel):
     """Current status of the live runtime."""
 
     live_mode_active: bool = False
     source: str = ""
+    voice_mode: VoiceMode = VoiceMode.LOCAL_CHAINED
+    voice_mode_requested: str = "local_chained"
+    voice_fallback_reason: str = ""
+    speech_loop_state: str = "idle"
     session_status: SessionLifecycleState = SessionLifecycleState.IDLE
     current_user_id: UUID | None = None
     current_user_display_name: str | None = None
@@ -83,6 +94,16 @@ class LiveRuntimeStatus(BaseModel):
     last_heard_text: str = ""
     transcription_latency_ms: float = 0.0
     mic_mode: str = "vad"
+    # Capability reporting + latency diagnostics (iteration 011)
+    capability_mic: bool = False
+    capability_speakers: bool = False
+    capability_realtime_voice: bool = False
+    capability_local_stt: bool = False
+    capability_local_tts: bool = False
+    capability_web_tools: bool = False
+    session_start_to_ready_ms: float = 0.0
+    end_of_speech_to_first_audio_ms: float = 0.0
+    interrupt_to_audio_stop_ms: float = 0.0
     # Iteration 009 — affect analysis state
     affect_enabled: bool = False
     affect_backend: str = ""
@@ -93,6 +114,12 @@ class LiveRuntimeStatus(BaseModel):
     emotion_debug_summary: str = ""
     # Iteration 010b: memory hits for UI
     last_memory_refs: list[str] = Field(default_factory=list)
+    # Iteration 011: web tool diagnostics
+    web_tools_enabled: bool = False
+    web_tools_available: bool = False
+    web_tools_disabled_reason: str = ""
+    last_tools_used: list[str] = Field(default_factory=list)
+    last_web_sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LiveFrameResult(BaseModel):

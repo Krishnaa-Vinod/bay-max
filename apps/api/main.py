@@ -7,7 +7,7 @@ from uuid import UUID
 import numpy as np
 
 # Import live UI routers
-from apps.api import live_http, live_ws
+from apps.api import live_http, live_ws, realtime_session
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -99,6 +99,7 @@ app.add_middleware(
 # Include live UI routers
 app.include_router(live_ws.router)
 app.include_router(live_http.router)
+app.include_router(realtime_session.router)
 
 
 @app.get("/healthz")
@@ -226,6 +227,7 @@ async def respond(request: RespondRequest) -> SupportiveResponse:
         session_id=request.session_id,
         user_id=request.user_id,
         context=request.context,
+        modality="text",
     )
 
 

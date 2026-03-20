@@ -131,6 +131,12 @@ def build_snapshot_message(
     return {
         "type": "snapshot",
         "timestamp": datetime.utcnow().isoformat() + "Z",
+        "mode": {
+            "voice_mode": status.voice_mode.value,
+            "requested": status.voice_mode_requested,
+            "fallback_reason": status.voice_fallback_reason,
+            "speech_loop_state": status.speech_loop_state,
+        },
         "session": {
             "id": str(session_id) if session_id else None,
             "state": status.session_status.value,
@@ -164,6 +170,18 @@ def build_snapshot_message(
             "fallback_warning": status.dialogue_fallback_warning,
         },
         "memory_hits": resolved_memory_hits or [],
+        "tools": {
+            "web_tools_enabled": status.web_tools_enabled,
+            "web_tools_available": status.web_tools_available,
+            "web_tools_disabled_reason": status.web_tools_disabled_reason,
+            "last_tools_used": status.last_tools_used,
+            "last_web_sources": status.last_web_sources,
+        },
+        "latency": {
+            "session_start_to_ready_ms": round(status.session_start_to_ready_ms, 1),
+            "end_of_speech_to_first_audio_ms": round(status.end_of_speech_to_first_audio_ms, 1),
+            "interrupt_to_audio_stop_ms": round(status.interrupt_to_audio_stop_ms, 1),
+        },
         "cooldown_remaining_sec": round(cooldown_remaining, 1),
         "last_event": status.last_event or "",
         "frame_count": status.frame_count,
