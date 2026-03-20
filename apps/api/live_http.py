@@ -83,11 +83,18 @@ class UIBootstrapState(BaseModel):
     # Feature flags
     speech_input_enabled: bool = False
     speech_disabled_reason: str = ""
+    proactive_mode: str = "affect_only"
     web_tools_enabled: bool = False
     web_tools_available: bool = False
     web_tools_disabled_reason: str = ""
     affect_enabled: bool = False
     tts_enabled: bool = False
+    transcript_quality_score: float = 0.0
+    transcript_quality_reason: str = ""
+    emotion_valence: float = 0.0
+    emotion_arousal: float = 0.0
+    emotion_confidence: float = 0.0
+    emotion_debug_summary: str = ""
 
     # Recognition/session diagnostics
     face_detected: bool = False
@@ -217,6 +224,21 @@ def _resolve_memory_unavailable_reason() -> tuple[str, str]:
     return ("no active user", hint)
 
 
+def _display_text(response: Any) -> str:
+    display = getattr(response, "display_text", None)
+    if isinstance(display, str) and display.strip():
+        return display
+    message = getattr(response, "message", "")
+    return message if isinstance(message, str) else str(message)
+
+
+def _spoken_text(response: Any) -> str:
+    spoken = getattr(response, "spoken_text", None)
+    if isinstance(spoken, str) and spoken.strip():
+        return spoken
+    return _display_text(response)
+
+
 @router.get("/frame/latest")
 async def get_latest_frame():
     """Return the latest annotated frame as JPEG.
@@ -314,11 +336,18 @@ async def get_ui_state() -> UIBootstrapState:
         # Feature flags
         state.speech_input_enabled = status.speech_input_enabled
         state.speech_disabled_reason = status.speech_disabled_reason
+        state.proactive_mode = status.proactive_mode
         state.web_tools_enabled = status.web_tools_enabled
         state.web_tools_available = status.web_tools_available
         state.web_tools_disabled_reason = status.web_tools_disabled_reason
         state.affect_enabled = status.affect_enabled
         state.tts_enabled = bool(status.tts_backend and status.tts_backend != "null")
+        state.transcript_quality_score = status.transcript_quality_score
+        state.transcript_quality_reason = status.transcript_quality_reason
+        state.emotion_valence = status.emotion_valence
+        state.emotion_arousal = status.emotion_arousal
+        state.emotion_confidence = status.emotion_confidence
+        state.emotion_debug_summary = status.emotion_debug_summary
 
         # Recognition/session diagnostics
         state.face_detected = status.face_detected
@@ -399,6 +428,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             source="ui_text",
         )
         _live_runtime._status.turn_count += 1
+        _live_runtime.scheduler.note_user_turn()
 
         # Generate response
         response = await _orchestrator.respond(
@@ -412,14 +442,15 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         await _orchestrator.add_turn(
             session_id=session_id,
             role=TurnRole.SYSTEM,
-            text=response.message,
+            text=_display_text(response),
             user_id=user_id,
             source="ui_text_reply",
         )
         _live_runtime._status.turn_count += 1
+        _live_runtime.scheduler.note_assistant_turn()
 
         # Update runtime status
-        _live_runtime._status.last_response_text = response.message
+        _live_runtime._status.last_response_text = _display_text(response)
         _live_runtime._status.last_response_at = datetime.utcnow()
         # Track memory refs for UI (iteration 010b hotfix)
         refs = response.memory_refs[:10] if response.memory_refs else []
@@ -431,7 +462,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         if _live_runtime.speech_service is not None:
             try:
                 await _live_runtime._speak_response(
-                    response.message,
+                    _spoken_text(response),
                     session_id,
                     "ui_text_input",
                 )
@@ -468,7 +499,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         return TextInputResponse(
             success=True,
             session_id=str(session_id),
-            response_text=response.message,
+            response_text=_display_text(response),
             memory_refs=[
                 {"text": ref, "score": None} for ref in response.memory_refs
             ],

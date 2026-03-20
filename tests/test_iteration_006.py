@@ -428,14 +428,14 @@ class TestProactiveScheduler:
     """Test cooldown-based response scheduling."""
 
     def test_first_greeting_allowed(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.RECOGNIZED_USER_ARRIVED)
         decision = sched.evaluate(event)
         assert decision.should_respond is True
         assert decision.trigger_reason == "arrival_greeting"
 
     def test_departure_does_not_trigger_response(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.PERSON_DEPARTED)
         decision = sched.evaluate(event)
         assert decision.should_respond is False
@@ -445,6 +445,7 @@ class TestProactiveScheduler:
         sched = ProactiveScheduler(
             any_response_min_interval_sec=60.0,
             proactive_min_interval_sec=60.0,
+            mode="full",
         )
 
         # First response
@@ -464,6 +465,7 @@ class TestProactiveScheduler:
         sched = ProactiveScheduler(
             any_response_min_interval_sec=0.05,
             proactive_min_interval_sec=0.05,
+            mode="full",
         )
 
         event1 = CompanionEvent(event_type=CompanionEventType.RECOGNIZED_USER_ARRIVED)
@@ -477,7 +479,7 @@ class TestProactiveScheduler:
         assert decision2.should_respond is True
 
     def test_record_response_updates_counts(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.RECOGNIZED_USER_ARRIVED)
         assert sched.total_responses == 0
         sched.record_response(event)
@@ -487,6 +489,7 @@ class TestProactiveScheduler:
         sched = ProactiveScheduler(
             any_response_min_interval_sec=60.0,
             proactive_min_interval_sec=60.0,
+            mode="full",
         )
         event = CompanionEvent(event_type=CompanionEventType.RECOGNIZED_USER_ARRIVED)
         sched.evaluate(event)
@@ -497,28 +500,28 @@ class TestProactiveScheduler:
         assert sched.total_suppressions == 1
 
     def test_unknown_user_greeting(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.UNKNOWN_USER_ARRIVED)
         decision = sched.evaluate(event)
         assert decision.should_respond is True
         assert decision.trigger_reason == "arrival_greeting"
 
     def test_quiet_companionship_trigger(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.QUIET_COMPANIONSHIP_DUE)
         decision = sched.evaluate(event)
         assert decision.should_respond is True
         assert decision.trigger_reason == "quiet_companionship"
 
     def test_recognition_gained_trigger(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.RECOGNITION_GAINED)
         decision = sched.evaluate(event)
         assert decision.should_respond is True
         assert decision.trigger_reason == "recognition_greeting"
 
     def test_reset(self):
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
         event = CompanionEvent(event_type=CompanionEventType.RECOGNIZED_USER_ARRIVED)
         sched.record_response(event)
         sched.reset()
@@ -784,7 +787,7 @@ class TestLiveIntegration:
         """Simulate a user arriving and verify the complete event flow."""
         sup = SessionSupervisor(presence_min_frames=1, absence_timeout_sec=5.0)
         engine = EventEngine(stability_sec=0.1)
-        sched = ProactiveScheduler()
+        sched = ProactiveScheduler(mode="full")
 
         uid = uuid4()
         sid = uuid4()
@@ -845,6 +848,7 @@ class TestLiveIntegration:
         """Verify that repeated events don't cause response spam."""
         sched = ProactiveScheduler(
             proactive_min_interval_sec=60.0,
+            mode="full",
             any_response_min_interval_sec=60.0,
         )
 

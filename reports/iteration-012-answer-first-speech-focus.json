@@ -1,0 +1,99 @@
+{
+  "iteration": "012",
+  "branch_name": "feature/iteration-012-answer-first-speech-focus",
+  "status": "implemented",
+  "date": "2026-03-20",
+  "goal": "Answer-first, on-topic speech and text behavior with proactive suppression by default and truthful fallback reporting.",
+  "root_causes_found": [
+    "direct asks routed to suggestive/supportive path",
+    "prompt style biased toward supportive drift",
+    "forced memory mention behavior",
+    "weak auto_local preference order",
+    "no transcript quality gate",
+    "random proactive triggers active by default"
+  ],
+  "design_decisions": [
+    "deterministic intent router with TurnIntent labels",
+    "explicit answer-first response strategies",
+    "prompt families split by strategy class",
+    "memory relevance gating threshold",
+    "affect_only proactive default mode",
+    "speech transcript quality scoring and clarify fallback",
+    "limited-mode metadata for truthful fallback"
+  ],
+  "files_changed": [
+    ".env.example",
+    "README.md",
+    "docs/LOCAL_TESTING.md",
+    "apps/api/live_http.py",
+    "apps/api/live_ws.py",
+    "apps/ui/src/types/live.ts",
+    "src/baymax/audio/schemas.py",
+    "src/baymax/audio/transcriber.py",
+    "src/baymax/config/settings.py",
+    "src/baymax/core/enums.py",
+    "src/baymax/dialogue/factory.py",
+    "src/baymax/dialogue/intent_router.py",
+    "src/baymax/dialogue/prompt_builder.py",
+    "src/baymax/dialogue/rule_based.py",
+    "src/baymax/live/proactive_scheduler.py",
+    "src/baymax/live/runtime.py",
+    "src/baymax/live/schemas.py",
+    "src/baymax/orchestrator/service.py",
+    "src/baymax/planner/interfaces.py",
+    "src/baymax/planner/supportive_planner.py",
+    "src/baymax/schemas/response.py",
+    "tests/test_iteration_005.py",
+    "tests/test_iteration_006.py",
+    "tests/test_iteration_012_answer_first.py",
+    "tests/test_speech_intent_routing.py",
+    "tests/test_proactive_policy_affect_only.py",
+    "tests/test_backend_fallback_truthfulness.py",
+    "tests/test_memory_relevance_gating.py",
+    "tests/test_low_confidence_transcript_clarification.py"
+  ],
+  "backend_selection_after_fix": {
+    "auto_local_preference": [
+      "qwen2.5:7b",
+      "qwen2.5:3b",
+      "qwen2.5:1.5b",
+      "qwen2.5:0.5b"
+    ],
+    "fallback_truthfulness": "rule_based sets limited_mode + reason; orchestrator exposes fallback warning",
+    "display_vs_spoken": "display_text may include sources, spoken_text avoids URL list readout"
+  },
+  "transcript_quality_gate": {
+    "signals": [
+      "min chars",
+      "min tokens",
+      "filler-only",
+      "garbled repetition",
+      "low confidence",
+      "echo overlap"
+    ],
+    "clarification_text": "I did not catch that clearly. Could you repeat it?"
+  },
+  "proactive_policy_before_after": {
+    "before": "arrival/recognition/posture/engagement/quiet events could speak",
+    "after": "default affect_only suppresses those triggers; only persistent distress affect check-in allowed with silence gate + cooldown"
+  },
+  "tests": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /mnt/NewVolume1/baymax-work/.conda/envs/baymax-ssd/bin/python -m pytest tests/test_iteration_012_answer_first.py tests/test_speech_intent_routing.py tests/test_proactive_policy_affect_only.py tests/test_backend_fallback_truthfulness.py tests/test_memory_relevance_gating.py tests/test_low_confidence_transcript_clarification.py tests/test_iteration_005.py tests/test_iteration_006.py tests/test_iteration_010b.py tests/test_iteration_011.py -q",
+    "result": "142 passed, 1 warning"
+  },
+  "manual_validation": {
+    "status": "partially_complete",
+    "notes": "Automated tests completed. Full real-time mic/camera interactive checklist still required on live hardware session."
+  },
+  "remaining_known_issues": [
+    "lexical intent router can misclassify edge-case phrasing",
+    "transcript quality heuristics are not yet device-calibrated",
+    "rule_based fallback intentionally limited for broad factual QA"
+  ],
+  "recommended_next_iteration": [
+    "semantic follow-up resolution",
+    "confidence-calibrated ASR quality model",
+    "UI limited_mode/proactive_mode badges",
+    "scripted live hardware eval harness"
+  ]
+}

@@ -16,10 +16,12 @@ import sys
 import urllib.error
 import urllib.request
 from contextlib import suppress
+from pathlib import Path
 
 # Ensure the project root is on the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_PROJECT_ROOT))
+sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -216,6 +218,9 @@ async def run_local_backend(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    # Keep runtime paths stable even when the launcher is invoked outside repo root.
+    os.chdir(_PROJECT_ROOT)
+
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),

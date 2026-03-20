@@ -28,14 +28,14 @@ make run-demo
 
 ## Install Options
 
-| Command | What it installs | Use when |
-|---------|-----------------|----------|
-| `pip install -e ".[dev]"` | Core + dev tools | Running tests only |
-| `pip install -e ".[dev,vector]"` | + LanceDB + sentence-transformers | Memory semantic search |
-| `pip install -e ".[dev,dialogue]"` | + Transformers + PyTorch | Local HuggingFace LLM dialogue |
-| `pip install -e ".[tts]"` | Kokoro TTS + audio | Spoken output |
-| `pip install -e ".[speech]"` | faster-whisper + audio | Speech input |
-| `pip install -e ".[all]"` | Everything | Recommended full local companion stack |
+| Command                            | What it installs                  | Use when                               |
+| ---------------------------------- | --------------------------------- | -------------------------------------- |
+| `pip install -e ".[dev]"`          | Core + dev tools                  | Running tests only                     |
+| `pip install -e ".[dev,vector]"`   | + LanceDB + sentence-transformers | Memory semantic search                 |
+| `pip install -e ".[dev,dialogue]"` | + Transformers + PyTorch          | Local HuggingFace LLM dialogue         |
+| `pip install -e ".[tts]"`          | Kokoro TTS + audio                | Spoken output                          |
+| `pip install -e ".[speech]"`       | faster-whisper + audio            | Speech input                           |
+| `pip install -e ".[all]"`          | Everything                        | Recommended full local companion stack |
 
 For **Ollama-based dialogue** (easiest local LLM mode): no extra Python package required.
 Install Ollama separately: https://ollama.ai, then `ollama pull qwen2.5:1.5b`.
@@ -44,11 +44,11 @@ Install Ollama separately: https://ollama.ai, then `ollama pull qwen2.5:1.5b`.
 
 Bay-Max supports three dialogue backends, selectable via `BAYMAX_DIALOGUE_BACKEND`:
 
-| Backend | Env value | Requirement |
-|---------|-----------|-------------|
-| Rule-based (default) | `rule_based` | None |
-| Ollama | `ollama` | Ollama server running + model pulled |
-| HuggingFace Transformers | `transformers` | `pip install -e ".[dialogue]"` |
+| Backend                  | Env value      | Requirement                          |
+| ------------------------ | -------------- | ------------------------------------ |
+| Rule-based (default)     | `rule_based`   | None                                 |
+| Ollama                   | `ollama`       | Ollama server running + model pulled |
+| HuggingFace Transformers | `transformers` | `pip install -e ".[dialogue]"`       |
 
 See `docs/LOCAL_TESTING.md` for full local-LLM testing instructions.
 
@@ -56,11 +56,11 @@ See `docs/LOCAL_TESTING.md` for full local-LLM testing instructions.
 
 Bay-Max supports text-to-speech output via the `BAYMAX_TTS_BACKEND` setting:
 
-| Backend | Env value | Requirement |
-|---------|-----------|-------------|
-| Kokoro (default) | `kokoro` | `pip install -e ".[tts]"` |
-| Null (silent) | `null` | None |
-| Piper (placeholder) | `piper` | `piper-tts` + ONNX model |
+| Backend             | Env value | Requirement               |
+| ------------------- | --------- | ------------------------- |
+| Kokoro (default)    | `kokoro`  | `pip install -e ".[tts]"` |
+| Null (silent)       | `null`    | None                      |
+| Piper (placeholder) | `piper`   | `piper-tts` + ONNX model  |
 
 See `docs/TTS_ARCHITECTURE.md` for full TTS design details.
 
@@ -68,12 +68,13 @@ See `docs/TTS_ARCHITECTURE.md` for full TTS design details.
 
 Bay-Max supports bidirectional speech via `BAYMAX_STT_BACKEND`:
 
-| Backend | Env value | Requirement |
-|---------|-----------|-------------|
+| Backend                  | Env value        | Requirement                  |
+| ------------------------ | ---------------- | ---------------------------- |
 | faster-whisper (default) | `faster_whisper` | `pip install -e ".[speech]"` |
-| Null (no transcription) | `null` | None |
+| Null (no transcription)  | `null`           | None                         |
 
 Features:
+
 - Silero VAD for speech segmentation (configurable threshold and timing)
 - Echo suppression to prevent responding to own TTS output
 - Speaking lock with post-speech cooldown
@@ -140,12 +141,22 @@ make run-local-backend-basic
 make run-local-backend-voice
 
 # full: TTS + speech input, with dialogue preference
-# Ollama if available, else Transformers if explicitly configured, else rule_based fallback
+# Ollama if available (stronger Qwen preferred: 7b -> 3b -> 1.5b -> 0.5b),
+# else Transformers if explicitly configured, else rule_based fallback
 make run-local-backend-full
 ```
 
 In full mode, if dialogue falls back to rule-based, the UI shows:
 LLM unavailable - using rule-based fallback
+
+## Answer-First Speech Focus (Iteration 012)
+
+- Direct user questions and follow-ups are answer-first.
+- Emotional shares route to empathy-first responses.
+- Memory mentions are relevance-gated, not forced.
+- Proactive speech default is `affect_only`.
+- Arrival/recognition/posture/engagement/quiet events do not speak by default.
+- Low-quality transcripts trigger short clarification instead of guessing.
 
 Advanced/debug only (split-process, easier to misconfigure):
 
@@ -156,6 +167,7 @@ make run-ui
 ```
 
 The UI shows three columns:
+
 - **What Bay-Max Sees**: Live camera feed, identity, posture, engagement, affect
 - **What Bay-Max is Doing**: Animated face, activity feed, last response, input controls
 - **What Bay-Max Remembers**: Retrieved memories, semantic facts, memory stats

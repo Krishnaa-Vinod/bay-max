@@ -66,6 +66,8 @@ class LiveRuntime:
             proactive_min_interval_sec=settings.proactive_min_interval_sec,
             any_response_min_interval_sec=settings.any_response_min_interval_sec,
             quiet_companionship_interval_sec=settings.quiet_companionship_interval_sec,
+            mode=settings.proactive_mode,
+            affect_checkin_min_silence_sec=settings.affect_checkin_min_silence_sec,
         )
 
         # Artifact logger
@@ -105,6 +107,9 @@ class LiveRuntime:
         self._speech_input_enabled = settings.enable_speech_input
         self._speech_init_error: str | None = None
         self._speech_start_error: str | None = None
+        self._speech_min_tokens = max(1, settings.speech_min_tokens)
+        self._speech_min_chars = max(1, settings.speech_min_chars)
+        self._speech_confidence_threshold = settings.speech_confidence_threshold
         if self._speech_input_enabled:
             try:
                 from baymax.audio.speech_input_service import SpeechInputService
@@ -133,6 +138,7 @@ class LiveRuntime:
 
         # Runtime state
         self._status = LiveRuntimeStatus()
+        self._status.proactive_mode = settings.proactive_mode
         self._running = False
         self._start_time = 0.0
         self._frame_count = 0
@@ -146,6 +152,7 @@ class LiveRuntime:
         self._session_ready_ms: float = 0.0
         self._last_end_to_audio_ms: float = 0.0
         self._last_interrupt_to_stop_ms: float = 0.0
+        self._last_affect_checkin_at: float = 0.0
 
         # Voice mode + recognition cadence settings (iteration 011)
         self._voice_mode_requested = settings.voice_mode
@@ -480,7 +487,7 @@ class LiveRuntime:
                     continue
 
                 self._status.speech_loop_state = "thinking_or_tooling"
-                await self._handle_speech_turn(result.text)
+                await self._handle_speech_turn(result)
                 if self._running:
                     self._status.speech_loop_state = "listening"
 
@@ -490,8 +497,9 @@ class LiveRuntime:
                 logger.error("Transcription consumer error: %s", exc)
                 await asyncio.sleep(0.5)
 
-    async def _handle_speech_turn(self, text: str) -> None:
+    async def _handle_speech_turn(self, result) -> None:
         """Process a speech transcription as a user turn through the full pipeline."""
+        text = result.text
         session_id = self._supervisor.current_session_id
         user_id = self._status.current_user_id
 
@@ -500,6 +508,16 @@ class LiveRuntime:
             return
 
         logger.info("Speech turn: '%s'", text[:80])
+
+        accepted, score, reason = self._assess_transcript_quality(result)
+        self._status.transcript_quality_score = score
+        self._status.transcript_quality_reason = reason
+
+        if not accepted:
+            clarification = "I did not catch that clearly. Could you repeat it?"
+            logger.info("Rejected low-quality transcript (%.2f): %s", score, reason)
+            await self._speak_response(clarification, session_id, "speech_clarify")
+            return
 
         try:
             # Store user turn with source='speech'
@@ -511,6 +529,7 @@ class LiveRuntime:
                 source="speech",
             )
             self._status.turn_count += 1
+            self._scheduler.note_user_turn()
 
             # Generate response
             response = await self._orch.respond(
@@ -524,28 +543,71 @@ class LiveRuntime:
             await self._orch.add_turn(
                 session_id=session_id,
                 role=TurnRole.SYSTEM,
-                text=response.message,
+                text=self._response_display_text(response),
                 user_id=user_id,
                 source="speech_reply",
             )
             self._status.turn_count += 1
+            self._scheduler.note_assistant_turn()
 
             # Record cooldown
-            self._status.last_response_text = response.message
+            self._status.last_response_text = self._response_display_text(response)
             self._status.last_response_at = datetime.utcnow()
             self._last_memory_refs_count = len(response.memory_refs)
             self._status.last_memory_refs = response.memory_refs[:10] if response.memory_refs else []
             self._status.last_tools_used = list(response.tool_usage)
             self._status.last_web_sources = list(response.source_refs)
 
-            logger.info("Speech response: %s", response.message[:80])
+            logger.info("Speech response: %s", self._response_spoken_text(response)[:80])
 
             # Synthesize and play TTS with speaking lock
-            await self._speak_response(response.message, session_id, "speech_turn")
+            await self._speak_response(self._response_spoken_text(response), session_id, "speech_turn")
 
         except Exception as exc:
             logger.error("Failed to process speech turn: %s", exc)
             self._errors.append(f"Speech turn error: {exc}")
+
+    def _assess_transcript_quality(self, result) -> tuple[bool, float, str]:
+        """Return (accepted, score, reason) for a transcription result."""
+        text = (result.text or "").strip()
+        if not text:
+            return (False, 0.0, "empty transcript")
+
+        tokens = [t for t in text.lower().split() if t]
+        score = 1.0
+        reasons: list[str] = []
+
+        if len(text) < self._speech_min_chars:
+            score -= 0.35
+            reasons.append("too short")
+
+        if len(tokens) < self._speech_min_tokens:
+            score -= 0.30
+            reasons.append("too few tokens")
+
+        filler_only = {"uh", "um", "hmm", "mm", "ah", "er", "uhh"}
+        if tokens and all(t in filler_only for t in tokens):
+            score -= 0.45
+            reasons.append("filler-only")
+
+        if any(ch * 5 in text.lower() for ch in "abcdefghijklmnopqrstuvwxyz"):
+            score -= 0.30
+            reasons.append("garbled repetition")
+
+        confidence = getattr(result, "confidence", 0.0) or 0.0
+        if confidence < self._speech_confidence_threshold:
+            score -= 0.35
+            reasons.append(f"low confidence {confidence:.2f}")
+
+        last_spoken = (self._status.last_spoken_text or "").lower().strip()
+        if last_spoken and text.lower() in last_spoken:
+            score -= 0.45
+            reasons.append("possible echo overlap")
+
+        score = max(0.0, min(1.0, score))
+        accepted = score >= 0.55
+        reason = ", ".join(reasons) if reasons else "accepted"
+        return (accepted, round(score, 3), reason)
 
     async def _speak_response(
         self, text: str, session_id: UUID | None, trigger: str
@@ -907,6 +969,24 @@ class LiveRuntime:
             and self._affect_frame_counter % self._affect_sample_every_n_frames == 0
         ):
             await self._run_affect_analysis(frame, session_id)
+            affect_event = self._maybe_emit_affect_distress_event(
+                session_id=session_id,
+                user_id=user_id,
+                user_display_name=user_name,
+            )
+            if affect_event is not None:
+                self._artifact_logger.log_event(affect_event)
+                decision = self._scheduler.evaluate(affect_event)
+                if decision.should_respond and session_id:
+                    await self._generate_proactive_response(
+                        event=affect_event,
+                        session_id=session_id,
+                        user_id=user_id,
+                        trigger_reason=decision.trigger_reason,
+                        frame=frame,
+                    )
+                elif decision.suppressed:
+                    self._artifact_logger.log_suppression(decision)
 
         # Update status
         self._status.current_user_id = user_id
@@ -952,7 +1032,7 @@ class LiveRuntime:
             await self._orch.add_turn(
                 session_id=session_id,
                 role=TurnRole.SYSTEM,
-                text=response.message,
+                text=self._response_display_text(response),
                 user_id=user_id,
             )
             self._status.turn_count += 1
@@ -961,7 +1041,7 @@ class LiveRuntime:
             self._scheduler.record_response(event)
 
             # Update status
-            self._status.last_response_text = response.message
+            self._status.last_response_text = self._response_display_text(response)
             self._status.last_response_at = datetime.utcnow()
             self._last_memory_refs_count = len(response.memory_refs)
             # Track memory refs for UI (iteration 010b hotfix)
@@ -992,7 +1072,7 @@ class LiveRuntime:
 
             # Synthesize and play speech with speaking lock
             await self._speak_response(
-                response.message, session_id, event.event_type.value
+                self._response_spoken_text(response), session_id, event.event_type.value
             )
 
         except Exception as e:
@@ -1031,6 +1111,11 @@ class LiveRuntime:
             )
         elif event.event_type == CompanionEventType.QUIET_COMPANIONSHIP_DUE:
             return f"It's been quiet for a while with {name} present. Offer gentle companionship."
+        elif event.event_type == CompanionEventType.AFFECT_DISTRESS_PERSISTENT:
+            return (
+                "Affect signal has been persistently negative for a while. "
+                "Offer one short optional check-in with no pressure."
+            )
         elif event.event_type == CompanionEventType.SESSION_RESUMED:
             return f"Welcome back, {name}! The session has resumed."
         else:
@@ -1121,6 +1206,41 @@ class LiveRuntime:
         except Exception as e:
             logger.warning("Affect analysis failed: %s", e)
 
+    def _maybe_emit_affect_distress_event(
+        self,
+        session_id: UUID,
+        user_id: UUID | None,
+        user_display_name: str | None,
+    ) -> CompanionEvent | None:
+        """Create an affect distress event only when negative affect is stable."""
+        if self._affect_smoother is None:
+            return None
+
+        smoothed = self._affect_smoother.get_current_state()
+        if smoothed.confidence < self._settings.affect_checkin_confidence_threshold:
+            return None
+        if smoothed.valence > self._settings.affect_checkin_negative_valence_threshold:
+            return None
+        if smoothed.stable_duration_sec < self._settings.affect_checkin_min_stable_sec:
+            return None
+
+        now = time.time()
+        if (now - self._last_affect_checkin_at) < self._settings.affect_checkin_cooldown_sec:
+            return None
+
+        self._last_affect_checkin_at = now
+        return CompanionEvent(
+            event_type=CompanionEventType.AFFECT_DISTRESS_PERSISTENT,
+            session_id=session_id,
+            user_id=user_id,
+            user_display_name=user_display_name,
+            confidence=smoothed.confidence,
+            details={
+                "valence": f"{smoothed.valence:.3f}",
+                "stable_sec": f"{smoothed.stable_duration_sec:.1f}",
+            },
+        )
+
     def _update_status(self) -> None:
         """Refresh the runtime status object."""
         self._status.session_status = self._supervisor.state
@@ -1151,6 +1271,7 @@ class LiveRuntime:
         self._status.dialogue_requested_backend = self._orch.dialogue_requested_backend
         self._status.dialogue_requested_model = self._orch.dialogue_requested_model
         self._status.dialogue_fallback_warning = self._orch.dialogue_fallback_warning
+        self._status.proactive_mode = self._settings.proactive_mode
         self._status.session_start_to_ready_ms = self._session_ready_ms
         self._status.end_of_speech_to_first_audio_ms = self._last_end_to_audio_ms
         self._status.interrupt_to_audio_stop_ms = self._last_interrupt_to_stop_ms
@@ -1231,6 +1352,19 @@ class LiveRuntime:
             self._status.emotion_stable_duration_sec = smoothed.stable_duration_sec
         else:
             self._status.affect_enabled = False
+
+    def _response_display_text(self, response) -> str:
+        display = getattr(response, "display_text", None)
+        if isinstance(display, str) and display.strip():
+            return display
+        message = getattr(response, "message", "")
+        return message if isinstance(message, str) else str(message)
+
+    def _response_spoken_text(self, response) -> str:
+        spoken = getattr(response, "spoken_text", None)
+        if isinstance(spoken, str) and spoken.strip():
+            return spoken
+        return self._response_display_text(response)
 
     def _request_stop(self) -> None:
         """Request a clean stop."""

@@ -493,7 +493,7 @@ function App() {
               <span className="text-gray-400">TTS:</span>
               <span className="text-white">{snapshot?.tts.backend || 'none'} / {snapshot?.tts.voice || 'n/a'}</span>
             </div>
-            <div className="text-gray-300">Latency (speech->audio): {(snapshot?.latency.end_of_speech_to_first_audio_ms ?? 0).toFixed(1)} ms</div>
+            <div className="text-gray-300">Latency (speech-{">"}audio): {(snapshot?.latency.end_of_speech_to_first_audio_ms ?? 0).toFixed(1)} ms</div>
             <div className="text-gray-300">Latency (interrupt): {(snapshot?.latency.interrupt_to_audio_stop_ms ?? 0).toFixed(1)} ms</div>
             <div className="flex justify-between gap-2">
               <span className="text-gray-400">Voice preset:</span>

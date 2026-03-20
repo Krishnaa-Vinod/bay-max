@@ -46,6 +46,8 @@ export interface SpeechInputState {
   stt_backend: string;
   speaking_lock: boolean;
   last_heard: string;
+  transcript_quality_score?: number;
+  transcript_quality_reason?: string;
   mic_mode: string;
 }
 
@@ -85,6 +87,7 @@ export interface SnapshotMessage {
     requested: string;
     fallback_reason: string;
     speech_loop_state: string;
+    proactive_mode?: string;
   };
   session: SessionInfo;
   perception: PerceptionData;

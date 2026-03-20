@@ -62,6 +62,23 @@ class SupportiveResponse(BaseModel):
         default_factory=list,
         description="Structured source references used in this response.",
     )
+    # Iteration 012: split text for UI rendering vs speech output
+    spoken_text: str = Field(
+        default="",
+        description="Speech-optimized text (no raw URL list reading).",
+    )
+    display_text: str = Field(
+        default="",
+        description="UI-visible text, may include source list rendering.",
+    )
+    limited_mode: bool = Field(
+        default=False,
+        description="True when backend is in constrained fallback capability mode.",
+    )
+    limited_mode_reason: str = Field(
+        default="",
+        description="Human-readable explanation when limited_mode=True.",
+    )
 
 
 # --- Iteration 005: New schemas ---
@@ -108,6 +125,14 @@ class GroundedPromptContext(BaseModel):
     affect_context: str = Field(
         default="",
         description="Optional affect-based tone guidance (internal use only)"
+    )
+    turn_intent: str = Field(
+        default="",
+        description="Deterministic intent label for the latest user turn.",
+    )
+    backend_limited_mode: bool = Field(
+        default=False,
+        description="Whether this turn is being generated under limited backend mode.",
     )
 
 

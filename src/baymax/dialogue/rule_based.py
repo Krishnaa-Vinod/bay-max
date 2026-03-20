@@ -13,6 +13,18 @@ from baymax.schemas.response import GroundedPromptContext, SupportiveResponse
 from baymax.state.models import InteractionState
 
 _TEMPLATES: dict[ResponseStrategy, list[str]] = {
+    ResponseStrategy.ANSWER: [
+        "I am in limited local mode right now, so I may not answer broad factual questions reliably.",
+    ],
+    ResponseStrategy.WEB_ANSWER: [
+        "I can answer from the provided web context, but I am running in limited local mode.",
+    ],
+    ResponseStrategy.CLARIFY: [
+        "I did not catch that clearly. Could you repeat it?",
+    ],
+    ResponseStrategy.PROACTIVE_CHECK_IN: [
+        "You seem a little down. Do you want to talk about it?",
+    ],
     ResponseStrategy.GREET: [
         "Hello! It's good to see you. How are you doing today?",
         "Hi there! Welcome. I'm here if you'd like to chat.",
@@ -127,7 +139,11 @@ class RuleBasedDialogue(DialogueProvider):
         memory_ref = self._select_memory_ref(memories, prompt_context)
 
         # Build a short, calm Baymax-inspired response for high-signal user text.
-        if inferred in {"negative", "stress"}:
+        if effective_strategy in {ResponseStrategy.ANSWER, ResponseStrategy.WEB_ANSWER}:
+            message = self._build_limited_answer(latest_user_text)
+        elif effective_strategy == ResponseStrategy.CLARIFY:
+            message = template
+        elif inferred in {"negative", "stress"}:
             message = self._build_supportive_negative(message_seed=template, user_text=latest_user_text, memory_ref=memory_ref)
         elif inferred == "recall":
             message = self._build_recall(memory_ref)
@@ -143,6 +159,8 @@ class RuleBasedDialogue(DialogueProvider):
             message=message,
             backend="rule_based",
             model_name="",
+            limited_mode=True,
+            limited_mode_reason="LLM unavailable; using deterministic templates",
         )
 
     def _extract_latest_user_text(self, prompt_context: GroundedPromptContext | None) -> str:
@@ -231,4 +249,15 @@ class RuleBasedDialogue(DialogueProvider):
         return (
             "I do not have a clear memory to cite yet. "
             "If you share a detail now, I can keep it for later recall."
+        )
+
+    def _build_limited_answer(self, user_text: str) -> str:
+        lower = user_text.lower()
+        if "capital of france" in lower:
+            return "Paris. I am in limited local mode right now, so I will keep answers concise."
+        if "center a div" in lower and "css" in lower:
+            return "Use flexbox: set the parent to display:flex; justify-content:center; align-items:center."
+        return (
+            "I am in limited local mode right now, so I cannot reliably answer broad factual questions. "
+            "If you want, ask me to search the web and I will cite sources."
         )

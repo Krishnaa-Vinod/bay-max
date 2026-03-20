@@ -135,6 +135,8 @@ class FasterWhisperProvider(ASRProvider):
                 latency_ms=round(latency_ms, 1),
                 success=bool(text),
                 error=None if text else "Empty transcription",
+                avg_logprob=getattr(info, "avg_logprob", None),
+                no_speech_prob=getattr(info, "no_speech_prob", None),
             )
         except Exception as exc:
             latency_ms = (time.time() - t0) * 1000

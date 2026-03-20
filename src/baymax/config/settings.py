@@ -1,21 +1,29 @@
 """Bay-Max configuration settings from environment variables."""
 
 import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _default_local_dir(scratch_suffix: str, local_suffix: str) -> str:
     base = os.path.expandvars(f"/scratch/$USER/bay-max/{scratch_suffix}")
     if os.path.isdir("/scratch"):
         return base
-    return os.path.abspath(os.path.join(".", local_suffix))
+    return str((_PROJECT_ROOT / local_suffix.lstrip("./")).resolve())
 
 
 class BaymaxSettings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = {"env_prefix": "BAYMAX_", "env_file": ".env", "extra": "ignore"}
+    model_config = {
+        "env_prefix": "BAYMAX_",
+        "env_file": str(_PROJECT_ROOT / ".env"),
+        "extra": "ignore",
+    }
 
     # Data directories
     data_dir: str = _default_local_dir("data", "./local_data")
@@ -82,6 +90,7 @@ class BaymaxSettings(BaseSettings):
 
     # Max memories fed into the dialogue prompt
     dialogue_top_k_memories: int = 5
+    dialogue_memory_relevance_threshold: float = 0.18
 
     # Generation temperature (applies to Ollama and Transformers backends)
     dialogue_temperature: float = 0.4
@@ -123,6 +132,12 @@ class BaymaxSettings(BaseSettings):
     any_response_min_interval_sec: float = 10.0
     quiet_companionship_interval_sec: float = 300.0
     event_min_stability_sec: float = 4.0
+    proactive_mode: str = "affect_only"  # off | affect_only | full
+    affect_checkin_min_stable_sec: float = 45.0
+    affect_checkin_negative_valence_threshold: float = -0.35
+    affect_checkin_confidence_threshold: float = 0.65
+    affect_checkin_cooldown_sec: float = 600.0
+    affect_checkin_min_silence_sec: float = 45.0
 
     # Live overlay and artifacts
     enable_live_overlay: bool = True
@@ -196,6 +211,9 @@ class BaymaxSettings(BaseSettings):
 
     # Post-speech cooldown before accepting new mic input (ms)
     post_speech_cooldown_ms: float = 1500.0
+    speech_min_tokens: int = 2
+    speech_min_chars: int = 4
+    speech_confidence_threshold: float = 0.35
 
     # Listening indicator
     enable_listening_indicator: bool = True

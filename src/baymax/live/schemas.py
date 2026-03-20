@@ -32,6 +32,7 @@ class CompanionEventType(StrEnum):
     POSTURE_CHANGED = "posture_changed"
     ENGAGEMENT_CHANGED = "engagement_changed"
     QUIET_COMPANIONSHIP_DUE = "quiet_companionship_due"
+    AFFECT_DISTRESS_PERSISTENT = "affect_distress_persistent"
 
 
 class VoiceMode(StrEnum):
@@ -66,6 +67,7 @@ class LiveRuntimeStatus(BaseModel):
     dialogue_requested_backend: str = ""
     dialogue_requested_model: str = ""
     dialogue_fallback_warning: str = ""
+    proactive_mode: str = "affect_only"
     last_event: str | None = None
     last_event_at: datetime | None = None
     last_response_text: str | None = None
@@ -93,6 +95,8 @@ class LiveRuntimeStatus(BaseModel):
     speaking_lock_active: bool = False
     last_heard_text: str = ""
     transcription_latency_ms: float = 0.0
+    transcript_quality_score: float = 0.0
+    transcript_quality_reason: str = ""
     mic_mode: str = "vad"
     # Capability reporting + latency diagnostics (iteration 011)
     capability_mic: bool = False

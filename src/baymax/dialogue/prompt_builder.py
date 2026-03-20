@@ -1,121 +1,152 @@
-"""Grounded prompt builder for memory-aware LLM dialogue.
+"""Grounded prompt builder for memory-aware Bay-Max dialogue."""
 
-Uses the plan-then-verbalize pattern: the planner chooses a strategy, the
-prompt builder packages observed facts, retrieved memories, recent conversation
-turns, and explicit safety constraints into a structured prompt, and the LLM
-verbalizes within those constraints.
-"""
+from __future__ import annotations
 
-from baymax.core.enums import ResponseStrategy
+import re
+
+from baymax.core.enums import ResponseStrategy, TurnIntent
 from baymax.schemas.memory import ChatTurn, MemoryQueryResult
 from baymax.schemas.response import GroundedPromptContext
 from baymax.state.models import InteractionState
 
-_STRATEGY_INSTRUCTIONS: dict[ResponseStrategy, str] = {
+_ANSWER_STRATEGIES = {
+    ResponseStrategy.ANSWER,
+    ResponseStrategy.WEB_ANSWER,
+    ResponseStrategy.CLARIFY,
+}
+
+_COMPANION_STRATEGY_INSTRUCTIONS: dict[ResponseStrategy, str] = {
     ResponseStrategy.GREET: (
         "The user has just arrived or started a new session. "
-        "Greet them warmly and personally if you know their name. "
-        "Ask an open, gentle question about how they are doing."
+        "Greet them warmly and briefly."
     ),
     ResponseStrategy.CHECK_IN: (
-        "The user appears disengaged or may be stepping away. "
-        "Gently acknowledge this and let them know you are here whenever they are ready. "
-        "Do not pressure them."
+        "The user appears disengaged. "
+        "Offer a low-pressure check-in and let them lead."
     ),
     ResponseStrategy.ENCOURAGE: (
-        "The user is engaged and present. "
-        "Offer genuine acknowledgment of their presence and encourage them. "
-        "Keep it warm but brief."
+        "The user is engaged. "
+        "Respond with brief encouragement without overdoing tone."
     ),
     ResponseStrategy.EMPATHIZE: (
-        "The user appears to be in a difficult emotional state. "
-        "Acknowledge their feelings without minimising them. "
-        "Do not offer solutions unless asked. Simply be present."
+        "The user is sharing a difficult feeling. "
+        "Validate emotions first and avoid generic factual pivots."
     ),
     ResponseStrategy.RECALL: (
-        "The user is asking what you remember about them. "
-        "You MUST mention at least one specific detail from the "
-        "'Memories about this user' section below. "
-        "Quote or paraphrase a concrete fact "
-        "(e.g. a hobby, a project name, a preference). "
-        "Do not respond generically — your response must prove "
-        "you actually recall something. "
-        "Only state facts you actually have. "
-        "Do not fabricate details you do not have."
+        "The user asked to recall prior context. "
+        "Use one concrete memory detail if available."
     ),
     ResponseStrategy.SUGGEST: (
-        "The user appears tired or under strain. "
-        "Gently suggest a simple self-care action such as a short break, "
-        "a glass of water, or a moment of calm. Keep it inviting, not prescriptive."
+        "Offer one practical, optional suggestion in a calm tone."
     ),
     ResponseStrategy.FAREWELL: (
-        "The session is ending or the user is leaving. "
-        "Say a warm, caring goodbye. Remind them you will be here next time."
+        "Close warmly and briefly."
+    ),
+    ResponseStrategy.PROACTIVE_CHECK_IN: (
+        "Offer a short, gentle optional check-in. "
+        "Do not pressure the user."
     ),
 }
 
 _SAFETY_RULES = [
     "You are a supportive companion, not a clinician.",
-    "You must never diagnose a disease, condition, or illness.",
-    "You must never recommend medication, treatment, or dosage.",
-    "You must never assert medical certainty beyond what you observe.",
-    "If the user asks for medical advice or diagnosis, gently redirect them "
-    "to a qualified healthcare professional.",
-    "Keep responses warm, supportive, concise, and grounded in what you actually know.",
-    "Never fabricate memories or facts you do not have.",
-    "Speak in first person as Bay-Max.",
+    "Never diagnose a disease, condition, or illness.",
+    "Never recommend medication, treatment, or dosage.",
+    "If asked for medical diagnosis/treatment advice, redirect to qualified care.",
+    "Never fabricate memories or facts.",
 ]
 
-# Iteration 008: Baymax-inspired companion persona style
 _PERSONA_STYLE = (
-    "Your tone is calm, literal, helpful, gentle, and nonjudgmental. "
-    "Keep responses brief but warm — typically 1-3 sentences. "
-    "Avoid sarcasm, high-energy hype, excessive exclamation points, "
-    "overly human slang, and medical certainty. "
-    "When appropriate, mention one remembered or observed detail naturally. "
-    "Silence is acceptable — do not talk too much."
+    "Calm, literal, warm, concise. Usually 1-3 sentences. "
+    "Avoid forced cheerfulness and avoid rambling."
 )
 
 
-def build_system_prompt() -> str:
-    """Return the fixed system-level persona and safety instruction."""
+def _tokenize(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9']+", text.lower()))
+
+
+def _memory_relevance(memory: str, context: str) -> float:
+    mem_tokens = _tokenize(memory)
+    ctx_tokens = _tokenize(context)
+    if not mem_tokens or not ctx_tokens:
+        return 0.0
+    overlap = len(mem_tokens & ctx_tokens)
+    return overlap / float(max(len(ctx_tokens), 1))
+
+
+def select_relevant_memories(
+    memory_refs: list[str],
+    context: str,
+    turn_intent: TurnIntent | None,
+    threshold: float = 0.18,
+    top_k: int = 5,
+) -> list[str]:
+    """Return memory refs only when they are relevant to the current turn."""
+    if not memory_refs:
+        return []
+
+    if turn_intent in (TurnIntent.RECALL, TurnIntent.FOLLOW_UP):
+        return memory_refs[:top_k]
+
+    if turn_intent == TurnIntent.EMOTIONAL_SHARE:
+        scored = sorted(
+            ((m, _memory_relevance(m, context)) for m in memory_refs),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        return [m for m, s in scored if s >= threshold][:top_k]
+
+    scored = sorted(
+        ((m, _memory_relevance(m, context)) for m in memory_refs),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    return [m for m, s in scored if s >= threshold][:top_k]
+
+
+def build_system_prompt(
+    strategy: ResponseStrategy = ResponseStrategy.ENCOURAGE,
+    limited_mode: bool = False,
+) -> str:
+    """Return a strategy-aware system prompt."""
     rules = "\n".join(f"- {r}" for r in _SAFETY_RULES)
+
+    if strategy in _ANSWER_STRATEGIES:
+        limited_clause = ""
+        if limited_mode:
+            limited_clause = (
+                " You are in a limited fallback backend. Be truthful about limits and "
+                "do not claim high-confidence world knowledge without sources."
+            )
+        return (
+            "You are Bay-Max. Answer the user's exact question first. "
+            "Stay on-topic, concise, and coherent with recent turn context. "
+            "Do not force a memory mention. Do not add supportive fluff unless it naturally fits. "
+            "Do not ask unnecessary follow-up questions."
+            f"{limited_clause}\n\n"
+            "Safety rules:\n"
+            f"{rules}"
+        )
+
     return (
-        "You are Bay-Max, a warm and attentive supportive companion. "
-        "You remember what users share with you across sessions and use those memories "
-        "to personalise your responses.\n\n"
+        "You are Bay-Max, a warm and attentive supportive companion.\n"
         f"Companion style: {_PERSONA_STYLE}\n\n"
-        "Safety rules you must always follow:\n"
-        f"{rules}\n\n"
-        "Respond with a single concise supportive message (1-3 sentences). "
-        "Do not add headers, bullet points, or meta-commentary."
+        "Safety rules:\n"
+        f"{rules}"
     )
 
 
 def build_grounded_user_prompt(ctx: GroundedPromptContext) -> str:
-    """Build the user-turn prompt from the grounded context package."""
+    """Build the user-turn prompt from grounded context."""
     parts: list[str] = []
 
-    # User identity
     if ctx.user_display_name:
         parts.append(f"User name: {ctx.user_display_name}")
 
-    # Current state
-    if ctx.state_summary:
-        state_str = ", ".join(f"{k}={v}" for k, v in ctx.state_summary.items())
-        parts.append(f"Current session state: {state_str}")
+    if ctx.context:
+        parts.append(f"Latest user turn: {ctx.context}")
 
-    # Retrieved memories
-    if ctx.memory_refs:
-        mem_lines = "\n".join(f"  - {m}" for m in ctx.memory_refs[: ctx.top_k_memories])
-        parts.append(f"Memories about this user:\n{mem_lines}")
-    else:
-        parts.append(
-            "No memories retrieved for this user yet. "
-            "Do not invent past interactions."
-        )
-
-    # Recent conversation turns
     if ctx.recent_turns:
         turn_lines: list[str] = []
         for t in ctx.recent_turns[-8:]:
@@ -124,40 +155,51 @@ def build_grounded_user_prompt(ctx: GroundedPromptContext) -> str:
             turn_lines.append(f"  {role}: {text}")
         parts.append("Recent conversation:\n" + "\n".join(turn_lines))
 
-    # Optional free-form context
-    if ctx.context:
-        parts.append(f"Additional context: {ctx.context}")
+    if ctx.strategy in _ANSWER_STRATEGIES:
+        if ctx.memory_refs:
+            mem_lines = "\n".join(f"  - {m}" for m in ctx.memory_refs[: ctx.top_k_memories])
+            parts.append(
+                "Relevant optional memory context (use only if directly helpful):\n"
+                f"{mem_lines}"
+            )
 
-    # Affect context (iteration 009) - only if confidence is sufficient
-    if hasattr(ctx, 'affect_context') and ctx.affect_context:
-        parts.append(f"Observation note (internal): {ctx.affect_context}")
+        if ctx.strategy == ResponseStrategy.CLARIFY:
+            parts.append(
+                "Respond with a short clarification request because the transcript/input "
+                "is uncertain or unclear."
+            )
+        elif ctx.strategy == ResponseStrategy.WEB_ANSWER:
+            parts.append(
+                "Answer first with current information from provided web context when present. "
+                "Keep concise."
+            )
+        else:
+            parts.append("Answer the user's exact question directly and briefly.")
 
-    # Strategy instruction
-    strategy_instr = _STRATEGY_INSTRUCTIONS.get(
-        ctx.strategy,
-        _STRATEGY_INSTRUCTIONS[ResponseStrategy.ENCOURAGE],
-    )
-    parts.append(f"Response guidance: {strategy_instr}")
+        return "\n\n".join(parts)
 
     if ctx.memory_refs:
-        parts.append(
-            "Now write a single supportive response following the guidance above. "
-            "You MUST reference at least one specific detail from the memories listed above. "
-            "Be natural and warm. Do not repeat the instructions."
-        )
-    else:
-        parts.append(
-            "Now write a single supportive response following the guidance above. "
-            "Be natural and warm. Do not repeat the instructions."
-        )
+        mem_lines = "\n".join(f"  - {m}" for m in ctx.memory_refs[: ctx.top_k_memories])
+        parts.append(f"Memories about this user:\n{mem_lines}")
+
+    if ctx.affect_context:
+        parts.append(f"Observation note (internal): {ctx.affect_context}")
+
+    strategy_instr = _COMPANION_STRATEGY_INSTRUCTIONS.get(
+        ctx.strategy,
+        _COMPANION_STRATEGY_INSTRUCTIONS[ResponseStrategy.ENCOURAGE],
+    )
+    parts.append(f"Response guidance: {strategy_instr}")
+    parts.append("Write one concise response in Bay-Max voice.")
 
     return "\n\n".join(parts)
 
 
 def build_messages(ctx: GroundedPromptContext) -> list[dict]:
     """Return an OpenAI-style messages list for chat completion APIs."""
+    limited_mode = bool(ctx.backend_limited_mode)
     return [
-        {"role": "system", "content": build_system_prompt()},
+        {"role": "system", "content": build_system_prompt(ctx.strategy, limited_mode=limited_mode)},
         {"role": "user", "content": build_grounded_user_prompt(ctx)},
     ]
 
@@ -170,28 +212,26 @@ def build_prompt_context(
     context: str = "",
     top_k_memories: int = 5,
     affect_bias_confidence_threshold: float = 0.6,
+    turn_intent: TurnIntent | None = None,
+    memory_relevance_threshold: float = 0.18,
+    backend_limited_mode: bool = False,
 ) -> GroundedPromptContext:
-    """Assemble a GroundedPromptContext from orchestrator data.
-
-    Args:
-        strategy: The planned response strategy.
-        state: Current interaction state.
-        memories: Retrieved memories.
-        recent_turns: The most recent chat turns from SQLite.
-        context: Optional free-form context string from the caller.
-        top_k_memories: Number of memories to include.
-        affect_bias_confidence_threshold: Minimum confidence to include affect context.
-
-    Returns:
-        A fully-populated GroundedPromptContext ready for prompt building.
-    """
-    memory_refs: list[str] = []
+    """Assemble a GroundedPromptContext from orchestrator data."""
+    all_memory_refs: list[str] = []
     for m in memories.episodic_memories:
-        if m.content not in memory_refs:
-            memory_refs.append(m.content)
+        if m.content not in all_memory_refs:
+            all_memory_refs.append(m.content)
     for f in memories.semantic_facts:
-        if f.content not in memory_refs:
-            memory_refs.append(f.content)
+        if f.content not in all_memory_refs:
+            all_memory_refs.append(f.content)
+
+    selected_memory_refs = select_relevant_memories(
+        all_memory_refs,
+        context=context,
+        turn_intent=(turn_intent or (TurnIntent.RECALL if strategy == ResponseStrategy.RECALL else None)),
+        threshold=memory_relevance_threshold,
+        top_k=top_k_memories,
+    )
 
     state_summary: dict[str, str] = {
         "engagement": state.engagement_level.value,
@@ -210,45 +250,30 @@ def build_prompt_context(
         for t in recent_turns
     ]
 
-    # Generate affect context if confidence is sufficient (iteration 009)
     affect_context = ""
-    if (state.affect_enabled
-        and state.affect_confidence >= affect_bias_confidence_threshold):
-
-        # Create non-clinical affect observation
+    if (
+        state.affect_enabled
+        and state.affect_confidence >= affect_bias_confidence_threshold
+        and strategy not in _ANSWER_STRATEGIES
+    ):
         if state.valence <= -0.3 and state.arousal <= 0.4:
-            affect_context = "User appears subdued or thoughtful - adjust tone to be gentler and more validating"
+            affect_context = "User appears subdued; use gentler validating tone"
         elif state.valence <= -0.3 and state.arousal > 0.55:
-            affect_context = "User appears tense or concerned - focus on calming, empathetic presence"
-        elif state.valence >= 0.4 and state.arousal > 0.55:
-            affect_context = "User appears positive and energetic - can be naturally more engaging"
-        elif state.valence >= 0.4 and state.arousal <= 0.4:
-            affect_context = "User appears calm and content - maintain warm, peaceful tone"
-        elif state.arousal <= 0.2:
-            affect_context = "User appears very calm - match with gentle, quiet presence"
-        elif state.arousal > 0.6:
-            affect_context = "User appears alert and engaged - can match energy appropriately"
-        else:
-            # Don't add affect context for neutral/unclear patterns
-            pass
+            affect_context = "User appears tense; prioritize calming empathy"
 
-    # Build context object
     ctx = GroundedPromptContext(
         user_id=state.user_id,
         user_display_name=state.user_display_name,
         session_id=state.session_id,
         strategy=strategy,
         state_summary=state_summary,
-        memory_refs=memory_refs[:top_k_memories],
+        memory_refs=selected_memory_refs,
         recent_turns=turn_dicts,
         safety_rules=_SAFETY_RULES,
         context=context,
         top_k_memories=top_k_memories,
+        affect_context=affect_context,
+        turn_intent=turn_intent.value if turn_intent else "",
+        backend_limited_mode=backend_limited_mode,
     )
-
-    # Add affect context if available
-    if affect_context:
-        # Add to existing context object (somewhat hacky but works with current schema)
-        ctx.affect_context = affect_context
-
     return ctx
