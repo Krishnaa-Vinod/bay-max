@@ -66,6 +66,7 @@ Thumbs.db
 # Bay-Max specific
 baymax.db
 artifacts/
+apps/ui/node_modules/
 # Allow verification manifests and summaries in artifacts (for review)
 !artifacts/verification_*/manifest.json
 !artifacts/verification_*/summary.md
