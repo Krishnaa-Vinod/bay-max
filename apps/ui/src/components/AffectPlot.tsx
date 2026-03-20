@@ -17,6 +17,7 @@ export function AffectPlot({
   confidence,
   backend,
 }: AffectPlotProps) {
+  const showWarning = confidence < 0.15;
   // SVG dimensions
   const width = 200;
   const height = 80;
@@ -54,12 +55,13 @@ export function AffectPlot({
         </span>
       </div>
 
-      {confidence < 0.3 ? (
-        <div className="text-center text-gray-500 text-sm py-4">
+      {showWarning && (
+        <div className="text-center text-amber-400 text-xs py-1">
           Low confidence / No face detected
         </div>
-      ) : (
-        <>
+      )}
+
+      <>
           {/* Mini plot */}
           <svg width={width} height={height} className="w-full">
             {/* Background */}
@@ -150,8 +152,7 @@ export function AffectPlot({
               <span>Arousal</span>
             </div>
           </div>
-        </>
-      )}
+      </>
     </div>
   );
 }

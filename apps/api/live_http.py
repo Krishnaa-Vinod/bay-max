@@ -380,7 +380,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         response = await _orchestrator.respond(
             session_id=session_id,
             user_id=user_id,
-            context=f"The user typed: {request.text}",
+            context=request.text,
         )
 
         # Store system response

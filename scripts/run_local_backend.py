@@ -117,7 +117,15 @@ def _select_dialogue_backend_for_full_mode() -> None:
       3) Rule-based fallback
     """
     explicit = os.getenv("BAYMAX_DIALOGUE_BACKEND", "").strip().lower()
-    if explicit and explicit != "auto_local":
+    lock_backend = os.getenv("BAYMAX_DIALOGUE_BACKEND_LOCKED", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+    # Respect explicit non-rule-based backend selection. Allow stale rule_based
+    # env pins to be auto-upgraded unless backend locking is requested.
+    if explicit in {"ollama", "transformers"}:
+        return
+    if explicit == "rule_based" and lock_backend:
         return
 
     ollama_base = os.getenv("BAYMAX_OLLAMA_BASE_URL", "http://localhost:11434")
@@ -127,7 +135,7 @@ def _select_dialogue_backend_for_full_mode() -> None:
             os.environ["BAYMAX_OLLAMA_MODEL"] = "qwen2.5:1.5b"
         return
 
-    hf_model = os.getenv("BAYMAX_HF_CHAT_MODEL", "").strip()
+    hf_model = os.getenv("BAYMAX_HF_CHAT_MODEL", "Qwen/Qwen2.5-1.5B-Instruct").strip()
     has_transformers = importlib.util.find_spec("transformers") is not None
     if hf_model and has_transformers:
         os.environ["BAYMAX_DIALOGUE_BACKEND"] = "transformers"

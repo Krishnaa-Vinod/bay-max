@@ -40,6 +40,7 @@ class SpeechService:
         output_dir: str = "./artifacts/tts",
         enable_playback: bool = True,
         audio_backend: str = "sounddevice",
+        output_device: str | int | None = None,
         max_queue_size: int = 5,
     ) -> None:
         self._provider = provider or get_tts_provider(
@@ -52,8 +53,15 @@ class SpeechService:
         self._output_dir = output_dir
         self._enable_playback = enable_playback
         self._audio_backend = audio_backend
+        self._output_device = self._normalize_output_device(output_device)
         self._sample_rate = sample_rate
         self._max_queue_size = max_queue_size
+
+        logger.info(
+            "SpeechService playback configured: backend=%s output_device=%s",
+            self._audio_backend,
+            self._output_device if self._output_device is not None else "auto",
+        )
 
         self._queue: deque[SpeechSynthesisResult] = deque(
             maxlen=max_queue_size
@@ -66,6 +74,20 @@ class SpeechService:
         self._total_errors = 0
         self._events: list[SpeechEvent] = []
         self._playback_lock = asyncio.Lock()
+
+    @staticmethod
+    def _normalize_output_device(output_device: str | int | None) -> int | None:
+        if output_device is None:
+            return None
+        if isinstance(output_device, int):
+            return output_device
+        text = str(output_device).strip().lower()
+        if text in {"", "default", "auto", "none"}:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
 
     @property
     def provider(self) -> TTSProvider:
@@ -183,52 +205,117 @@ class SpeechService:
 
             data, samplerate = sf.read(wav_path, dtype="float32")
             loop = asyncio.get_event_loop()
+
+            def _resolve_output_device() -> int | None:
+                if self._output_device is not None:
+                    try:
+                        sd.query_devices(self._output_device, "output")
+                        return self._output_device
+                    except Exception:
+                        logger.warning(
+                            "Configured output device %s is not output-capable; falling back to auto selection",
+                            self._output_device,
+                        )
+
+                candidates: list[tuple[int, int]] = []
+                try:
+                    for idx, dev in enumerate(sd.query_devices()):
+                        if int(dev.get("max_output_channels", 0)) <= 0:
+                            continue
+                        name = str(dev.get("name", "")).lower()
+                        score = 0
+                        if "analog" in name or "speaker" in name or "headphone" in name:
+                            score += 3
+                        if "hdmi" in name or "displayport" in name or "monitor" in name:
+                            score -= 2
+                        candidates.append((score, idx))
+                except Exception:
+                    candidates = []
+
+                if candidates:
+                    candidates.sort(reverse=True)
+                    chosen = candidates[0][1]
+                    logger.info("Using auto-selected output device index %d", chosen)
+                    return chosen
+
+                default_devices = sd.default.device
+                if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
+                    try:
+                        out_idx = int(default_devices[1])
+                        if out_idx >= 0:
+                            return out_idx
+                    except Exception:
+                        pass
+
+                return None
+
+            selected_output_device = _resolve_output_device()
+            logger.info(
+                "SpeechService playback using output device: %s",
+                selected_output_device if selected_output_device is not None else "default",
+            )
+
             try:
                 await loop.run_in_executor(
                     None,
-                    lambda: sd.play(data, samplerate),
+                    lambda: sd.play(data, samplerate, device=selected_output_device),
                 )
                 await loop.run_in_executor(None, sd.wait)
             except Exception as exc:
-                if "Invalid sample rate" not in str(exc):
+                err_text = str(exc)
+                if (
+                    "Invalid sample rate" not in err_text
+                    and "Invalid number of channels" not in err_text
+                ):
                     raise
 
-                out_device = None
-                default_devices = sd.default.device
-                if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
-                    out_device = default_devices[1]
+                out_device = selected_output_device
 
                 output_info = sd.query_devices(out_device, "output")
                 target_rate = int(round(float(output_info.get("default_samplerate", samplerate))))
-                if target_rate <= 0 or target_rate == samplerate:
+                if target_rate <= 0:
+                    target_rate = int(samplerate)
+
+                max_channels = int(output_info.get("max_output_channels", 0))
+                if max_channels <= 0:
                     raise
 
-                logger.info(
-                    "Resampling playback from %dHz to %dHz for output device compatibility",
-                    samplerate,
-                    target_rate,
-                )
+                compatible_data = data
+                if compatible_data.ndim == 1 and max_channels >= 2:
+                    compatible_data = np.stack([compatible_data, compatible_data], axis=1)
+                elif compatible_data.ndim > 1 and compatible_data.shape[1] > max_channels:
+                    if max_channels == 1:
+                        compatible_data = np.mean(compatible_data, axis=1).astype(np.float32)
+                    else:
+                        compatible_data = compatible_data[:, :max_channels]
 
-                src_len = int(data.shape[0]) if getattr(data, "ndim", 1) > 0 else 0
+                src_len = int(compatible_data.shape[0]) if getattr(compatible_data, "ndim", 1) > 0 else 0
                 if src_len <= 1:
                     raise
 
-                dst_len = max(1, int(round(src_len * target_rate / samplerate)))
-                src_x = np.linspace(0.0, 1.0, src_len, endpoint=False)
-                dst_x = np.linspace(0.0, 1.0, dst_len, endpoint=False)
+                resampled = compatible_data
+                if target_rate != samplerate:
+                    logger.info(
+                        "Resampling playback from %dHz to %dHz for output device compatibility",
+                        samplerate,
+                        target_rate,
+                    )
+                    dst_len = max(1, int(round(src_len * target_rate / samplerate)))
+                    src_x = np.linspace(0.0, 1.0, src_len, endpoint=False)
+                    dst_x = np.linspace(0.0, 1.0, dst_len, endpoint=False)
 
-                if data.ndim == 1:
-                    resampled = np.interp(dst_x, src_x, data).astype(np.float32)
-                else:
-                    channels = [
-                        np.interp(dst_x, src_x, data[:, ch])
-                        for ch in range(data.shape[1])
-                    ]
-                    resampled = np.stack(channels, axis=1).astype(np.float32)
+                    if compatible_data.ndim == 1:
+                        resampled = np.interp(dst_x, src_x, compatible_data).astype(np.float32)
+                    else:
+                        channels = [
+                            np.interp(dst_x, src_x, compatible_data[:, ch])
+                            for ch in range(compatible_data.shape[1])
+                        ]
+                        resampled = np.stack(channels, axis=1).astype(np.float32)
 
                 await loop.run_in_executor(
                     None,
-                    lambda: sd.play(resampled, target_rate),
+                    lambda: sd.play(resampled, target_rate, device=out_device),
                 )
                 await loop.run_in_executor(None, sd.wait)
 

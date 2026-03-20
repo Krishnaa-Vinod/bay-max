@@ -18,6 +18,7 @@ Configuration (via .env):
 
 import logging
 import time
+import importlib.util
 
 from baymax.core.enums import ResponseStrategy
 from baymax.dialogue.interfaces import DialogueProvider
@@ -113,13 +114,27 @@ class TransformersDialogueProvider(DialogueProvider):
             cache_dir=self._cache_dir,
             trust_remote_code=True,
         )
+        has_accelerate = importlib.util.find_spec("accelerate") is not None
+        model_kwargs = {
+            "cache_dir": self._cache_dir,
+            "torch_dtype": torch_dtype,
+            "trust_remote_code": True,
+        }
+        if has_accelerate:
+            model_kwargs["device_map"] = "auto"
+        else:
+            logger.info(
+                "accelerate not installed; loading %s without device_map",
+                self._model_name,
+            )
+
         model = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            cache_dir=self._cache_dir,
-            torch_dtype=torch_dtype,
-            trust_remote_code=True,
-            device_map="auto",
+            **model_kwargs,
         )
+        if not has_accelerate and torch.cuda.is_available():
+            model = model.to("cuda")
+
         self._pipeline = pipeline(
             "text-generation",
             model=model,

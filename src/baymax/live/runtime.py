@@ -96,6 +96,7 @@ class LiveRuntime:
             output_dir=settings.tts_output_dir,
             enable_playback=settings.enable_audio_playback,
             audio_backend=settings.audio_backend,
+            output_device=settings.audio_output_device,
         )
 
         # Iteration 008: Speech input service
@@ -935,19 +936,20 @@ class LiveRuntime:
             detector = self._orch._ensure_detector()
             detections = detector.detect(frame)
 
-            if not detections:
-                # No face detected - return unknown affect
-                logger.debug("No face detected for affect analysis")
-                return
-
-            # Use first detected face
-            face = detections[0]
-            face_bbox = {
-                "x1": face.bbox.x1,
-                "y1": face.bbox.y1,
-                "x2": face.bbox.x2,
-                "y2": face.bbox.y2,
-            }
+            if detections:
+                # Use first detected face
+                face = detections[0]
+                face_bbox = {
+                    "x1": face.bbox.x1,
+                    "y1": face.bbox.y1,
+                    "x2": face.bbox.x2,
+                    "y2": face.bbox.y2,
+                }
+            else:
+                # Fallback: allow affect backend to detect from full-frame context.
+                h, w = frame.shape[:2]
+                face_bbox = {"x1": 0, "y1": 0, "x2": w, "y2": h}
+                logger.debug("No face bbox from detector; running full-frame affect fallback")
 
             # Run affect analysis
             emotion_result = self._affect_analyzer.analyze(frame, face_bbox)
