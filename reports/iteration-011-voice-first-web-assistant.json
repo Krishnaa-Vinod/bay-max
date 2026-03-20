@@ -1,0 +1,80 @@
+{
+  "iteration": "011",
+  "branch_name": "feature/iteration-011-voice-first-web-assistant",
+  "status": "in_progress",
+  "date": "2026-03-19",
+  "goal": "Deliver a smoother voice-first Bay-Max flow with mode transparency, interruption support, recognition continuity, and web-assisted answers with source references.",
+  "features_completed": [
+    "Added explicit voice mode settings and runtime status fields",
+    "Implemented runtime-safe mic lifecycle APIs with idempotent start/stop",
+    "Added voice interrupt endpoint and speech loop state telemetry",
+    "Added sticky recognition continuity windows in live runtime",
+    "Implemented web tool modules: search_web, fetch_url, summarize_sources",
+    "Integrated tool usage and source refs into orchestrator responses",
+    "Added realtime session provisioning endpoint with fallback reasoning",
+    "Updated UI contracts to display mode/tool/fallback/latency diagnostics",
+    "Added iteration-011 tests for mode/tool/mic contracts"
+  ],
+  "files_changed": [
+    ".gitignore",
+    ".env.example",
+    "apps/api/main.py",
+    "apps/api/live_http.py",
+    "apps/api/live_ws.py",
+    "apps/api/realtime_session.py",
+    "src/baymax/config/settings.py",
+    "src/baymax/live/schemas.py",
+    "src/baymax/live/runtime.py",
+    "src/baymax/orchestrator/service.py",
+    "src/baymax/schemas/response.py",
+    "src/baymax/tools/__init__.py",
+    "src/baymax/tools/web_search.py",
+    "src/baymax/tools/web_fetch.py",
+    "apps/ui/src/types/live.ts",
+    "apps/ui/src/App.tsx",
+    "apps/ui/src/components/MemoryPanel.tsx",
+    "tests/test_iteration_011.py",
+    "tests/test_iteration_010b.py",
+    "README.md",
+    "docs/LOCAL_TESTING.md",
+    "docs/project_state.json",
+    "reports/iteration-011-voice-first-web-assistant.md",
+    "reports/iteration-011-voice-first-web-assistant-checklist.md"
+  ],
+  "tests_added_or_updated": [
+    "tests/test_iteration_011.py (new)",
+    "tests/test_iteration_010b.py (updated recognition-state compatibility)"
+  ],
+  "manual_verification_steps": [
+    "Start backend and UI in recommended single-process mode",
+    "Verify mode/fallback/tool diagnostics in UI",
+    "Toggle mic repeatedly to verify lifecycle idempotency",
+    "Interrupt speech and verify return to listening",
+    "Ask web-needed query and confirm source references"
+  ],
+  "latency_targets": {
+    "end_of_user_speech_to_first_audio_ms": 1000,
+    "interrupt_to_audio_stop_ms": 250,
+    "session_start_to_listening_ms": 1500
+  },
+  "latency_observed": {
+    "end_of_user_speech_to_first_audio_ms": "instrumented_field_added_not_hardware_verified",
+    "interrupt_to_audio_stop_ms": "instrumented_field_added_not_hardware_verified",
+    "session_start_to_listening_ms": "instrumented_field_added_not_hardware_verified"
+  },
+  "fallback_modes": [
+    "realtime_voice -> local_chained_voice",
+    "local_chained_voice -> text_only"
+  ],
+  "known_limitations": [
+    "Realtime provisioning endpoint is in place, but full browser WebRTC media path is pending",
+    "Web search parser uses DuckDuckGo HTML endpoint and may need hardening",
+    "Full hardware latency benchmarks were not performed in this headless environment"
+  ],
+  "next_tasks": [
+    "Complete browser WebRTC realtime voice path",
+    "Add integration tests for voice-mode transitions and latency telemetry",
+    "Add web tool provider failover and confidence scoring",
+    "Run full manual smoke on machine with mic/speakers"
+  ]
+}

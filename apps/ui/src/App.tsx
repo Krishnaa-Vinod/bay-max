@@ -190,6 +190,11 @@ function App() {
             ? 'LLM unavailable — using rule-based fallback'
             : '',
         },
+        tools: {
+          ...prev.tools,
+          last_tools_used: response.tool_usage || [],
+          last_web_sources: response.source_refs || [],
+        },
         tts: {
           ...prev.tts,
           last_result: response.tts_result || prev.tts.last_result,
@@ -250,6 +255,12 @@ function App() {
           return {
             type: 'bootstrap',
             timestamp: state.server_time,
+            mode: {
+              voice_mode: state.voice_mode,
+              requested: state.voice_mode_requested,
+              fallback_reason: state.voice_fallback_reason,
+              speech_loop_state: state.speech_loop_state,
+            },
             session: {
               id: state.session_id,
               state: state.session_state,
@@ -283,6 +294,18 @@ function App() {
               fallback_warning: state.dialogue_fallback_warning,
             },
             memory_hits: [],
+            tools: {
+              web_tools_enabled: state.web_tools_enabled,
+              web_tools_available: state.web_tools_available,
+              web_tools_disabled_reason: state.web_tools_disabled_reason,
+              last_tools_used: [],
+              last_web_sources: [],
+            },
+            latency: {
+              session_start_to_ready_ms: state.session_start_to_ready_ms,
+              end_of_speech_to_first_audio_ms: state.end_of_speech_to_first_audio_ms,
+              interrupt_to_audio_stop_ms: state.interrupt_to_audio_stop_ms,
+            },
             cooldown_remaining_sec: 0,
             last_event: state.last_event,
             frame_count: state.frame_count,
@@ -323,11 +346,7 @@ function App() {
   const frameUrl = `/v1/live/frame/latest?t=${snapshot?.frame_count ?? 0}`;
   const micStateLabel = !snapshot?.speech_input.enabled
     ? 'disabled'
-    : snapshot.speech_input.speaking_lock
-      ? 'speaking-lock'
-      : snapshot.speech_input.listening
-        ? 'listening'
-        : 'processing';
+    : snapshot.mode?.speech_loop_state || 'idle';
 
   return (
     <div className="min-h-screen bg-baymax-bg text-white p-4">
@@ -379,9 +398,9 @@ function App() {
                 <span className="text-gray-400">Recognition:</span>
                 <span className="ml-2 text-white">
                   {snapshot?.perception.recognition_state === 'no_face' && 'no face detected'}
-                  {snapshot?.perception.recognition_state === 'unknown_user' && 'face detected, unknown user'}
-                  {snapshot?.perception.recognition_state === 'below_threshold' && `below threshold (< ${(snapshot?.perception.face_match_threshold ?? 0).toFixed(2)})`}
-                  {snapshot?.perception.recognition_state === 'recognized_enrolled' && 'recognized enrolled user'}
+                  {snapshot?.perception.recognition_state === 'face_seen_unknown' && 'face detected, unknown user'}
+                  {snapshot?.perception.recognition_state === 'known_low_confidence' && `known user, low confidence (< ${(snapshot?.perception.face_match_threshold ?? 0).toFixed(2)})`}
+                  {snapshot?.perception.recognition_state === 'known_attached' && 'known user attached'}
                 </span>
               </div>
               <div>
@@ -448,13 +467,34 @@ function App() {
               <span className="text-gray-400">Mic state:</span>
               <span className="text-white">{micStateLabel}</span>
             </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-gray-400">Voice mode:</span>
+              <span className="text-white">{snapshot?.mode.voice_mode || 'unknown'}</span>
+            </div>
+            {!!snapshot?.mode.fallback_reason && (
+              <div className="text-amber-300 border border-amber-700/50 bg-amber-900/20 rounded px-2 py-1">
+                {snapshot.mode.fallback_reason}
+              </div>
+            )}
             {!snapshot?.speech_input.enabled && (
               <div className="text-red-300">Speech unavailable: {snapshot?.speech_input.disabled_reason || 'unavailable'}</div>
             )}
             <div className="flex justify-between gap-2">
+              <span className="text-gray-400">Web tools:</span>
+              <span className="text-white">{snapshot?.tools.web_tools_available ? 'available' : 'unavailable'}</span>
+            </div>
+            {!snapshot?.tools.web_tools_available && !!snapshot?.tools.web_tools_disabled_reason && (
+              <div className="text-red-300">Web tools unavailable: {snapshot.tools.web_tools_disabled_reason}</div>
+            )}
+            {snapshot?.tools.last_tools_used?.length ? (
+              <div className="text-gray-200">Last tools: {snapshot.tools.last_tools_used.join(', ')}</div>
+            ) : null}
+            <div className="flex justify-between gap-2">
               <span className="text-gray-400">TTS:</span>
               <span className="text-white">{snapshot?.tts.backend || 'none'} / {snapshot?.tts.voice || 'n/a'}</span>
             </div>
+            <div className="text-gray-300">Latency (speech->audio): {(snapshot?.latency.end_of_speech_to_first_audio_ms ?? 0).toFixed(1)} ms</div>
+            <div className="text-gray-300">Latency (interrupt): {(snapshot?.latency.interrupt_to_audio_stop_ms ?? 0).toFixed(1)} ms</div>
             <div className="flex justify-between gap-2">
               <span className="text-gray-400">Voice preset:</span>
               <span className="text-white">{snapshot?.tts.voice_preset || 'default'}</span>
