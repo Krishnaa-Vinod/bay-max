@@ -1,8 +1,8 @@
 {
-  "iteration": "010b",
-  "branch_name": "feature/iteration-010b-companion-ui",
-  "status": "completed",
-  "last_updated": "2026-03-18",
+  "iteration": "011",
+  "branch_name": "feature/iteration-011-voice-first-web-assistant",
+  "status": "in_progress",
+  "last_updated": "2026-03-19",
   "modules_implemented": [
     "config",
     "core",
@@ -54,7 +54,9 @@
     "GET /v1/live/ui-state",
     "POST /v1/live/text-input",
     "POST /v1/live/mic/toggle",
-    "GET /v1/live/memory/recent"
+    "GET /v1/live/memory/recent",
+    "POST /v1/live/voice/interrupt",
+    "POST /v1/realtime/session"
   ],
   "frontend_stack": [
     "Vite",
@@ -75,22 +77,22 @@
     "VT801-VT810 manual hardware tests (microphone, speaker) not_run on Sol — requires real audio hardware",
     "MediaPipe not installed in current environment — runtime falls back to null affect backend gracefully",
     "Companion UI requires npm and Node.js to be installed",
-    "Browser manual tests not run on headless Sol environment"
+    "Browser manual tests not run on headless Sol environment",
+    "Realtime voice path requires OPENAI_API_KEY and network connectivity; local chained mode remains default fallback",
+    "Web search provider currently uses DuckDuckGo HTML endpoint parsing and may be rate/markup sensitive"
   ],
   "next_tasks": [
-    "Run full browser-based UI verification on a machine with webcam and display",
-    "Add more comprehensive frontend tests",
-    "Add memory edit/correction controls to UI",
-    "Add session timeline export feature",
+    "Run full browser-based voice verification on a machine with webcam, microphone, and speakers",
+    "Wire browser WebRTC realtime session path end-to-end behind /v1/realtime/session",
+    "Add richer source ranking and provider failover in web tool broker",
+    "Add integration tests for interrupt latency and voice mode transition telemetry",
     "Migrate SQLite store to fully async aiosqlite",
-    "Add LLM-based semantic fact extraction during consolidation",
-    "Migrate to MediaPipe Tasks API for pose estimation",
     "Complete Piper TTS backend implementation"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "vision-first empathetic companion MVP with diagnostic web UI",
-    "api_version": "0.10.0"
+    "scope": "voice-first assistant with recognition personalization and web-assisted responses",
+    "api_version": "0.11.0"
   }
 }

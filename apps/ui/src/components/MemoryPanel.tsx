@@ -6,7 +6,7 @@ interface MemoryPanelProps {
   memoryHits: MemoryHit[];
   userId: string | null;
   refreshKey: number;
-  recognitionState: 'no_face' | 'unknown_user' | 'below_threshold' | 'recognized_enrolled';
+  recognitionState: 'no_face' | 'face_seen_unknown' | 'known_low_confidence' | 'known_attached';
   sessionBinding: 'anonymous' | 'identified_user';
 }
 
@@ -98,11 +98,11 @@ export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, 
         </div>
         <div className="text-xs text-gray-500 mb-2">
           {recognitionReason || (
-            recognitionState === 'recognized_enrolled'
-              ? 'recognized enrolled user'
-              : recognitionState === 'below_threshold'
-                ? 'recognized below threshold'
-                : recognitionState === 'unknown_user'
+            recognitionState === 'known_attached'
+              ? 'known user attached'
+              : recognitionState === 'known_low_confidence'
+                ? 'known user, low confidence'
+                : recognitionState === 'face_seen_unknown'
                   ? 'face detected, unknown user'
                   : 'no face detected'
           )}

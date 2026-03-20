@@ -315,7 +315,7 @@ class TestMemoryReasonMapping:
         from apps.api import live_http
 
         runtime = MagicMock()
-        runtime.status = LiveRuntimeStatus(recognition_state='unknown_user')
+        runtime.status = LiveRuntimeStatus(recognition_state='face_seen_unknown')
         with patch.object(live_http, '_live_runtime', runtime):
             reason, _ = live_http._resolve_memory_unavailable_reason()
         assert reason == 'face detected, unknown user'

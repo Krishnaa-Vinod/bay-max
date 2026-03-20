@@ -22,7 +22,7 @@ export interface SessionInfo {
 // Perception data in snapshot
 export interface PerceptionData {
   face_detected: boolean;
-  recognition_state: 'no_face' | 'unknown_user' | 'below_threshold' | 'recognized_enrolled';
+  recognition_state: 'no_face' | 'face_seen_unknown' | 'known_low_confidence' | 'known_attached';
   face_match_threshold: number;
   user_name: string | null;
   user_id: string | null;
@@ -80,6 +80,12 @@ export interface MemoryHit {
 export interface SnapshotMessage {
   type: 'snapshot' | 'bootstrap';
   timestamp: string;
+  mode: {
+    voice_mode: 'realtime_voice' | 'local_chained_voice' | 'text_only';
+    requested: string;
+    fallback_reason: string;
+    speech_loop_state: string;
+  };
   session: SessionInfo;
   perception: PerceptionData;
   pipeline_state: PipelineState;
@@ -87,6 +93,18 @@ export interface SnapshotMessage {
   last_spoken_text: string;
   dialogue: DialogueState;
   memory_hits: MemoryHit[];
+  tools: {
+    web_tools_enabled: boolean;
+    web_tools_available: boolean;
+    web_tools_disabled_reason: string;
+    last_tools_used: string[];
+    last_web_sources: Array<Record<string, unknown>>;
+  };
+  latency: {
+    session_start_to_ready_ms: number;
+    end_of_speech_to_first_audio_ms: number;
+    interrupt_to_audio_stop_ms: number;
+  };
   cooldown_remaining_sec: number;
   last_event: string;
   frame_count: number;
@@ -121,6 +139,10 @@ export type WebSocketMessage = SnapshotMessage | PipelineEvent | ErrorMessage;
 export interface UIBootstrapState {
   live_mode_active: boolean;
   source: string;
+  voice_mode: 'realtime_voice' | 'local_chained_voice' | 'text_only';
+  voice_mode_requested: string;
+  voice_fallback_reason: string;
+  speech_loop_state: string;
   session_id: string | null;
   session_state: SessionState;
   user_id: string | null;
@@ -141,15 +163,21 @@ export interface UIBootstrapState {
   affect_backend: string;
   speech_input_enabled: boolean;
   speech_disabled_reason: string;
+  web_tools_enabled: boolean;
+  web_tools_available: boolean;
+  web_tools_disabled_reason: string;
   affect_enabled: boolean;
   tts_enabled: boolean;
   face_detected: boolean;
-  recognition_state: 'no_face' | 'unknown_user' | 'below_threshold' | 'recognized_enrolled';
+  recognition_state: 'no_face' | 'face_seen_unknown' | 'known_low_confidence' | 'known_attached';
   face_match_threshold: number;
   session_binding: 'anonymous' | 'identified_user';
   frame_count: number;
   analysis_count: number;
   uptime_sec: number;
+  session_start_to_ready_ms: number;
+  end_of_speech_to_first_audio_ms: number;
+  interrupt_to_audio_stop_ms: number;
   last_response: string;
   last_event: string;
   server_time: string;
@@ -168,6 +196,9 @@ export interface TextInputResponse {
   tts_result: string;
   tts_error: string;
   tts_wav_path: string;
+  modality: string;
+  tool_usage: string[];
+  source_refs: Array<Record<string, unknown>>;
   error: string | null;
 }
 
@@ -177,6 +208,7 @@ export interface MicToggleResponse {
   listening: boolean;
   mic_mode: string;
   disabled_reason: string;
+  speech_loop_state: string;
   error: string | null;
 }
 

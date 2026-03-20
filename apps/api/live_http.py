@@ -55,6 +55,10 @@ class UIBootstrapState(BaseModel):
 
     live_mode_active: bool = False
     source: str = ""
+    voice_mode: str = "local_chained_voice"
+    voice_mode_requested: str = "local_chained"
+    voice_fallback_reason: str = ""
+    speech_loop_state: str = "idle"
     session_id: str | None = None
     session_state: str = "idle"
     user_id: str | None = None
@@ -79,6 +83,9 @@ class UIBootstrapState(BaseModel):
     # Feature flags
     speech_input_enabled: bool = False
     speech_disabled_reason: str = ""
+    web_tools_enabled: bool = False
+    web_tools_available: bool = False
+    web_tools_disabled_reason: str = ""
     affect_enabled: bool = False
     tts_enabled: bool = False
 
@@ -93,6 +100,9 @@ class UIBootstrapState(BaseModel):
     analysis_count: int = 0
     turn_count: int = 0
     uptime_sec: float = 0.0
+    session_start_to_ready_ms: float = 0.0
+    end_of_speech_to_first_audio_ms: float = 0.0
+    interrupt_to_audio_stop_ms: float = 0.0
 
     # Last known state
     last_response: str = ""
@@ -123,6 +133,9 @@ class TextInputResponse(BaseModel):
     tts_result: str = ""
     tts_error: str = ""
     tts_wav_path: str = ""
+    modality: str = "text"
+    tool_usage: list[str] = Field(default_factory=list)
+    source_refs: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
 
 
@@ -139,6 +152,7 @@ class MicToggleResponse(BaseModel):
     listening: bool = False
     mic_mode: str = ""
     disabled_reason: str = ""
+    speech_loop_state: str = "idle"
     error: str | None = None
 
 
@@ -188,9 +202,9 @@ def _resolve_memory_unavailable_reason() -> tuple[str, str]:
 
     if state == "no_face":
         return ("no face detected", hint)
-    if state == "unknown_user":
+    if state == "face_seen_unknown":
         return ("face detected, unknown user", hint)
-    if state == "below_threshold":
+    if state == "known_low_confidence":
         conf = status.recognition_confidence
         if conf is not None:
             return (
@@ -198,7 +212,7 @@ def _resolve_memory_unavailable_reason() -> tuple[str, str]:
                 hint,
             )
         return ("recognized below threshold", hint)
-    if state == "recognized_enrolled":
+    if state == "known_attached":
         return ("recognized enrolled user", "")
     return ("no active user", hint)
 
@@ -272,6 +286,10 @@ async def get_ui_state() -> UIBootstrapState:
         status = _live_runtime.status
         state.live_mode_active = status.live_mode_active
         state.source = status.source
+        state.voice_mode = status.voice_mode.value
+        state.voice_mode_requested = status.voice_mode_requested
+        state.voice_fallback_reason = status.voice_fallback_reason
+        state.speech_loop_state = status.speech_loop_state
         state.session_state = status.session_status.value
         state.user_id = str(status.current_user_id) if status.current_user_id else None
         state.user_name = status.current_user_display_name
@@ -296,6 +314,9 @@ async def get_ui_state() -> UIBootstrapState:
         # Feature flags
         state.speech_input_enabled = status.speech_input_enabled
         state.speech_disabled_reason = status.speech_disabled_reason
+        state.web_tools_enabled = status.web_tools_enabled
+        state.web_tools_available = status.web_tools_available
+        state.web_tools_disabled_reason = status.web_tools_disabled_reason
         state.affect_enabled = status.affect_enabled
         state.tts_enabled = bool(status.tts_backend and status.tts_backend != "null")
 
@@ -310,6 +331,9 @@ async def get_ui_state() -> UIBootstrapState:
         state.analysis_count = status.analysis_count
         state.turn_count = status.turn_count
         state.uptime_sec = status.uptime_sec
+        state.session_start_to_ready_ms = status.session_start_to_ready_ms
+        state.end_of_speech_to_first_audio_ms = status.end_of_speech_to_first_audio_ms
+        state.interrupt_to_audio_stop_ms = status.interrupt_to_audio_stop_ms
 
         # Last known state
         state.last_response = status.last_response_text or ""
@@ -381,6 +405,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             session_id=session_id,
             user_id=user_id,
             context=request.text,
+            modality="text",
         )
 
         # Store system response
@@ -389,6 +414,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             role=TurnRole.SYSTEM,
             text=response.message,
             user_id=user_id,
+            source="ui_text_reply",
         )
         _live_runtime._status.turn_count += 1
 
@@ -398,6 +424,8 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         # Track memory refs for UI (iteration 010b hotfix)
         refs = response.memory_refs[:10] if response.memory_refs else []
         _live_runtime._status.last_memory_refs = refs
+        _live_runtime._status.last_tools_used = list(response.tool_usage)
+        _live_runtime._status.last_web_sources = list(response.source_refs)
 
         # Optionally speak the response
         if _live_runtime.speech_service is not None:
@@ -451,6 +479,9 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             tts_result=_live_runtime._status.last_tts_result,
             tts_error=_live_runtime._status.last_tts_error,
             tts_wav_path=_live_runtime._status.last_tts_wav_path,
+            modality="text",
+            tool_usage=response.tool_usage,
+            source_refs=response.source_refs,
         )
 
     except Exception as e:
@@ -489,22 +520,37 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
         current_listening = speech_input.status().listening
 
         if request.action == "start":
-            if not current_listening:
-                started = await speech_input.start()
-                new_listening = started and speech_input.status().listening
-            else:
-                new_listening = True
+            ok, reason = await _live_runtime.start_microphone()
+            new_listening = ok and speech_input.status().listening
+            if not ok:
+                return MicToggleResponse(
+                    success=False,
+                    listening=False,
+                    mic_mode=speech_input.status().mic_mode,
+                    disabled_reason=reason,
+                    speech_loop_state=_live_runtime.status.speech_loop_state,
+                    error=f"Unable to start speech input: {reason}",
+                )
         elif request.action == "stop":
             if current_listening:
-                await speech_input.stop()
+                await _live_runtime.stop_microphone()
             new_listening = False
         elif request.action == "toggle":
             if current_listening:
-                await speech_input.stop()
+                await _live_runtime.stop_microphone()
                 new_listening = False
             else:
-                started = await speech_input.start()
-                new_listening = started and speech_input.status().listening
+                ok, reason = await _live_runtime.start_microphone()
+                new_listening = ok and speech_input.status().listening
+                if not ok:
+                    return MicToggleResponse(
+                        success=False,
+                        listening=False,
+                        mic_mode=speech_input.status().mic_mode,
+                        disabled_reason=reason,
+                        speech_loop_state=_live_runtime.status.speech_loop_state,
+                        error=f"Unable to start speech input: {reason}",
+                    )
         else:
             return MicToggleResponse(
                 success=False,
@@ -518,6 +564,7 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
                 listening=False,
                 mic_mode=speech_input.status().mic_mode,
                 disabled_reason=reason,
+                speech_loop_state=_live_runtime.status.speech_loop_state,
                 error=f"Unable to start speech input: {reason}",
             )
 
@@ -536,6 +583,7 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
             listening=new_listening,
             mic_mode=speech_input.status().mic_mode,
             disabled_reason="",
+            speech_loop_state=_live_runtime.status.speech_loop_state,
         )
 
     except Exception as e:
@@ -543,8 +591,23 @@ async def toggle_microphone(request: MicToggleRequest) -> MicToggleResponse:
         return MicToggleResponse(
             success=False,
             disabled_reason=_resolve_speech_disabled_reason(),
+            speech_loop_state=_live_runtime.status.speech_loop_state,
             error=str(e),
         )
+
+
+@router.post("/voice/interrupt")
+async def interrupt_voice() -> dict[str, Any]:
+    """Interrupt current assistant speech and return to listening."""
+    if _live_runtime is None:
+        return {"success": False, "reason": "Live runtime not active"}
+
+    await _live_runtime.interrupt_speaking()
+    return {
+        "success": True,
+        "speech_loop_state": _live_runtime.status.speech_loop_state,
+        "interrupt_to_audio_stop_ms": _live_runtime.status.interrupt_to_audio_stop_ms,
+    }
 
 
 @router.get("/memory/recent", response_model=MemoryRecentResponse)

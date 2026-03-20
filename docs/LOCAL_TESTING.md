@@ -2,6 +2,53 @@
 
 This document explains how to test Bay-Max locally on a headless machine (e.g., HPC cluster nodes) without a display.
 
+## Iteration 011 Quick Smoke (Voice-First)
+
+1. Start backend + runtime in one process:
+
+```bash
+make run-local-backend-full
+```
+
+2. Start UI:
+
+```bash
+make run-ui
+```
+
+3. Verify mode transparency in UI diagnostics:
+
+- `voice_mode` shows one of: `realtime_voice`, `local_chained_voice`, `text_only`
+- fallback reason is shown when realtime is unavailable
+- web tool availability reason is shown when disabled/unavailable
+
+4. Verify mic lifecycle and interrupt path:
+
+```bash
+curl -X POST http://localhost:8000/v1/live/mic/toggle \
+  -H 'content-type: application/json' \
+  -d '{"action":"start"}'
+
+curl -X POST http://localhost:8000/v1/live/voice/interrupt
+```
+
+5. Verify realtime provisioning endpoint:
+
+```bash
+curl -X POST http://localhost:8000/v1/realtime/session
+```
+
+Expected behavior:
+
+- If `OPENAI_API_KEY` is set and realtime is enabled, returns `mode: realtime_voice`.
+- Otherwise returns `mode: local_chained_voice` with an explicit `reason`.
+
+6. Verify web-tool path with visible references:
+
+- Ask: `Search the latest NVIDIA stock price and cite sources.`
+- Confirm response includes `Sources:` section.
+- Confirm telemetry includes tool usage (`search_web`, `fetch_url`, `summarize_sources`).
+
 ## Prerequisites
 
 Install all dependencies including vision extras:

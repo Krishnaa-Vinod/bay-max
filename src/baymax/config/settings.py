@@ -158,6 +158,15 @@ class BaymaxSettings(BaseSettings):
 
     # --- Iteration 008: Speech Input / Bidirectional Speech ---
 
+    # Voice mode selector: "realtime" | "local_chained" | "text_only"
+    voice_mode: str = "local_chained"
+    enable_realtime_voice: bool = True
+    enable_local_chained_voice: bool = True
+    enable_text_only_fallback: bool = True
+
+    # Optional realtime voice model name for provider handshakes
+    realtime_voice_model: str = "gpt-realtime"
+
     # Master enable for speech input
     enable_speech_input: bool = True
 
@@ -193,6 +202,18 @@ class BaymaxSettings(BaseSettings):
 
     # Audio artifact directory
     audio_artifact_dir: str = "./artifacts/audio"
+
+    # Recognition cadence and sticky identity settings
+    recognition_refresh_interval_sec: float = 0.35
+    recognition_sticky_identity_sec: float = 4.0
+    recognition_detach_grace_sec: float = 8.0
+
+    # --- Iteration 011: Web tool broker ---
+
+    enable_web_tools: bool = True
+    web_search_provider: str = "duckduckgo"
+    web_search_max_results: int = 5
+    web_fetch_timeout_sec: float = 8.0
 
     # --- Iteration 009: Affect Analysis / Facial Emotion Recognition ---
 

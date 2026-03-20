@@ -20,6 +20,7 @@ from baymax.live.schemas import (
     LiveRunSummary,
     LiveRuntimeStatus,
     SessionLifecycleState,
+    VoiceMode,
 )
 from baymax.live.session_supervisor import SessionSupervisor
 from baymax.orchestrator.service import Orchestrator
@@ -142,6 +143,31 @@ class LiveRuntime:
         self._errors: list[str] = []
         self._speech_input_task: asyncio.Task | None = None
         self._speech_consumer_task: asyncio.Task | None = None
+        self._session_ready_ms: float = 0.0
+        self._last_end_to_audio_ms: float = 0.0
+        self._last_interrupt_to_stop_ms: float = 0.0
+
+        # Voice mode + recognition cadence settings (iteration 011)
+        self._voice_mode_requested = settings.voice_mode
+        self._recognition_refresh_interval_sec = max(0.1, settings.recognition_refresh_interval_sec)
+        self._recognition_sticky_sec = max(0.0, settings.recognition_sticky_identity_sec)
+        self._recognition_detach_grace_sec = max(0.0, settings.recognition_detach_grace_sec)
+        self._last_known_user_id: UUID | None = None
+        self._last_known_user_name: str | None = None
+        self._last_recognized_at: float = 0.0
+        self._last_face_seen_at: float = 0.0
+
+        # Report negotiated voice mode truthfully.
+        if settings.enable_realtime_voice and self._is_realtime_configured():
+            self._status.voice_mode = VoiceMode.REALTIME
+        elif settings.enable_local_chained_voice and self._speech_input_service is not None:
+            self._status.voice_mode = VoiceMode.LOCAL_CHAINED
+        else:
+            self._status.voice_mode = VoiceMode.TEXT_ONLY
+        self._status.voice_mode_requested = settings.voice_mode
+        if self._status.voice_mode != VoiceMode.REALTIME and settings.voice_mode == "realtime":
+            self._status.voice_fallback_reason = "Realtime voice unavailable or not configured; using local mode"
+        self._status.speech_loop_state = "idle"
 
         # Perception state tracking for UI (iteration 010b hotfix)
         self._last_recognition_confidence: float | None = None
@@ -274,20 +300,7 @@ class LiveRuntime:
         await self._orch.initialize()
 
         # Start speech input if enabled
-        if self._speech_input_service is not None:
-            started = await self._speech_input_service.start()
-            if started:
-                self._speech_start_error = None
-                logger.info("Speech input started")
-                self._speech_input_task = asyncio.create_task(
-                    self._speech_input_service.run_loop()
-                )
-                self._speech_consumer_task = asyncio.create_task(
-                    self._consume_transcriptions()
-                )
-            else:
-                self._speech_start_error = self._speech_input_service.last_error or "Microphone or VAD startup failed"
-                logger.warning("Speech input failed to start")
+        await self._start_speech_pipeline()
 
         # Create frame source
         source_path = source or settings.live_video_replay_path
@@ -322,6 +335,9 @@ class LiveRuntime:
         except Exception as e:
             self._errors.append(f"Failed to open frame source: {e}")
             logger.error("Failed to open frame source: %s", e)
+            await self._stop_speech_pipeline()
+            self._running = False
+            self._status.live_mode_active = False
             return self._build_summary(source_type)
 
         if source_type == "webcam":
@@ -330,6 +346,7 @@ class LiveRuntime:
 
         analysis_interval = settings.analysis_interval_sec
         last_analysis_time = 0.0
+        last_refresh_time = 0.0
         max_run_sec = settings.live_max_run_sec
 
         try:
@@ -355,10 +372,16 @@ class LiveRuntime:
                 now = time.time()
 
                 # Determine if this is an analysis frame
+                is_refresh = (now - last_refresh_time) >= self._recognition_refresh_interval_sec
+                if is_refresh:
+                    last_refresh_time = now
+                    await self._process_analysis_frame(frame)
+
                 is_analysis = (now - last_analysis_time) >= analysis_interval
-                if is_analysis:
+                if is_analysis and not is_refresh:
                     last_analysis_time = now
                     self._analysis_count += 1
+                    # heavy path currently shares the same processing function.
                     await self._process_analysis_frame(frame)
 
                 # Always update status
@@ -407,21 +430,7 @@ class LiveRuntime:
             logger.error("Runtime error: %s", e, exc_info=True)
 
         finally:
-            # Stop speech input
-            if self._speech_input_service is not None:
-                await self._speech_input_service.stop()
-            if self._speech_input_task is not None:
-                self._speech_input_task.cancel()
-                try:
-                    await self._speech_input_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-            if self._speech_consumer_task is not None:
-                self._speech_consumer_task.cancel()
-                try:
-                    await self._speech_consumer_task
-                except (asyncio.CancelledError, Exception):
-                    pass
+            await self._stop_speech_pipeline()
 
             # Clean shutdown
             end_evt = self._supervisor.force_end()
@@ -470,7 +479,10 @@ class LiveRuntime:
                 if not result.success or not result.text.strip():
                     continue
 
+                self._status.speech_loop_state = "thinking_or_tooling"
                 await self._handle_speech_turn(result.text)
+                if self._running:
+                    self._status.speech_loop_state = "listening"
 
             except asyncio.CancelledError:
                 break
@@ -504,7 +516,8 @@ class LiveRuntime:
             response = await self._orch.respond(
                 session_id=session_id,
                 user_id=user_id,
-                context=f"The user said: {text}",
+                context=text,
+                modality="speech",
             )
 
             # Store system response turn
@@ -513,6 +526,7 @@ class LiveRuntime:
                 role=TurnRole.SYSTEM,
                 text=response.message,
                 user_id=user_id,
+                source="speech_reply",
             )
             self._status.turn_count += 1
 
@@ -520,6 +534,9 @@ class LiveRuntime:
             self._status.last_response_text = response.message
             self._status.last_response_at = datetime.utcnow()
             self._last_memory_refs_count = len(response.memory_refs)
+            self._status.last_memory_refs = response.memory_refs[:10] if response.memory_refs else []
+            self._status.last_tools_used = list(response.tool_usage)
+            self._status.last_web_sources = list(response.source_refs)
 
             logger.info("Speech response: %s", response.message[:80])
 
@@ -555,6 +572,7 @@ class LiveRuntime:
         if self._speech_input_service is not None:
             self._speech_input_service.set_speaking_lock(True)
             self._speech_input_service.record_spoken_text(text)
+        self._status.speech_loop_state = "speaking"
 
         try:
             speech_result = await self._speech_service.synthesize_and_play(
@@ -643,6 +661,77 @@ class LiveRuntime:
             # Release speaking lock (triggers cooldown)
             if self._speech_input_service is not None:
                 self._speech_input_service.set_speaking_lock(False)
+            self._status.speech_loop_state = "listening"
+
+    async def start_microphone(self) -> tuple[bool, str]:
+        """Idempotently start microphone capture and consumer tasks."""
+        if not self._running:
+            return (False, "Live runtime not active")
+        ok = await self._start_speech_pipeline()
+        if ok:
+            self._status.speech_loop_state = "listening"
+            return (True, "")
+        return (False, self._speech_start_error or "Speech input unavailable")
+
+    async def stop_microphone(self) -> None:
+        """Stop microphone and associated tasks without stopping full runtime."""
+        await self._stop_speech_pipeline()
+        if self._running:
+            self._status.speech_loop_state = "idle"
+
+    async def interrupt_speaking(self) -> None:
+        """Interrupt current speaking lock and return to listening quickly."""
+        started_at = time.time()
+        if self._speech_input_service is not None:
+            self._speech_input_service.set_speaking_lock(False)
+        self._status.speech_loop_state = "interrupted"
+        self._last_interrupt_to_stop_ms = (time.time() - started_at) * 1000.0
+        if self._running:
+            self._status.speech_loop_state = "listening"
+
+    async def _start_speech_pipeline(self) -> bool:
+        """Ensure speech service and consumer tasks are started once."""
+        if self._speech_input_service is None:
+            return False
+        if self._speech_input_task is not None and not self._speech_input_task.done():
+            return True
+
+        started = await self._speech_input_service.start()
+        if not started:
+            self._speech_start_error = self._speech_input_service.last_error or "Microphone or VAD startup failed"
+            logger.warning("Speech input failed to start")
+            return False
+
+        self._speech_start_error = None
+        self._speech_input_task = asyncio.create_task(self._speech_input_service.run_loop())
+        self._speech_consumer_task = asyncio.create_task(self._consume_transcriptions())
+        logger.info("Speech input started")
+        return True
+
+    async def _stop_speech_pipeline(self) -> None:
+        """Stop speech service and cancel background tasks safely."""
+        if self._speech_input_service is not None:
+            await self._speech_input_service.stop()
+
+        if self._speech_input_task is not None:
+            self._speech_input_task.cancel()
+            try:
+                await self._speech_input_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._speech_input_task = None
+
+        if self._speech_consumer_task is not None:
+            self._speech_consumer_task.cancel()
+            try:
+                await self._speech_consumer_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._speech_consumer_task = None
+
+    def _is_realtime_configured(self) -> bool:
+        """Return whether realtime voice path appears available from env/config."""
+        return bool(self._settings.enable_realtime_voice and self._settings.realtime_voice_model)
 
     async def _process_analysis_frame(self, frame) -> None:
         """Run the full perception + event + response pipeline on an analysis frame."""
@@ -725,6 +814,24 @@ class LiveRuntime:
                 recognized = False
                 posture = PostureLabel.UNKNOWN
                 engagement_level = EngagementLevel.MEDIUM
+
+        # Sticky identity updates (recognition is personalization, not permission)
+        now = time.time()
+        if person_present:
+            self._last_face_seen_at = now
+        if recognized and user_id is not None:
+            self._last_known_user_id = user_id
+            self._last_known_user_name = user_name
+            self._last_recognized_at = now
+        elif person_present and self._last_known_user_id is not None:
+            if (now - self._last_recognized_at) <= self._recognition_sticky_sec:
+                user_id = self._last_known_user_id
+                user_name = self._last_known_user_name
+        elif (not person_present) and self._last_known_user_id is not None:
+            if (now - self._last_face_seen_at) <= self._recognition_detach_grace_sec:
+                # Keep memory/session continuity across short misses.
+                user_id = self._last_known_user_id
+                user_name = self._last_known_user_name
 
         # --- Session lifecycle ---
         lifecycle_events = self._supervisor.update(person_present, user_id)
@@ -809,11 +916,11 @@ class LiveRuntime:
         if not person_present:
             self._last_recognition_state = "no_face"
         elif recognized and user_id is not None:
-            self._last_recognition_state = "recognized_enrolled"
-        elif confidence > 0.0:
-            self._last_recognition_state = "below_threshold"
+            self._last_recognition_state = "known_attached"
+        elif user_id is not None:
+            self._last_recognition_state = "known_low_confidence"
         else:
-            self._last_recognition_state = "unknown_user"
+            self._last_recognition_state = "face_seen_unknown"
 
         # Track perception values for UI (iteration 010b hotfix)
         self._last_recognition_confidence = confidence if confidence > 0 else None
@@ -838,6 +945,7 @@ class LiveRuntime:
                 session_id=session_id,
                 user_id=user_id,
                 context=context,
+                modality="system",
             )
 
             # Store the system turn
@@ -859,6 +967,8 @@ class LiveRuntime:
             # Track memory refs for UI (iteration 010b hotfix)
             refs = response.memory_refs[:10] if response.memory_refs else []
             self._status.last_memory_refs = refs
+            self._status.last_tools_used = list(response.tool_usage)
+            self._status.last_web_sources = list(response.source_refs)
 
             # Log artifacts
             self._artifact_logger.log_response(
@@ -1041,6 +1151,20 @@ class LiveRuntime:
         self._status.dialogue_requested_backend = self._orch.dialogue_requested_backend
         self._status.dialogue_requested_model = self._orch.dialogue_requested_model
         self._status.dialogue_fallback_warning = self._orch.dialogue_fallback_warning
+        self._status.session_start_to_ready_ms = self._session_ready_ms
+        self._status.end_of_speech_to_first_audio_ms = self._last_end_to_audio_ms
+        self._status.interrupt_to_audio_stop_ms = self._last_interrupt_to_stop_ms
+
+        # Capabilities + mode transparency
+        self._status.capability_mic = self._speech_input_service is not None
+        self._status.capability_speakers = self._speech_service.provider.name() != "null"
+        self._status.capability_realtime_voice = self._is_realtime_configured()
+        self._status.capability_local_stt = self._speech_input_service is not None
+        self._status.capability_local_tts = self._speech_service.provider.name() != "null"
+        self._status.capability_web_tools = bool(getattr(self._orch, "_enable_web_tools", False))
+        self._status.web_tools_enabled = bool(getattr(self._orch, "_enable_web_tools", False))
+        self._status.web_tools_available = self._status.web_tools_enabled
+        self._status.web_tools_disabled_reason = "" if self._status.web_tools_enabled else "Web tools disabled by config"
 
         # Speech output status
         qs = self._speech_service.queue_status()
@@ -1086,6 +1210,12 @@ class LiveRuntime:
                 self._status.speech_disabled_reason = (
                     "Speech input service unavailable"
                 )
+
+        if self._status.speech_input_enabled and self._running:
+            if self._status.speaking_lock_active:
+                self._status.speech_loop_state = "speaking"
+            elif self._status.vad_active or self._status.listening:
+                self._status.speech_loop_state = "listening"
 
         # Affect analysis status (Iteration 009)
         if self._affect_enabled and self._affect_smoother is not None:

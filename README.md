@@ -163,6 +163,36 @@ The UI shows three columns:
 See [docs/COMPANION_UI_ARCHITECTURE.md](docs/COMPANION_UI_ARCHITECTURE.md) for UI architecture.
 See [docs/WEBSOCKET_PROTOCOL.md](docs/WEBSOCKET_PROTOCOL.md) for WebSocket telemetry protocol.
 
+## Voice-First Web Assistant (Iteration 011)
+
+Iteration 011 shifts Bay-Max to a voice-first runtime contract with explicit mode transparency:
+
+- `realtime_voice` (primary, if configured)
+- `local_chained_voice` (local STT -> dialogue -> TTS fallback)
+- `text_only` (debug/emergency fallback)
+
+What changed:
+
+- Mic lifecycle is task-safe and idempotent via runtime-managed start/stop hooks.
+- Speech loop state is explicit (`idle -> listening -> thinking_or_tooling -> speaking -> interrupted`).
+- Recognition is sticky across short weak/missed frames so personalization does not gate conversation.
+- Web tool broker supports `search_web`, `fetch_url`, and `summarize_sources` with structured source refs.
+- Text and speech turns share the same dialogue/memory contract and modality metadata.
+
+New API endpoints:
+
+- `POST /v1/realtime/session` (mode provisioning; no key leakage)
+- `POST /v1/live/voice/interrupt` (barge-in interrupt)
+
+Environment knobs:
+
+- `BAYMAX_VOICE_MODE`
+- `BAYMAX_ENABLE_REALTIME_VOICE`
+- `BAYMAX_ENABLE_WEB_TOOLS`
+- `BAYMAX_RECOGNITION_REFRESH_INTERVAL_SEC`
+
+See [docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md) for the smoke workflow.
+
 ## Development
 
 See [CLAUDE.md](CLAUDE.md) and [AGENTS.md](AGENTS.md) for AI developer instructions.
