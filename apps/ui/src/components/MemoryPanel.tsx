@@ -37,14 +37,6 @@ export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, 
 
   // Fetch memories when user changes
   useEffect(() => {
-    if (!userId && !debugMode) {
-      setFacts([]);
-      setStats(null);
-      setEmptyReason('no active user');
-      setMemoryError(null);
-      return;
-    }
-
     const fetchMemories = async () => {
       setLoading(true);
       try {

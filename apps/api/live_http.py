@@ -657,16 +657,74 @@ async def get_recent_memories() -> MemoryRecentResponse:
     user_id = _live_runtime.status.current_user_id
     if user_id is None:
         reason, hint = _resolve_memory_unavailable_reason()
-        return MemoryRecentResponse(
-            empty_reason="no active user",
-            recognition_reason=reason,
-            memory_unavailable_hint=hint,
-        )
+        session_id = _live_runtime.supervisor.current_session_id
+        if session_id is None:
+            return MemoryRecentResponse(
+                empty_reason="no active user",
+                recognition_reason=reason,
+                memory_unavailable_hint=hint,
+            )
+
+        # Fallback for anonymous sessions: show persisted chat turns so users can
+        # verify the current session is being recorded even before face binding.
+        try:
+            turns = await _orchestrator.get_turns(session_id)
+            recent_turns = turns[-12:]
+            memories = [
+                {
+                    "text": f"{t.role.value}: {t.text}",
+                    "type": "session_turn",
+                    "created_at": t.timestamp.isoformat(),
+                }
+                for t in recent_turns
+                if t.text and t.text.strip()
+            ]
+
+            return MemoryRecentResponse(
+                memories=memories,
+                facts=[],
+                stats=MemoryStats(
+                    total_memories=len(memories),
+                    total_facts=0,
+                    total_sessions=1,
+                ),
+                empty_reason="" if memories else "no retrieved memories yet",
+                recognition_reason=reason,
+                memory_unavailable_hint=(
+                    "Showing session turns; long-term memory requires enrolled-user recognition."
+                ),
+            )
+        except Exception as e:
+            logger.warning("Failed to build anonymous session memory fallback: %s", e)
+            return MemoryRecentResponse(
+                empty_reason="memory service error",
+                recognition_reason=reason,
+                memory_unavailable_hint=hint,
+                error=str(e),
+            )
 
     try:
+        session_id = _live_runtime.supervisor.current_session_id
+
+        # Always include current session turns so users can verify in-session
+        # recording immediately, even before end-of-session consolidation.
+        session_turn_memories: list[dict[str, Any]] = []
+        if session_id is not None:
+            turns = await _orchestrator.get_turns(session_id)
+            for t in turns[-8:]:
+                if not t.text or not t.text.strip():
+                    continue
+                session_turn_memories.append(
+                    {
+                        "text": f"{t.role.value}: {t.text}",
+                        "type": "session_turn",
+                        "created_at": t.timestamp.isoformat(),
+                    }
+                )
+
         # Get memory summary
         summary = await _orchestrator.get_memory_summary(user_id)
-        memories = [
+        long_term_memories = [
             {
                 "text": m.content,
                 "type": "episodic",
@@ -674,12 +732,14 @@ async def get_recent_memories() -> MemoryRecentResponse:
             }
             for m in (summary.recent_episodic or [])[:10]
         ]
+        memories = session_turn_memories + long_term_memories
         facts = [
             {"key": "fact", "value": f.content, "confidence": f.confidence}
             for f in (summary.confirmed_facts or [])[:10]
         ]
         empty_reason = "" if memories else "no retrieved memories yet"
-        recognition_reason, hint = _resolve_memory_unavailable_reason()
+        recognition_reason = "recognized enrolled user"
+        hint = ""
 
         return MemoryRecentResponse(
             memories=memories,
