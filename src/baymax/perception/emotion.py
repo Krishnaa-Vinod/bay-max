@@ -162,11 +162,8 @@ class MediaPipeEmotionAnalyzer(EmotionAnalyzer):
         try:
             import mediapipe as mp
 
-            # Convert BGR to RGB if needed
-            if len(frame.shape) == 3 and frame.shape[2] == 3:
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            else:
-                rgb_frame = frame
+            # Runtime frame sources normalize to RGB already.
+            rgb_frame = frame
 
             # Extract face region
             x1, y1 = int(face_bbox.get("x1", 0)), int(face_bbox.get("y1", 0))
@@ -216,6 +213,10 @@ class MediaPipeEmotionAnalyzer(EmotionAnalyzer):
 
             # Calculate face region quality score
             face_quality = self._calculate_face_quality(blendshape_dict, face_bbox, frame.shape)
+
+            # Confidence should represent analysis reliability, not only strong expression.
+            # Neutral faces can still be analyzed reliably.
+            confidence = max(confidence, min(0.85, 0.25 + face_quality * 0.6))
 
             return EmotionResult(
                 backend="mediapipe",

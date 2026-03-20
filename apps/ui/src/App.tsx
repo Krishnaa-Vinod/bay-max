@@ -58,7 +58,7 @@ function App() {
 
   // Update affect history
   const updateAffectHistory = useCallback((snapshot: SnapshotMessage) => {
-    if (snapshot.perception.affect_confidence > 0.3) {
+    if (snapshot.perception.affect_confidence > 0.1) {
       setAffectHistory((prev) => {
         const updated = [
           ...prev,

@@ -17,6 +17,10 @@ class SupportivePlanner(ResponsePlanner):
         "remember", "recall", "memory", "memories",
         "last time", "previously", "before",
     ]
+    _DIRECT_ASK_KEYWORDS = [
+        "how", "what", "why", "can you", "could you", "help me",
+        "give me", "tell me", "suggest", "steps", "advice", "tip",
+    ]
 
     def __init__(
         self,
@@ -76,12 +80,21 @@ class SupportivePlanner(ResponsePlanner):
         memories: MemoryQueryResult,
         context: str,
     ) -> ResponseStrategy:
+        lower_context = context.lower() if context else ""
+
         """Get base strategy using original logic."""
         # Detect explicit recall intent from user context
         if context and memories.total_count > 0:
-            lower = context.lower()
-            if any(kw in lower for kw in self._RECALL_KEYWORDS):
+            if any(kw in lower_context for kw in self._RECALL_KEYWORDS):
                 return ResponseStrategy.RECALL
+
+        # Explicit user asks should get concrete guidance, not a first-turn greeting.
+        has_direct_ask = bool(context) and (
+            "?" in context
+            or any(kw in lower_context for kw in self._DIRECT_ASK_KEYWORDS)
+        )
+        if has_direct_ask:
+            return ResponseStrategy.SUGGEST
 
         # First interaction: greet
         if state.turn_count == 0:

@@ -57,6 +57,12 @@ class SpeechService:
         self._sample_rate = sample_rate
         self._max_queue_size = max_queue_size
 
+        logger.info(
+            "SpeechService playback configured: backend=%s output_device=%s",
+            self._audio_backend,
+            self._output_device if self._output_device is not None else "auto",
+        )
+
         self._queue: deque[SpeechSynthesisResult] = deque(
             maxlen=max_queue_size
         )
@@ -201,17 +207,58 @@ class SpeechService:
             loop = asyncio.get_event_loop()
 
             def _resolve_output_device() -> int | None:
-                out_device = self._output_device
-                if out_device is None:
-                    default_devices = sd.default.device
-                    if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
-                        out_device = default_devices[1]
-                return out_device
+                if self._output_device is not None:
+                    try:
+                        sd.query_devices(self._output_device, "output")
+                        return self._output_device
+                    except Exception:
+                        logger.warning(
+                            "Configured output device %s is not output-capable; falling back to auto selection",
+                            self._output_device,
+                        )
+
+                candidates: list[tuple[int, int]] = []
+                try:
+                    for idx, dev in enumerate(sd.query_devices()):
+                        if int(dev.get("max_output_channels", 0)) <= 0:
+                            continue
+                        name = str(dev.get("name", "")).lower()
+                        score = 0
+                        if "analog" in name or "speaker" in name or "headphone" in name:
+                            score += 3
+                        if "hdmi" in name or "displayport" in name or "monitor" in name:
+                            score -= 2
+                        candidates.append((score, idx))
+                except Exception:
+                    candidates = []
+
+                if candidates:
+                    candidates.sort(reverse=True)
+                    chosen = candidates[0][1]
+                    logger.info("Using auto-selected output device index %d", chosen)
+                    return chosen
+
+                default_devices = sd.default.device
+                if isinstance(default_devices, (list, tuple)) and len(default_devices) >= 2:
+                    try:
+                        out_idx = int(default_devices[1])
+                        if out_idx >= 0:
+                            return out_idx
+                    except Exception:
+                        pass
+
+                return None
+
+            selected_output_device = _resolve_output_device()
+            logger.info(
+                "SpeechService playback using output device: %s",
+                selected_output_device if selected_output_device is not None else "default",
+            )
 
             try:
                 await loop.run_in_executor(
                     None,
-                    lambda: sd.play(data, samplerate, device=self._output_device),
+                    lambda: sd.play(data, samplerate, device=selected_output_device),
                 )
                 await loop.run_in_executor(None, sd.wait)
             except Exception as exc:
@@ -222,7 +269,7 @@ class SpeechService:
                 ):
                     raise
 
-                out_device = _resolve_output_device()
+                out_device = selected_output_device
 
                 output_info = sd.query_devices(out_device, "output")
                 target_rate = int(round(float(output_info.get("default_samplerate", samplerate))))

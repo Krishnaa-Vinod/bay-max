@@ -691,6 +691,8 @@ class Orchestrator:
             source=source,
         )
         stored = await self.store.store_chat_turn(turn)
+        if role == TurnRole.USER:
+            self.state_manager.increment_turn(session_id)
         return stored
 
     async def get_turns(self, session_id: UUID) -> list[ChatTurn]:
