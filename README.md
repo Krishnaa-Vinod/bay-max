@@ -9,8 +9,8 @@ A memory-first empathetic companion agent that recognizes enrolled users from vi
 python -m venv .venv
 source .venv/bin/activate
 
-# Install in development mode (core + dev tools)
-pip install -e ".[dev]"
+# Install recommended local full stack (dev + speech + tts + vector + dialogue)
+pip install -e ".[all]"
 
 # Set up environment
 cp .env.example .env
@@ -30,12 +30,12 @@ make run-demo
 
 | Command | What it installs | Use when |
 |---------|-----------------|----------|
-| `pip install -e ".[dev]"` | Core + dev tools | Running tests, no vision/dialogue |
+| `pip install -e ".[dev]"` | Core + dev tools | Running tests only |
 | `pip install -e ".[dev,vector]"` | + LanceDB + sentence-transformers | Memory semantic search |
 | `pip install -e ".[dev,dialogue]"` | + Transformers + PyTorch | Local HuggingFace LLM dialogue |
 | `pip install -e ".[tts]"` | Kokoro TTS + audio | Spoken output |
 | `pip install -e ".[speech]"` | faster-whisper + audio | Speech input |
-| `pip install -e ".[all]"` | Everything | Full local stack |
+| `pip install -e ".[all]"` | Everything | Recommended full local companion stack |
 
 For **Ollama-based dialogue** (easiest local LLM mode): no extra Python package required.
 Install Ollama separately: https://ollama.ai, then `ollama pull qwen2.5:1.5b`.

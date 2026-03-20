@@ -5,21 +5,28 @@ import os
 from pydantic_settings import BaseSettings
 
 
+def _default_local_dir(scratch_suffix: str, local_suffix: str) -> str:
+    base = os.path.expandvars(f"/scratch/$USER/bay-max/{scratch_suffix}")
+    if os.path.isdir("/scratch"):
+        return base
+    return os.path.abspath(os.path.join(".", local_suffix))
+
+
 class BaymaxSettings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = {"env_prefix": "BAYMAX_", "env_file": ".env", "extra": "ignore"}
 
     # Data directories
-    data_dir: str = os.path.expandvars("/scratch/$USER/bay-max/data")
-    cache_dir: str = os.path.expandvars("/scratch/$USER/bay-max/cache")
-    model_dir: str = os.path.expandvars("/scratch/$USER/bay-max/models")
+    data_dir: str = _default_local_dir("data", "./local_data")
+    cache_dir: str = _default_local_dir("cache", "./local_cache")
+    model_dir: str = _default_local_dir("models", "./local_models")
 
     # Database
     db_url: str = "sqlite+aiosqlite:///./baymax.db"
 
     # API
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
 
     # Logging

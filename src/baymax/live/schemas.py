@@ -61,6 +61,7 @@ class LiveRuntimeStatus(BaseModel):
     last_response_at: datetime | None = None
     frame_count: int = 0
     analysis_count: int = 0
+    turn_count: int = 0
     uptime_sec: float = 0.0
     # Iteration 007 — speech output state
     last_spoken_text: str = ""

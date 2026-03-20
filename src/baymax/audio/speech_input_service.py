@@ -18,7 +18,7 @@ from baymax.audio.schemas import (
     SpeechInputStatus,
     TranscriptionResult,
 )
-from baymax.audio.transcriber import ASRProvider, get_asr_provider
+from baymax.audio.transcriber import ASRProvider, NullASRProvider, get_asr_provider
 from baymax.audio.vad import NullVAD, SileroVAD
 
 logger = logging.getLogger(__name__)
@@ -178,6 +178,16 @@ class SpeechInputService:
             return True
 
         self._last_error = ""
+
+        if isinstance(self._mic, NullMicrophone):
+            self._last_error = "Microphone unavailable (null fallback active)"
+            logger.warning(self._last_error)
+            return False
+
+        if isinstance(self._asr, NullASRProvider):
+            self._last_error = "ASR unavailable (null fallback active)"
+            logger.warning(self._last_error)
+            return False
 
         # Load VAD model
         if isinstance(self._vad, SileroVAD):

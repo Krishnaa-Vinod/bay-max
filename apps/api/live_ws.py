@@ -114,7 +114,7 @@ def build_snapshot_message(
     # Get session info
     session_id = None
     session_duration = 0.0
-    turn_count = 0
+    turn_count = status.turn_count
     if _live_runtime is not None:
         session_id = _live_runtime.supervisor.current_session_id
         if session_id and _live_runtime._start_time > 0:
@@ -145,12 +145,7 @@ def build_snapshot_message(
             "user_id": str(status.current_user_id) if status.current_user_id else None,
             "recognition_confidence": status.recognition_confidence,
             "posture": status.posture,
-            "engagement": status.engagement_score if status.engagement_score is not None else (
-                0.8 if status.engagement == "high" else
-                0.5 if status.engagement == "medium" else
-                0.3 if status.engagement == "low" else
-                None
-            ),
+            "engagement": status.engagement_score,
             "valence": status.emotion_valence,
             "arousal": status.emotion_arousal,
             "affect_confidence": status.emotion_confidence,

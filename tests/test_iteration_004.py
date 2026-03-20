@@ -199,6 +199,33 @@ class TestChatTurns:
         assert turn.role == TurnRole.USER
         assert turn.text == "test message"
 
+    def test_chat_turn_source_round_trip_sqlite(self, tmp_path):
+        import asyncio
+
+        async def _run() -> None:
+            db_path = str(tmp_path / "source_roundtrip.db")
+            store = SQLiteMetadataStore(db_path=db_path)
+            await store.initialize()
+
+            user = await store.create_user(UserProfile(display_name="RoundTripUser"))
+            session = await store.create_session(Session(user_id=user.id))
+
+            stored = await store.store_chat_turn(ChatTurn(
+                session_id=session.id,
+                user_id=user.id,
+                role=TurnRole.USER,
+                text="spoken turn",
+                source="speech",
+            ))
+
+            turns = await store.get_chat_turns(session.id)
+            assert stored.source == "speech"
+            assert turns[0].source == "speech"
+
+            await store.close()
+
+        asyncio.run(_run())
+
 
 # ---- T404: Session consolidation ----
 

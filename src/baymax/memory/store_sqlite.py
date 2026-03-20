@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS chat_turns (
     user_id TEXT,
     role TEXT NOT NULL,
     text TEXT NOT NULL,
-    timestamp TEXT NOT NULL
+    timestamp TEXT NOT NULL,
+    source TEXT DEFAULT 'typed'
 );
 
 CREATE TABLE IF NOT EXISTS session_summaries (
@@ -137,6 +138,7 @@ class SQLiteMetadataStore(MetadataStore):
         self._conn = sqlite3.connect(self._db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA_SQL)
+        self._migrate_chat_turn_source_column(self._conn)
         self._conn.commit()
 
     def _ensure_conn(self) -> sqlite3.Connection:
@@ -144,8 +146,15 @@ class SQLiteMetadataStore(MetadataStore):
             self._conn = sqlite3.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             self._conn.executescript(_SCHEMA_SQL)
+            self._migrate_chat_turn_source_column(self._conn)
             self._conn.commit()
         return self._conn
+
+    def _migrate_chat_turn_source_column(self, conn: sqlite3.Connection) -> None:
+        cols = conn.execute("PRAGMA table_info(chat_turns)").fetchall()
+        names = {row[1] for row in cols}
+        if "source" not in names:
+            conn.execute("ALTER TABLE chat_turns ADD COLUMN source TEXT DEFAULT 'typed'")
 
     async def create_user(self, user: UserProfile) -> UserProfile:
         conn = self._ensure_conn()
@@ -472,8 +481,8 @@ class SQLiteMetadataStore(MetadataStore):
     async def store_chat_turn(self, turn: ChatTurn) -> ChatTurn:
         conn = self._ensure_conn()
         conn.execute(
-            "INSERT INTO chat_turns (id, session_id, user_id, role, text, timestamp)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO chat_turns (id, session_id, user_id, role, text, timestamp, source)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 str(turn.id),
                 str(turn.session_id),
@@ -481,6 +490,7 @@ class SQLiteMetadataStore(MetadataStore):
                 turn.role.value,
                 turn.text,
                 turn.timestamp.isoformat(),
+                turn.source,
             ),
         )
         conn.commit()
@@ -500,6 +510,7 @@ class SQLiteMetadataStore(MetadataStore):
                 role=row["role"],
                 text=row["text"],
                 timestamp=datetime.fromisoformat(row["timestamp"]),
+                source=row["source"] if "source" in row.keys() else "typed",
             )
             for row in rows
         ]

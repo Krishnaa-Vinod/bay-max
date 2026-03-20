@@ -14,6 +14,7 @@ Coverage:
 """
 
 import json
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -434,6 +435,42 @@ class TestSpeechInputService:
         assert "transcription_log" in data
         assert "echo_decisions" in data
         assert "timing_log" in data
+
+    def test_start_rejects_null_microphone(self):
+        from baymax.audio.microphone import NullMicrophone
+        from baymax.audio.speech_input_service import SpeechInputService
+        from baymax.audio.transcriber import NullASRProvider
+
+        service = SpeechInputService(
+            asr_provider=NullASRProvider(),
+            vad_backend="null",
+        )
+        service._mic = NullMicrophone()
+
+        started = asyncio.run(service.start())
+        assert started is False
+        assert "Microphone unavailable" in service.last_error
+
+    def test_start_rejects_null_asr(self):
+        from baymax.audio.speech_input_service import SpeechInputService
+        from baymax.audio.transcriber import NullASRProvider
+
+        class WorkingMic:
+            def start(self):
+                return True
+
+            def stop(self):
+                return None
+
+        service = SpeechInputService(
+            asr_provider=NullASRProvider(),
+            vad_backend="null",
+        )
+        service._mic = WorkingMic()
+
+        started = asyncio.run(service.start())
+        assert started is False
+        assert "ASR unavailable" in service.last_error
 
 
 # ---------------------------------------------------------------------------

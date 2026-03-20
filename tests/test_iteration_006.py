@@ -536,7 +536,7 @@ class TestLiveSettings:
 
     def test_default_live_settings(self):
         with patch.dict("os.environ", {}, clear=False):
-            settings = BaymaxSettings()
+            settings = BaymaxSettings(_env_file=None)
             assert settings.live_source == "webcam"
             assert settings.live_camera_index == 0
             assert settings.preview_fps == 8
