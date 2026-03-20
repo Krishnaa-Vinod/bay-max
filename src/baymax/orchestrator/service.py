@@ -2,6 +2,7 @@
 
 import collections
 import logging
+import os
 import time
 from datetime import datetime
 from uuid import UUID
@@ -62,6 +63,8 @@ from baymax.schemas.session import Session
 from baymax.schemas.user import FaceEnrollment, UserProfile, UserProfileCreate
 from baymax.state.manager import StateManager
 from baymax.state.models import InteractionState
+from baymax.tools.web_fetch import fetch_url, summarize_sources
+from baymax.tools.web_search import search_web
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,12 @@ class Orchestrator:
         self._dialogue_requested_backend = settings.dialogue_backend
         self._dialogue_requested_model = get_active_model(settings)
         self._dialogue_fallback_warning = ""
+
+        # Iteration 011: web-tool broker settings
+        self._enable_web_tools = settings.enable_web_tools
+        self._web_search_provider = settings.web_search_provider
+        self._web_search_max_results = settings.web_search_max_results
+        self._web_fetch_timeout_sec = settings.web_fetch_timeout_sec
 
         # Initialise the dialogue provider via factory (with fallback support)
         self.dialogue: DialogueProvider = create_dialogue_provider(settings)
@@ -776,6 +785,7 @@ class Orchestrator:
         session_id: UUID,
         user_id: UUID | None = None,
         context: str = "",
+        modality: str = "text",
     ) -> SupportiveResponse:
         """Generate a supportive response for the current session.
 
@@ -827,6 +837,8 @@ class Orchestrator:
             query=context,
         )
         memory_refs: list[str] = []
+        source_refs: list[dict] = []
+        tool_usage: list[str] = []
         if user_id:
             memories = await retrieve_memories(
                 store=self.store,
@@ -846,6 +858,36 @@ class Orchestrator:
             for f in memories.semantic_facts:
                 if f.content not in memory_refs:
                     memory_refs.append(f.content)
+
+        # Iteration 011: run web tools only when likely needed.
+        if self._should_use_web_tools(context):
+            try:
+                tool_usage.append("search_web")
+                web_results = search_web(
+                    query=context,
+                    provider=self._web_search_provider,
+                    max_results=self._web_search_max_results,
+                    timeout_sec=self._web_fetch_timeout_sec,
+                )
+                source_refs = [item.to_dict() for item in web_results]
+
+                if source_refs:
+                    # Optionally fetch top result for richer grounding.
+                    top_url = source_refs[0].get("url")
+                    if isinstance(top_url, str) and top_url:
+                        try:
+                            tool_usage.append("fetch_url")
+                            fetched = fetch_url(top_url, timeout_sec=self._web_fetch_timeout_sec)
+                            source_refs.insert(0, fetched.to_dict())
+                        except Exception as fetch_exc:
+                            logger.info("web fetch failed for %s: %s", top_url, fetch_exc)
+
+                    tool_usage.append("summarize_sources")
+                    summary = summarize_sources(source_refs)
+                    if summary:
+                        memory_refs.append(f"Web context:\n{summary}")
+            except Exception as web_exc:
+                logger.info("Web tool path unavailable: %s", web_exc)
 
         # Fetch recent turns for grounded prompting
         recent_turns = []
@@ -902,13 +944,46 @@ class Orchestrator:
         response.memory_refs = memory_refs[:self._dialogue_top_k_memories]
         response.state_summary = state_summary
         response.fallback_used = fallback_used
+        response.tool_usage = tool_usage
+        response.source_refs = source_refs
+        response.metadata["turn_modality"] = modality
         if safety_flags:
             response.safety_flags = safety_flags
+
+        if source_refs:
+            rendered_refs = [
+                f"- {item.get('title', 'Source')}: {item.get('url', '')}"
+                for item in source_refs[:3]
+            ]
+            response.message = f"{response.message}\n\nSources:\n" + "\n".join(rendered_refs)
 
         # Update state
         self.state_manager.increment_turn(session_id)
 
         return response
+
+    def _should_use_web_tools(self, context: str) -> bool:
+        """Heuristic gate for web tool usage to avoid unnecessary live calls."""
+        if not self._enable_web_tools:
+            return False
+
+        lowered = context.lower().strip()
+        if not lowered:
+            return False
+
+        if os.getenv("BAYMAX_WEB_TOOLS_FORCE", "").lower() in ("1", "true", "yes"):
+            return True
+
+        explicit = ("search" in lowered) or ("look up" in lowered) or ("verify" in lowered)
+        live_fact = any(
+            key in lowered
+            for key in ("today", "latest", "current", "price", "news", "recent", "this week")
+        )
+        uncertainty = any(
+            key in lowered
+            for key in ("not sure", "uncertain", "double-check", "can you confirm")
+        )
+        return explicit or live_fact or uncertainty
 
     async def _semantic_search(
         self,

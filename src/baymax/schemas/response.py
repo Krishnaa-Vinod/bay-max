@@ -1,6 +1,7 @@
 """Response-related Pydantic schemas."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -27,7 +28,7 @@ class SupportiveResponse(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     evidence_refs: list[str] = Field(default_factory=list)
-    metadata: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     memory_refs: list[str] = Field(
         default_factory=list,
         description="Content of memories used to generate this response.",
@@ -52,6 +53,14 @@ class SupportiveResponse(BaseModel):
     safety_flags: list[str] = Field(
         default_factory=list,
         description="Safety flags raised during response generation.",
+    )
+    tool_usage: list[str] = Field(
+        default_factory=list,
+        description="Tool names used to produce this response.",
+    )
+    source_refs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured source references used in this response.",
     )
 
 
