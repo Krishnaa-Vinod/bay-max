@@ -114,7 +114,7 @@ class TestIteration005Settings:
             cache_dir="/tmp/test",
             model_dir="/tmp/test",
         )
-        assert settings.dialogue_backend == "rule_based"
+        assert settings.dialogue_backend == "auto_local"
         assert settings.enable_dialogue_debug is False
         assert settings.enable_safe_health_mode is True
         assert settings.dialogue_max_history_turns == 8

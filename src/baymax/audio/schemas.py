@@ -74,6 +74,12 @@ class TranscriptionResult(BaseModel):
     success: bool = True
     error: str | None = None
     wav_path: str | None = None
+    # Optional provider-level confidence signals.
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    # Runtime-computed quality decision.
+    quality_score: float = 0.0
+    quality_reason: str = ""
 
 
 class EchoDecision(BaseModel):

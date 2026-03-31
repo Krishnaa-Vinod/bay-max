@@ -16,10 +16,13 @@ from baymax.core.enums import (
     FactStatus,
     MemoryStatus,
     PostureLabel,
+    ResponseStrategy,
+    TurnIntent,
     TurnRole,
 )
 from baymax.dialogue.factory import AVAILABLE_BACKENDS, create_dialogue_provider, get_active_model
 from baymax.dialogue.interfaces import DialogueProvider
+from baymax.dialogue.intent_router import classify_turn_intent
 from baymax.dialogue.prompt_builder import build_prompt_context
 from baymax.dialogue.rule_based import RuleBasedDialogue
 from baymax.dialogue.safety import check_safety
@@ -109,6 +112,7 @@ class Orchestrator:
         # Iteration 005: dialogue settings
         self._dialogue_backend_name = settings.dialogue_backend
         self._dialogue_top_k_memories = settings.dialogue_top_k_memories
+        self._dialogue_memory_relevance_threshold = settings.dialogue_memory_relevance_threshold
         self._dialogue_max_history_turns = settings.dialogue_max_history_turns
         self._enable_rule_based_fallback = settings.enable_rule_based_fallback
         self._enable_safe_health_mode = settings.enable_safe_health_mode
@@ -132,6 +136,8 @@ class Orchestrator:
             and self._dialogue_requested_backend.lower() != "rule_based"
         ):
             self._dialogue_fallback_warning = "LLM unavailable — using rule-based fallback"
+        elif self.dialogue.backend_name == "rule_based":
+            self._dialogue_fallback_warning = "Limited mode active: rule-based dialogue"
 
         # Perception backends (lazy-loaded)
         self._detector: FaceDetector | None = None
@@ -796,6 +802,7 @@ class Orchestrator:
           - Falls back to rule-based dialogue if the backend fails
         """
         state = self.state_manager.get_or_create(session_id, user_id=user_id)
+        turn_intent: TurnIntent | None = None
 
         # Safety-check the incoming context (if safe_health_mode is on)
         safety_flags: list[str] = []
@@ -818,12 +825,20 @@ class Orchestrator:
                             query=context,
                         ),
                         context=context,
+                        turn_intent=TurnIntent.DIRECT_QUESTION,
                     ),
                     message=redirect_text,
+                    spoken_text=redirect_text,
+                    display_text=redirect_text,
                     backend=self.dialogue.backend_name,
                     model_name=self.dialogue.model_name,
                     fallback_used=False,
                     safety_flags=safety_flags,
+                    limited_mode=(self.dialogue.backend_name == "rule_based"),
+                    limited_mode_reason=(
+                        "LLM unavailable; using deterministic templates"
+                        if self.dialogue.backend_name == "rule_based" else ""
+                    ),
                     state_summary={
                         "engagement": state.engagement_level.value,
                         "posture": state.posture.value,
@@ -899,10 +914,31 @@ class Orchestrator:
             except Exception:
                 logger.warning("Failed to fetch recent turns for prompt", exc_info=True)
 
+        # Classify intent for user-initiated turns.
+        if modality != "system":
+            turn_intent = classify_turn_intent(
+                context,
+                recent_turns=[
+                    {"role": t.role.value, "text": t.text}
+                    for t in recent_turns[-6:]
+                ],
+            )
+
         # Plan strategy
-        strategy = self.planner.plan(state, memories, context=context)
+        strategy = self.planner.plan(
+            state,
+            memories,
+            context=context,
+            turn_intent=turn_intent,
+            proactive=(modality == "system"),
+        )
+
+        # If fresh information is likely needed, keep response answer-first with web grounding.
+        if strategy == ResponseStrategy.ANSWER and self._should_use_web_tools(context):
+            strategy = ResponseStrategy.WEB_ANSWER
 
         # Build grounded prompt context (Iteration 005)
+        backend_limited_mode = self.dialogue.backend_name == "rule_based"
         prompt_context = build_prompt_context(
             strategy=strategy,
             state=state,
@@ -910,9 +946,10 @@ class Orchestrator:
             recent_turns=recent_turns,
             context=context,
             top_k_memories=self._dialogue_top_k_memories,
+            turn_intent=turn_intent,
+            memory_relevance_threshold=self._dialogue_memory_relevance_threshold,
+            backend_limited_mode=backend_limited_mode,
         )
-        # Use the merged memory_refs (semantic + SQL)
-        prompt_context.memory_refs = memory_refs[:self._dialogue_top_k_memories]
 
         # Generate response — with fallback on failure
         response: SupportiveResponse
@@ -941,21 +978,37 @@ class Orchestrator:
         if state.user_display_name:
             state_summary["user"] = state.user_display_name
 
-        response.memory_refs = memory_refs[:self._dialogue_top_k_memories]
+        response.memory_refs = prompt_context.memory_refs[:self._dialogue_top_k_memories]
         response.state_summary = state_summary
         response.fallback_used = fallback_used
         response.tool_usage = tool_usage
         response.source_refs = source_refs
         response.metadata["turn_modality"] = modality
+        if turn_intent is not None:
+            response.metadata["turn_intent"] = turn_intent.value
         if safety_flags:
             response.safety_flags = safety_flags
+
+        response.limited_mode = backend_limited_mode or fallback_used
+        if response.limited_mode and not response.limited_mode_reason:
+            response.limited_mode_reason = (
+                "LLM unavailable; using deterministic templates"
+            )
+
+        # Keep spoken output natural; keep source list in display text only.
+        base_text = response.message.strip()
+        response.spoken_text = response.spoken_text or base_text
+        response.display_text = response.display_text or base_text
 
         if source_refs:
             rendered_refs = [
                 f"- {item.get('title', 'Source')}: {item.get('url', '')}"
                 for item in source_refs[:3]
             ]
-            response.message = f"{response.message}\n\nSources:\n" + "\n".join(rendered_refs)
+            response.display_text = f"{response.display_text}\n\nSources:\n" + "\n".join(rendered_refs)
+
+        # Preserve legacy message field for existing callers.
+        response.message = response.display_text
 
         # Update state
         self.state_manager.increment_turn(session_id)

@@ -53,6 +53,10 @@ class MemoryStatus(StrEnum):
 class ResponseStrategy(StrEnum):
     """Strategy for generating a supportive response."""
 
+    ANSWER = "answer"
+    WEB_ANSWER = "web_answer"
+    CLARIFY = "clarify"
+    PROACTIVE_CHECK_IN = "proactive_check_in"
     GREET = "greet"
     CHECK_IN = "check_in"
     ENCOURAGE = "encourage"
@@ -107,6 +111,20 @@ class TurnRole(StrEnum):
 
     USER = "user"
     SYSTEM = "system"
+
+
+class TurnIntent(StrEnum):
+    """Deterministic intent class for a single user turn."""
+
+    DIRECT_QUESTION = "direct_question"
+    TASK_REQUEST = "task_request"
+    FOLLOW_UP = "follow_up"
+    RECALL = "recall"
+    EMOTIONAL_SHARE = "emotional_share"
+    GREETING = "greeting"
+    ACKNOWLEDGMENT = "acknowledgment"
+    SMALLTALK = "smalltalk"
+    UNCLEAR = "unclear"
 
 
 class FactStatus(StrEnum):

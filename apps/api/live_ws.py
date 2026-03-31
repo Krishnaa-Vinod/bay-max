@@ -136,6 +136,7 @@ def build_snapshot_message(
             "requested": status.voice_mode_requested,
             "fallback_reason": status.voice_fallback_reason,
             "speech_loop_state": status.speech_loop_state,
+            "proactive_mode": status.proactive_mode,
         },
         "session": {
             "id": str(session_id) if session_id else None,
@@ -195,6 +196,8 @@ def build_snapshot_message(
             "stt_backend": status.stt_backend,
             "speaking_lock": status.speaking_lock_active,
             "last_heard": status.last_heard_text or "",
+            "transcript_quality_score": status.transcript_quality_score,
+            "transcript_quality_reason": status.transcript_quality_reason,
             "mic_mode": status.mic_mode,
         },
         "session_binding": status.session_binding,

@@ -123,16 +123,27 @@
 - [x] Developer workflow: ui-install, run-ui, run-full Makefile targets
 - [x] New docs: COMPANION_UI_ARCHITECTURE.md, WEBSOCKET_PROTOCOL.md
 
+## Iteration 013 - Friendly Voice Assistant Core (Current)
+- [x] Single authoritative `AssistantVoiceState` enum for voice state machine
+- [x] `AssistantStateMachine` class with explicit transitions
+- [x] Activation modes: push_to_talk, continuous_vad, wake_phrase_gate
+- [x] `ActivationGate` abstraction for future wake-word backend swapping
+- [x] Wake phrase detection (ASR-based provisional implementation)
+- [x] Follow-up window after speaking for natural conversation flow
+- [x] Configuration settings for activation mode, wake phrases, follow-up window
+- [x] State machine transition tests (43 tests)
+- [x] New docs: VOICE_ASSISTANT_ARCHITECTURE.md
+- [x] Updated README, ROADMAP, BACKLOG, PROJECT_BRIEF, project_state.json
+
 ## Future Iterations
+- Dedicated wake-word engine integration (Porcupine, OpenWakeWord)
 - Async SQLite migration (aiosqlite throughout)
-- Emotion recognition from facial expressions
 - Multi-session user journey tracking
 - Salience-decay over time for episodic memory
 - Conversation history and context window management
-- Barge-in support (interrupt Bay-Max while speaking)
-- Wake-word detection for hands-free activation
 - Speaker diarization for multi-person support
 - MediaPipe Tasks API migration for pose estimation
 - LLM-based semantic fact extraction during consolidation
-- Gradio live inspection tab for live-mode state
+- Proactive emotional check-ins (re-enable after voice core stable)
+- Internal specialist agent delegation (behind single assistant boundary)
 - Production deployment considerations

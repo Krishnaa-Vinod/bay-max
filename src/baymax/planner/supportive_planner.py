@@ -2,7 +2,7 @@
 
 import logging
 
-from baymax.core.enums import EmotionLabel, EngagementLevel, ResponseStrategy
+from baymax.core.enums import EmotionLabel, EngagementLevel, ResponseStrategy, TurnIntent
 from baymax.planner.interfaces import ResponsePlanner
 from baymax.schemas.memory import MemoryQueryResult
 from baymax.state.models import InteractionState
@@ -12,15 +12,6 @@ logger = logging.getLogger(__name__)
 
 class SupportivePlanner(ResponsePlanner):
     """Rule-based planner that chooses supportive response strategies with soft affect bias."""
-
-    _RECALL_KEYWORDS = [
-        "remember", "recall", "memory", "memories",
-        "last time", "previously", "before",
-    ]
-    _DIRECT_ASK_KEYWORDS = [
-        "how", "what", "why", "can you", "could you", "help me",
-        "give me", "tell me", "suggest", "steps", "advice", "tip",
-    ]
 
     def __init__(
         self,
@@ -53,9 +44,17 @@ class SupportivePlanner(ResponsePlanner):
         state: InteractionState,
         memories: MemoryQueryResult,
         context: str = "",
+        turn_intent: TurnIntent | None = None,
+        proactive: bool = False,
     ) -> ResponseStrategy:
-        # Get base strategy using existing logic
-        base_strategy = self._get_base_strategy(state, memories, context)
+        # Get base strategy using deterministic intent first.
+        base_strategy = self._get_base_strategy(
+            state,
+            memories,
+            context,
+            turn_intent=turn_intent,
+            proactive=proactive,
+        )
 
         # Apply affect bias if enabled and confidence is sufficient
         if (self.affect_bias_enabled
@@ -79,22 +78,34 @@ class SupportivePlanner(ResponsePlanner):
         state: InteractionState,
         memories: MemoryQueryResult,
         context: str,
+        turn_intent: TurnIntent | None,
+        proactive: bool,
     ) -> ResponseStrategy:
-        lower_context = context.lower() if context else ""
+        """Get base strategy prioritizing user intent and coherence."""
+        if proactive:
+            return ResponseStrategy.PROACTIVE_CHECK_IN
 
-        """Get base strategy using original logic."""
-        # Detect explicit recall intent from user context
-        if context and memories.total_count > 0:
-            if any(kw in lower_context for kw in self._RECALL_KEYWORDS):
-                return ResponseStrategy.RECALL
+        if turn_intent == TurnIntent.RECALL:
+            return ResponseStrategy.RECALL
 
-        # Explicit user asks should get concrete guidance, not a first-turn greeting.
-        has_direct_ask = bool(context) and (
-            "?" in context
-            or any(kw in lower_context for kw in self._DIRECT_ASK_KEYWORDS)
-        )
-        if has_direct_ask:
-            return ResponseStrategy.SUGGEST
+        if turn_intent == TurnIntent.EMOTIONAL_SHARE:
+            return ResponseStrategy.EMPATHIZE
+
+        if turn_intent in (
+            TurnIntent.DIRECT_QUESTION,
+            TurnIntent.TASK_REQUEST,
+            TurnIntent.FOLLOW_UP,
+        ):
+            return ResponseStrategy.ANSWER
+
+        if turn_intent == TurnIntent.GREETING:
+            return ResponseStrategy.GREET
+
+        if turn_intent == TurnIntent.ACKNOWLEDGMENT:
+            return ResponseStrategy.ENCOURAGE
+
+        if turn_intent == TurnIntent.UNCLEAR:
+            return ResponseStrategy.CLARIFY
 
         # First interaction: greet
         if state.turn_count == 0:
@@ -131,7 +142,13 @@ class SupportivePlanner(ResponsePlanner):
         arousal = state.arousal
 
         # Never override greeting or explicit recall - these are interaction-critical
-        if base_strategy in (ResponseStrategy.GREET, ResponseStrategy.RECALL):
+        if base_strategy in (
+            ResponseStrategy.GREET,
+            ResponseStrategy.RECALL,
+            ResponseStrategy.ANSWER,
+            ResponseStrategy.WEB_ANSWER,
+            ResponseStrategy.CLARIFY,
+        ):
             return base_strategy
 
         # Low valence + low arousal: user appears subdued/thoughtful

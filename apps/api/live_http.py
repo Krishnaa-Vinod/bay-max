@@ -83,11 +83,18 @@ class UIBootstrapState(BaseModel):
     # Feature flags
     speech_input_enabled: bool = False
     speech_disabled_reason: str = ""
+    proactive_mode: str = "affect_only"
     web_tools_enabled: bool = False
     web_tools_available: bool = False
     web_tools_disabled_reason: str = ""
     affect_enabled: bool = False
     tts_enabled: bool = False
+    transcript_quality_score: float = 0.0
+    transcript_quality_reason: str = ""
+    emotion_valence: float = 0.0
+    emotion_arousal: float = 0.0
+    emotion_confidence: float = 0.0
+    emotion_debug_summary: str = ""
 
     # Recognition/session diagnostics
     face_detected: bool = False
@@ -217,6 +224,21 @@ def _resolve_memory_unavailable_reason() -> tuple[str, str]:
     return ("no active user", hint)
 
 
+def _display_text(response: Any) -> str:
+    display = getattr(response, "display_text", None)
+    if isinstance(display, str) and display.strip():
+        return display
+    message = getattr(response, "message", "")
+    return message if isinstance(message, str) else str(message)
+
+
+def _spoken_text(response: Any) -> str:
+    spoken = getattr(response, "spoken_text", None)
+    if isinstance(spoken, str) and spoken.strip():
+        return spoken
+    return _display_text(response)
+
+
 @router.get("/frame/latest")
 async def get_latest_frame():
     """Return the latest annotated frame as JPEG.
@@ -314,11 +336,18 @@ async def get_ui_state() -> UIBootstrapState:
         # Feature flags
         state.speech_input_enabled = status.speech_input_enabled
         state.speech_disabled_reason = status.speech_disabled_reason
+        state.proactive_mode = status.proactive_mode
         state.web_tools_enabled = status.web_tools_enabled
         state.web_tools_available = status.web_tools_available
         state.web_tools_disabled_reason = status.web_tools_disabled_reason
         state.affect_enabled = status.affect_enabled
         state.tts_enabled = bool(status.tts_backend and status.tts_backend != "null")
+        state.transcript_quality_score = status.transcript_quality_score
+        state.transcript_quality_reason = status.transcript_quality_reason
+        state.emotion_valence = status.emotion_valence
+        state.emotion_arousal = status.emotion_arousal
+        state.emotion_confidence = status.emotion_confidence
+        state.emotion_debug_summary = status.emotion_debug_summary
 
         # Recognition/session diagnostics
         state.face_detected = status.face_detected
@@ -399,6 +428,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
             source="ui_text",
         )
         _live_runtime._status.turn_count += 1
+        _live_runtime.scheduler.note_user_turn()
 
         # Generate response
         response = await _orchestrator.respond(
@@ -412,14 +442,15 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         await _orchestrator.add_turn(
             session_id=session_id,
             role=TurnRole.SYSTEM,
-            text=response.message,
+            text=_display_text(response),
             user_id=user_id,
             source="ui_text_reply",
         )
         _live_runtime._status.turn_count += 1
+        _live_runtime.scheduler.note_assistant_turn()
 
         # Update runtime status
-        _live_runtime._status.last_response_text = response.message
+        _live_runtime._status.last_response_text = _display_text(response)
         _live_runtime._status.last_response_at = datetime.utcnow()
         # Track memory refs for UI (iteration 010b hotfix)
         refs = response.memory_refs[:10] if response.memory_refs else []
@@ -431,7 +462,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         if _live_runtime.speech_service is not None:
             try:
                 await _live_runtime._speak_response(
-                    response.message,
+                    _spoken_text(response),
                     session_id,
                     "ui_text_input",
                 )
@@ -468,7 +499,7 @@ async def submit_text_input(request: TextInputRequest) -> TextInputResponse:
         return TextInputResponse(
             success=True,
             session_id=str(session_id),
-            response_text=response.message,
+            response_text=_display_text(response),
             memory_refs=[
                 {"text": ref, "score": None} for ref in response.memory_refs
             ],
@@ -626,16 +657,74 @@ async def get_recent_memories() -> MemoryRecentResponse:
     user_id = _live_runtime.status.current_user_id
     if user_id is None:
         reason, hint = _resolve_memory_unavailable_reason()
-        return MemoryRecentResponse(
-            empty_reason="no active user",
-            recognition_reason=reason,
-            memory_unavailable_hint=hint,
-        )
+        session_id = _live_runtime.supervisor.current_session_id
+        if session_id is None:
+            return MemoryRecentResponse(
+                empty_reason="no active user",
+                recognition_reason=reason,
+                memory_unavailable_hint=hint,
+            )
+
+        # Fallback for anonymous sessions: show persisted chat turns so users can
+        # verify the current session is being recorded even before face binding.
+        try:
+            turns = await _orchestrator.get_turns(session_id)
+            recent_turns = turns[-12:]
+            memories = [
+                {
+                    "text": f"{t.role.value}: {t.text}",
+                    "type": "session_turn",
+                    "created_at": t.timestamp.isoformat(),
+                }
+                for t in recent_turns
+                if t.text and t.text.strip()
+            ]
+
+            return MemoryRecentResponse(
+                memories=memories,
+                facts=[],
+                stats=MemoryStats(
+                    total_memories=len(memories),
+                    total_facts=0,
+                    total_sessions=1,
+                ),
+                empty_reason="" if memories else "no retrieved memories yet",
+                recognition_reason=reason,
+                memory_unavailable_hint=(
+                    "Showing session turns; long-term memory requires enrolled-user recognition."
+                ),
+            )
+        except Exception as e:
+            logger.warning("Failed to build anonymous session memory fallback: %s", e)
+            return MemoryRecentResponse(
+                empty_reason="memory service error",
+                recognition_reason=reason,
+                memory_unavailable_hint=hint,
+                error=str(e),
+            )
 
     try:
+        session_id = _live_runtime.supervisor.current_session_id
+
+        # Always include current session turns so users can verify in-session
+        # recording immediately, even before end-of-session consolidation.
+        session_turn_memories: list[dict[str, Any]] = []
+        if session_id is not None:
+            turns = await _orchestrator.get_turns(session_id)
+            for t in turns[-8:]:
+                if not t.text or not t.text.strip():
+                    continue
+                session_turn_memories.append(
+                    {
+                        "text": f"{t.role.value}: {t.text}",
+                        "type": "session_turn",
+                        "created_at": t.timestamp.isoformat(),
+                    }
+                )
+
         # Get memory summary
         summary = await _orchestrator.get_memory_summary(user_id)
-        memories = [
+        long_term_memories = [
             {
                 "text": m.content,
                 "type": "episodic",
@@ -643,12 +732,14 @@ async def get_recent_memories() -> MemoryRecentResponse:
             }
             for m in (summary.recent_episodic or [])[:10]
         ]
+        memories = session_turn_memories + long_term_memories
         facts = [
             {"key": "fact", "value": f.content, "confidence": f.confidence}
             for f in (summary.confirmed_facts or [])[:10]
         ]
         empty_reason = "" if memories else "no retrieved memories yet"
-        recognition_reason, hint = _resolve_memory_unavailable_reason()
+        recognition_reason = "recognized enrolled user"
+        hint = ""
 
         return MemoryRecentResponse(
             memories=memories,

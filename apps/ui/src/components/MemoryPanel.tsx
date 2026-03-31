@@ -23,6 +23,7 @@ interface MemoryStats {
 }
 
 export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, sessionBinding }: MemoryPanelProps) {
+  const [recentMemories, setRecentMemories] = useState<Array<{ text: string; type: string; created_at: string }>>([]);
   const [facts, setFacts] = useState<Fact[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,20 +37,13 @@ export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, 
 
   // Fetch memories when user changes
   useEffect(() => {
-    if (!userId && !debugMode) {
-      setFacts([]);
-      setStats(null);
-      setEmptyReason('no active user');
-      setMemoryError(null);
-      return;
-    }
-
     const fetchMemories = async () => {
       setLoading(true);
       try {
         const data = debugMode && debugUserId
           ? await inspectDebugMemoryForUser(debugUserId)
           : await getRecentMemories();
+        setRecentMemories(data.memories ?? []);
         setFacts(data.facts);
         setStats(data.stats);
         setEmptyReason(data.empty_reason || '');
@@ -114,12 +108,12 @@ export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, 
           </div>
         )}
         <div className="flex-1 overflow-y-auto bg-baymax-bg rounded p-2 space-y-2">
-          {memoryHits.length === 0 ? (
+          {(memoryHits.length === 0 && recentMemories.length === 0) ? (
             <div className="text-center text-gray-500 text-sm py-4">
               {retrievedEmptyReason}
             </div>
           ) : (
-            memoryHits.map((hit, idx) => (
+            (memoryHits.length > 0 ? memoryHits : recentMemories).map((hit, idx) => (
               <div
                 key={`${idx}-${hit.text.slice(0, 20)}`}
                 className="text-sm p-2 bg-gray-800/50 rounded border-l-2 border-blue-500"
@@ -129,7 +123,7 @@ export function MemoryPanel({ memoryHits, userId, refreshKey, recognitionState, 
                     #{idx + 1}
                   </span>
                   <span className="text-xs text-gray-500">
-                    {hit.score !== null ? `score: ${hit.score.toFixed(2)}` : ''}
+                    {'score' in hit && typeof hit.score === 'number' ? `score: ${hit.score.toFixed(2)}` : ''}
                   </span>
                 </div>
                 <div className="text-gray-300">{hit.text}</div>

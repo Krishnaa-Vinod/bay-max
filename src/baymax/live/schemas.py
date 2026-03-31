@@ -32,12 +32,78 @@ class CompanionEventType(StrEnum):
     POSTURE_CHANGED = "posture_changed"
     ENGAGEMENT_CHANGED = "engagement_changed"
     QUIET_COMPANIONSHIP_DUE = "quiet_companionship_due"
+    AFFECT_DISTRESS_PERSISTENT = "affect_distress_persistent"
 
 
 class VoiceMode(StrEnum):
     REALTIME = "realtime_voice"
     LOCAL_CHAINED = "local_chained_voice"
     TEXT_ONLY = "text_only"
+
+
+class AssistantVoiceState(StrEnum):
+    """Canonical voice assistant runtime states (Iteration 013).
+
+    This is the single authoritative state machine for the assistant turn-taking loop.
+    All backend, WebSocket telemetry, and UI should use these exact state names.
+
+    State transitions:
+        idle ─[activation]─► armed ─[voice detected]─► listening
+                                  ▲                         │
+                                  │   ┌──────────────────┬──┘
+                                  │   ▼                  ▼
+                           cooldown ◄── speaking ◄── thinking
+                                  │        │
+                                  ▼        ▼
+                               idle   interrupted ─► listening/idle
+    """
+
+    IDLE = "idle"
+    """Inactive, not listening. Waiting for activation trigger or mode change."""
+
+    ARMED = "armed"
+    """Ready to listen. In continuous_vad/wake_phrase_gate mode, monitoring."""
+
+    LISTENING = "listening"
+    """Actively capturing user speech. VAD has detected speech onset."""
+
+    THINKING = "thinking"
+    """Processing user input: transcribing, retrieving context, generating response."""
+
+    SPEAKING = "speaking"
+    """Delivering spoken response via TTS. Mic input suppressed."""
+
+    COOLDOWN = "cooldown"
+    """Brief pause after speaking before returning to armed/idle. Follow-up window active."""
+
+    INTERRUPTED = "interrupted"
+    """User barged in while assistant was speaking. Transitioning to listening."""
+
+
+class ActivationMode(StrEnum):
+    """Activation modes for the voice assistant (Iteration 013).
+
+    Determines how the assistant transitions from idle to listening.
+    """
+
+    PUSH_TO_TALK = "push_to_talk"
+    """Explicit button-based activation. Debug-friendly and most reliable."""
+
+    CONTINUOUS_VAD = "continuous_vad"
+    """Always-listening using VAD segmentation. Good speaking lock and echo suppression required."""
+
+    WAKE_PHRASE_GATE = "wake_phrase_gate"
+    """ASR-gated phrase activation (e.g., 'hey baymax'). Provisional implementation using
+    phrase matching on transcripts. NOT equivalent to a production wake-word model."""
+
+    @classmethod
+    def from_string(cls, value: str) -> "ActivationMode":
+        """Convert a string to an ActivationMode, with fallback to CONTINUOUS_VAD."""
+        value_lower = value.lower().strip()
+        for mode in cls:
+            if mode.value == value_lower:
+                return mode
+        return cls.CONTINUOUS_VAD
 
 
 class LiveRuntimeStatus(BaseModel):
@@ -49,6 +115,12 @@ class LiveRuntimeStatus(BaseModel):
     voice_mode_requested: str = "local_chained"
     voice_fallback_reason: str = ""
     speech_loop_state: str = "idle"
+    # Iteration 013: Typed assistant voice state
+    assistant_state: AssistantVoiceState = AssistantVoiceState.IDLE
+    activation_mode: ActivationMode = ActivationMode.CONTINUOUS_VAD
+    wake_phrases_active: list[str] = Field(default_factory=list)
+    follow_up_window_active: bool = False
+    follow_up_remaining_sec: float = 0.0
     session_status: SessionLifecycleState = SessionLifecycleState.IDLE
     current_user_id: UUID | None = None
     current_user_display_name: str | None = None
@@ -66,6 +138,7 @@ class LiveRuntimeStatus(BaseModel):
     dialogue_requested_backend: str = ""
     dialogue_requested_model: str = ""
     dialogue_fallback_warning: str = ""
+    proactive_mode: str = "affect_only"
     last_event: str | None = None
     last_event_at: datetime | None = None
     last_response_text: str | None = None
@@ -93,6 +166,8 @@ class LiveRuntimeStatus(BaseModel):
     speaking_lock_active: bool = False
     last_heard_text: str = ""
     transcription_latency_ms: float = 0.0
+    transcript_quality_score: float = 0.0
+    transcript_quality_reason: str = ""
     mic_mode: str = "vad"
     # Capability reporting + latency diagnostics (iteration 011)
     capability_mic: bool = False

@@ -139,3 +139,32 @@ Returns:
   "fallback_enabled": true
 }
 ```
+
+## Answer-First Routing (Iteration 012+)
+
+Bay-Max uses **intent routing** to select the appropriate response strategy:
+
+| Intent Type | Strategy | Behavior |
+|-------------|----------|----------|
+| Direct question | `answer_first` | Give the answer, then optional context |
+| Follow-up question | `follow_up` | Continue the thread with grounded context |
+| Emotional disclosure | `empathize_first` | Validate feelings before any help |
+| Memory recall | `recall` | Surface relevant memories naturally |
+| Unclear/short text | `clarify` | Ask for repeat instead of guessing |
+
+The `SpeechIntentRouter` in `src/baymax/dialogue/intent_router.py` handles this
+classification. It examines transcript quality, emotional keywords, and prior
+turn context to select the most appropriate response type.
+
+## Specialist Delegation (Iteration 013+)
+
+Delegation to specialists (web search, memory, tools) is **optional and bounded**:
+
+- The primary assistant handles most turns directly
+- Web tools are invoked only when up-to-date information is needed
+- Memory retrieval is used only when personalization is clearly relevant
+- Vision/perception context is used only when grounded and helpful
+
+This is **not** a multi-agent system with competing top-level orchestrators.
+Specialists are tools/adapters behind a single entry point, not autonomous
+agents in the hot path. See `docs/VOICE_ASSISTANT_ARCHITECTURE.md` for details.

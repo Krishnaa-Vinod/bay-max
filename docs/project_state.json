@@ -1,8 +1,8 @@
 {
-  "iteration": "011",
-  "branch_name": "feature/iteration-011-voice-first-web-assistant",
+  "iteration": "013",
+  "branch_name": "feature/iteration-013-friendly-voice-assistant-core",
   "status": "in_progress",
-  "last_updated": "2026-03-19",
+  "last_updated": "2026-03-31",
   "modules_implemented": [
     "config",
     "core",
@@ -14,8 +14,10 @@
     "orchestrator",
     "perception",
     "live",
+    "live/assistant_state",
     "tts",
     "audio",
+    "audio/activation_gate",
     "perception/emotion",
     "perception/emotion_smoother",
     "memory/clinical_safety",
@@ -70,29 +72,26 @@
     "MediaPipe Pose uses legacy mp.solutions.pose API (not the new Tasks API)",
     "LanceDB vector store requires separate install (pip install baymax[vector])",
     "Semantic fact extraction uses simple keyword heuristics (not LLM-based)",
-    "Live webcam mode implemented but not exercised on this headless machine (Sol has no camera); replay mode verified via automated tests",
-    "OpenCV imshow overlay will fail silently on headless machines — this is expected and handled gracefully",
-    "PortAudio may not be installed on headless machines (required for TTS audio playback via sounddevice)",
+    "Wake phrase gate uses ASR transcript matching — NOT equivalent to production wake-word model",
+    "OpenCV imshow overlay will fail silently on headless machines — expected and handled gracefully",
+    "PortAudio may not be installed on headless machines (required for TTS audio playback)",
     "Piper TTS backend is a placeholder — not yet fully implemented",
-    "VT801-VT810 manual hardware tests (microphone, speaker) not_run on Sol — requires real audio hardware",
     "MediaPipe not installed in current environment — runtime falls back to null affect backend gracefully",
     "Companion UI requires npm and Node.js to be installed",
-    "Browser manual tests not run on headless Sol environment",
-    "Realtime voice path requires OPENAI_API_KEY and network connectivity; local chained mode remains default fallback",
-    "Web search provider currently uses DuckDuckGo HTML endpoint parsing and may be rate/markup sensitive"
+    "Realtime voice path requires OPENAI_API_KEY and network connectivity; local chained mode is default"
   ],
   "next_tasks": [
-    "Run full browser-based voice verification on a machine with webcam, microphone, and speakers",
-    "Wire browser WebRTC realtime session path end-to-end behind /v1/realtime/session",
-    "Add richer source ranking and provider failover in web tool broker",
-    "Add integration tests for interrupt latency and voice mode transition telemetry",
+    "Integrate AssistantStateMachine into LiveRuntime",
+    "Update WebSocket telemetry to use AssistantVoiceState vocabulary",
+    "Add activation mode to UI state display",
+    "Run full browser-based voice verification",
     "Migrate SQLite store to fully async aiosqlite",
-    "Complete Piper TTS backend implementation"
+    "Integrate dedicated wake-word engine (Porcupine, OpenWakeWord)"
   ],
   "metadata": {
     "supervisor": "Krishnaa Vinod",
     "product_name": "Bay-Max",
-    "scope": "voice-first assistant with recognition personalization and web-assisted responses",
-    "api_version": "0.11.0"
+    "scope": "friendly voice-first assistant with memory and optional perception enhancement",
+    "api_version": "0.13.0"
   }
 }

@@ -1,7 +1,17 @@
 # Bay-Max Architecture
 
 ## Overview
-Bay-Max follows a **modular monolith** architecture. All modules live in a single Python package (`src/baymax/`) with clear interface boundaries between them.
+
+Bay-Max follows a **modular monolith** architecture with a **single primary assistant runtime** that owns the voice interaction loop. All modules live in a single Python package (`src/baymax/`) with clear interface boundaries.
+
+### Design Principles (Iteration 013)
+
+1. **Voice assistant first**: The primary experience is user-initiated voice questions → direct answers
+2. **Single assistant runtime**: One canonical state machine owns turn-taking
+3. **Optional specialist delegation**: Memory, web, and perception enhance responses but don't dominate
+4. **Simple hot path**: Complexity lives behind tools/adapters, not in the core loop
+
+See [VOICE_ASSISTANT_ARCHITECTURE.md](VOICE_ASSISTANT_ARCHITECTURE.md) for the detailed voice runtime contract.
 
 ## Runtime Stack
 - Python 3.11+
@@ -67,19 +77,64 @@ src/baymax/
 │   ├── piper_provider.py       PiperTTSProvider (placeholder)
 │   ├── speech_service.py       SpeechService with queued playback
 │   └── schemas.py              TTS Pydantic schemas
-├── audio/           Speech input pipeline (microphone, VAD, ASR, echo suppression)
+├── audio/           Speech input pipeline (microphone, VAD, ASR, activation)
 │   ├── schemas.py              Audio Pydantic schemas (AudioChunkInfo, VADDecision, etc.)
 │   ├── microphone.py           MicrophoneCapture + NullMicrophone
 │   ├── vad.py                  SileroVAD + NullVAD (voice activity detection)
 │   ├── transcriber.py          ASRProvider ABC + FasterWhisperProvider + NullASRProvider
 │   ├── echo_suppression.py     EchoSuppressor (text-similarity based)
+│   ├── activation_gate.py      ActivationGate ABC + PTT/VAD/WakePhrase implementations
 │   └── speech_input_service.py SpeechInputService (full pipeline orchestrator)
+├── live/            Live runtime and voice state machine
+│   ├── schemas.py              AssistantVoiceState, ActivationMode, LiveRuntimeStatus
+│   ├── assistant_state.py      AssistantStateMachine (canonical voice state)
+│   ├── runtime.py              LiveRuntime (main async loop)
+│   ├── session_supervisor.py   Presence-based session lifecycle
+│   ├── event_engine.py         Companion event detection
+│   ├── proactive_scheduler.py  Cooldown enforcement for proactive responses
+│   └── ...
 └── orchestrator/    End-to-end flow coordination (Orchestrator)
 ```
 
-## Data Flow
+## Voice Assistant Data Flow (Iteration 013)
 
-1. **Capture**: Frame source provides video frames (stub — webcam not yet implemented)
+The primary runtime is a **voice assistant loop**:
+
+```
+User Speaks
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│           AssistantStateMachine                       │
+│  idle → armed → listening → thinking → speaking → ... │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+Activation Gate (PTT / VAD / Wake Phrase)
+    │
+    ▼
+Microphone → VAD → ASR → Echo Suppression
+    │
+    ▼
+Intent Classification + Context Retrieval (optional)
+    │
+    ▼
+Dialogue Generation (answer-first / empathy-first)
+    │
+    ▼
+TTS → Audio Playback
+    │
+    ▼
+Follow-Up Window → [repeat or idle]
+```
+
+See [VOICE_ASSISTANT_ARCHITECTURE.md](VOICE_ASSISTANT_ARCHITECTURE.md) for details.
+
+## Perception Data Flow (Optional Enhancement)
+
+When camera/vision is available, perception enhances the voice assistant:
+
+1. **Capture**: Frame source provides video frames
 2. **Perception**: Face detection → recognition → pose estimation → engagement scoring
 3. **State**: Update interaction state for the session
 4. **Memory**: Store observations, retrieve relevant memories (SQL + vector search)

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "baymax"
-version = "0.7.0"
-description = "Bay-Max: A memory-first empathetic companion agent"
+version = "0.13.0"
+description = "Bay-Max: A friendly voice-first assistant with memory and empathetic understanding"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

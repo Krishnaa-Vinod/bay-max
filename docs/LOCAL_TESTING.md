@@ -1,10 +1,12 @@
 # Local Testing Guide
 
-This document explains how to test Bay-Max locally on a headless machine (e.g., HPC cluster nodes) without a display.
+This document explains how to test Bay-Max locally.
 
-## Iteration 011 Quick Smoke (Voice-First)
+## Iteration 013 Quick Smoke (Voice Assistant Core)
 
-1. Start backend + runtime in one process:
+### State Machine Verification
+
+1. Start backend + runtime:
 
 ```bash
 make run-local-backend-full
@@ -16,38 +18,90 @@ make run-local-backend-full
 make run-ui
 ```
 
-3. Verify mode transparency in UI diagnostics:
-
-- `voice_mode` shows one of: `realtime_voice`, `local_chained_voice`, `text_only`
-- fallback reason is shown when realtime is unavailable
-- web tool availability reason is shown when disabled/unavailable
-
-4. Verify mic lifecycle and interrupt path:
+3. Check assistant state in `/v1/live/status`:
 
 ```bash
-curl -X POST http://localhost:8000/v1/live/mic/toggle \
-  -H 'content-type: application/json' \
-  -d '{"action":"start"}'
+curl http://localhost:8000/v1/live/status | jq '.assistant_state, .activation_mode'
+```
 
+Expected: `"armed"` (or `"idle"` if push-to-talk) and your configured activation mode.
+
+### Activation Modes
+
+**Continuous VAD (default):**
+```bash
+export BAYMAX_ACTIVATION_MODE=continuous_vad
+make run-local-backend-full
+```
+- Speak naturally; Bay-Max should respond without explicit activation.
+
+**Push-to-Talk:**
+```bash
+export BAYMAX_ACTIVATION_MODE=push_to_talk
+make run-local-backend-full
+```
+- Click mic button or use API to activate.
+- Should return to idle after response.
+
+**Wake Phrase Gate:**
+```bash
+export BAYMAX_ACTIVATION_MODE=wake_phrase_gate
+export BAYMAX_WAKE_PHRASES="hey baymax,baymax"
+make run-local-backend-full
+```
+- Say "Hey Baymax, what time is it?"
+- Should only activate when wake phrase is detected.
+- Note: Uses ASR matching, not production wake-word model.
+
+### Follow-Up Window
+
+1. Ask a question and get a response.
+2. Within 4 seconds (default `BAYMAX_FOLLOW_UP_WINDOW_SEC`), ask a follow-up.
+3. Should work without re-activation.
+
+### Interrupt / Barge-In
+
+1. Start a response that generates long speech.
+2. Speak over Bay-Max or use interrupt API:
+
+```bash
 curl -X POST http://localhost:8000/v1/live/voice/interrupt
 ```
 
-5. Verify realtime provisioning endpoint:
+3. TTS should stop, state should transition to `interrupted` → `listening`.
 
-```bash
-curl -X POST http://localhost:8000/v1/realtime/session
-```
+## Iteration 012 Quick Smoke (Answer-First + Speech Hygiene)
 
-Expected behavior:
+1. Ask direct questions through mic and text:
 
-- If `OPENAI_API_KEY` is set and realtime is enabled, returns `mode: realtime_voice`.
-- Otherwise returns `mode: local_chained_voice` with an explicit `reason`.
+- `What is the capital of France?`
+- `How do I center a div in CSS?`
 
-6. Verify web-tool path with visible references:
+Expected: answer-first, concise, on-topic. No forced memory mention.
 
-- Ask: `Search the latest NVIDIA stock price and cite sources.`
-- Confirm response includes `Sources:` section.
-- Confirm telemetry includes tool usage (`search_web`, `fetch_url`, `summarize_sources`).
+2. Follow-up grounding:
+
+- Ask a question, then immediately say `why?`
+
+Expected: coherent follow-up grounded in prior turn.
+
+3. Emotional path:
+
+- Say `I feel sad today.`
+
+Expected: empathy-first response, not generic factual mode.
+
+4. Proactive suppression by default:
+
+- Keep runtime active with recognition/posture/engagement changes.
+
+Expected: no random proactive speech from those events under default `BAYMAX_PROACTIVE_MODE=affect_only`.
+
+5. Transcript quality gate:
+
+- Speak clipped/garbled input or very short filler.
+
+Expected: `I did not catch that clearly. Could you repeat it?`
 
 ## Prerequisites
 
@@ -93,6 +147,7 @@ make run-local-backend-full
 ```
 
 Full mode dialogue preference order:
+
 1. Ollama (if reachable)
 2. Transformers (if explicitly configured)
 3. Rule-based fallback
@@ -130,14 +185,14 @@ cp .env.example .env
 
 Key variables:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BAYMAX_DEVICE` | `cuda_if_available_else_cpu` | Compute device for models |
-| `BAYMAX_POSE_BACKEND` | `mediapipe` | Pose estimation backend (`mediapipe` or `stub`) |
-| `BAYMAX_POSE_MIN_CONFIDENCE` | `0.5` | Minimum pose detection confidence |
-| `BAYMAX_ENABLE_ANNOTATIONS` | `true` | Save annotated debug frames |
-| `BAYMAX_ARTIFACT_DIR` | `./artifacts` | Directory for annotated outputs |
-| `BAYMAX_FACE_MATCH_THRESHOLD` | `0.75` | Cosine similarity threshold for face matching |
+| Variable                      | Default                      | Description                                     |
+| ----------------------------- | ---------------------------- | ----------------------------------------------- |
+| `BAYMAX_DEVICE`               | `cuda_if_available_else_cpu` | Compute device for models                       |
+| `BAYMAX_POSE_BACKEND`         | `mediapipe`                  | Pose estimation backend (`mediapipe` or `stub`) |
+| `BAYMAX_POSE_MIN_CONFIDENCE`  | `0.5`                        | Minimum pose detection confidence               |
+| `BAYMAX_ENABLE_ANNOTATIONS`   | `true`                       | Save annotated debug frames                     |
+| `BAYMAX_ARTIFACT_DIR`         | `./artifacts`                | Directory for annotated outputs                 |
+| `BAYMAX_FACE_MATCH_THRESHOLD` | `0.75`                       | Cosine similarity threshold for face matching   |
 
 ## CLI Test Script
 
@@ -267,24 +322,24 @@ Outputs: `./artifacts/smoke_test_005.json`
 
 ### Environment Variables for Live Mode
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BAYMAX_LIVE_SOURCE` | `webcam` | Frame source: `webcam` or `replay` |
-| `BAYMAX_LIVE_CAMERA_INDEX` | `2` | Webcam device index (host-dependent; adjust if needed) |
-| `BAYMAX_PREVIEW_FPS` | `8` | Frame read rate (preview loop) |
-| `BAYMAX_ANALYSIS_INTERVAL_SEC` | `2.0` | Seconds between full analyses |
-| `BAYMAX_PRESENCE_MIN_CONSECUTIVE_FRAMES` | `2` | Frames needed to confirm presence |
-| `BAYMAX_ABSENCE_TIMEOUT_SEC` | `30.0` | Seconds before session pauses on absence |
-| `BAYMAX_SESSION_RESUME_WINDOW_SEC` | `300.0` | Seconds within which same user resumes |
-| `BAYMAX_PROACTIVE_MIN_INTERVAL_SEC` | `30.0` | Per-event-type cooldown |
-| `BAYMAX_ANY_RESPONSE_MIN_INTERVAL_SEC` | `10.0` | Global any-response cooldown |
-| `BAYMAX_QUIET_COMPANIONSHIP_INTERVAL_SEC` | `300.0` | Quiet presence interval before prompt |
-| `BAYMAX_EVENT_MIN_STABILITY_SEC` | `4.0` | Stability window for posture/engagement events |
-| `BAYMAX_ENABLE_LIVE_OVERLAY` | `true` | Draw HUD on frame (disable for headless) |
-| `BAYMAX_ENABLE_ARTIFACT_LOGGING` | `true` | Write JSONL event/response logs |
-| `BAYMAX_LIVE_ARTIFACT_DIR` | `./artifacts/live_run_006` | Artifact output directory |
-| `BAYMAX_LIVE_MAX_RUN_SEC` | `0` | Max run duration (0 = unlimited) |
-| `BAYMAX_LIVE_VIDEO_REPLAY_PATH` | `` | Path to video file or frame folder for replay |
+| Variable                                  | Default                    | Description                                            |
+| ----------------------------------------- | -------------------------- | ------------------------------------------------------ |
+| `BAYMAX_LIVE_SOURCE`                      | `webcam`                   | Frame source: `webcam` or `replay`                     |
+| `BAYMAX_LIVE_CAMERA_INDEX`                | `2`                        | Webcam device index (host-dependent; adjust if needed) |
+| `BAYMAX_PREVIEW_FPS`                      | `8`                        | Frame read rate (preview loop)                         |
+| `BAYMAX_ANALYSIS_INTERVAL_SEC`            | `2.0`                      | Seconds between full analyses                          |
+| `BAYMAX_PRESENCE_MIN_CONSECUTIVE_FRAMES`  | `2`                        | Frames needed to confirm presence                      |
+| `BAYMAX_ABSENCE_TIMEOUT_SEC`              | `30.0`                     | Seconds before session pauses on absence               |
+| `BAYMAX_SESSION_RESUME_WINDOW_SEC`        | `300.0`                    | Seconds within which same user resumes                 |
+| `BAYMAX_PROACTIVE_MIN_INTERVAL_SEC`       | `30.0`                     | Per-event-type cooldown                                |
+| `BAYMAX_ANY_RESPONSE_MIN_INTERVAL_SEC`    | `10.0`                     | Global any-response cooldown                           |
+| `BAYMAX_QUIET_COMPANIONSHIP_INTERVAL_SEC` | `300.0`                    | Quiet presence interval before prompt                  |
+| `BAYMAX_EVENT_MIN_STABILITY_SEC`          | `4.0`                      | Stability window for posture/engagement events         |
+| `BAYMAX_ENABLE_LIVE_OVERLAY`              | `true`                     | Draw HUD on frame (disable for headless)               |
+| `BAYMAX_ENABLE_ARTIFACT_LOGGING`          | `true`                     | Write JSONL event/response logs                        |
+| `BAYMAX_LIVE_ARTIFACT_DIR`                | `./artifacts/live_run_006` | Artifact output directory                              |
+| `BAYMAX_LIVE_MAX_RUN_SEC`                 | `0`                        | Max run duration (0 = unlimited)                       |
+| `BAYMAX_LIVE_VIDEO_REPLAY_PATH`           | ``                         | Path to video file or frame folder for replay          |
 
 ### Webcam Live Mode
 
@@ -359,16 +414,16 @@ snapshots/            - Annotated JPEG frames at key events (if camera available
 
 ### Environment Variables for TTS
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BAYMAX_TTS_BACKEND` | `kokoro` | TTS backend: `kokoro`, `piper`, or `null` |
-| `BAYMAX_TTS_VOICE` | `am_michael` | Voice ID for TTS synthesis |
-| `BAYMAX_TTS_SAMPLE_RATE` | `24000` | Audio sample rate in Hz |
-| `BAYMAX_TTS_OUTPUT_DIR` | `./artifacts/tts_output` | Directory for generated WAV files |
-| `BAYMAX_TTS_ENABLE_PLAYBACK` | `true` | Play audio through speakers |
-| `BAYMAX_TTS_QUEUE_MAX_SIZE` | `10` | Maximum queued utterances |
-| `BAYMAX_TTS_SPEED` | `1.0` | Speech speed multiplier |
-| `BAYMAX_ENABLE_TTS` | `true` | Enable/disable TTS globally |
+| Variable                     | Default                  | Description                               |
+| ---------------------------- | ------------------------ | ----------------------------------------- |
+| `BAYMAX_TTS_BACKEND`         | `kokoro`                 | TTS backend: `kokoro`, `piper`, or `null` |
+| `BAYMAX_TTS_VOICE`           | `am_michael`             | Voice ID for TTS synthesis                |
+| `BAYMAX_TTS_SAMPLE_RATE`     | `24000`                  | Audio sample rate in Hz                   |
+| `BAYMAX_TTS_OUTPUT_DIR`      | `./artifacts/tts_output` | Directory for generated WAV files         |
+| `BAYMAX_TTS_ENABLE_PLAYBACK` | `true`                   | Play audio through speakers               |
+| `BAYMAX_TTS_QUEUE_MAX_SIZE`  | `10`                     | Maximum queued utterances                 |
+| `BAYMAX_TTS_SPEED`           | `1.0`                    | Speech speed multiplier                   |
+| `BAYMAX_ENABLE_TTS`          | `true`                   | Enable/disable TTS globally               |
 
 ### Installing TTS Dependencies
 
@@ -427,26 +482,26 @@ make verify-007        # Run iteration 007 verification script
 
 ### Environment Variables for Speech Input
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BAYMAX_ENABLE_SPEECH_INPUT` | `true` | Enable/disable speech input globally |
-| `BAYMAX_MIC_BACKEND` | `sounddevice` | Microphone backend |
-| `BAYMAX_MIC_SAMPLE_RATE` | `48000` | Audio sample rate in Hz |
-| `BAYMAX_MIC_CHANNELS` | `1` | Audio channels (mono) |
-| `BAYMAX_MIC_DEVICE` | `default` | Microphone device ID |
-| `BAYMAX_VAD_BACKEND` | `silero` | VAD backend: `silero` or `null` |
-| `BAYMAX_VAD_THRESHOLD` | `0.65` | Speech detection threshold (0.0-1.0) |
-| `BAYMAX_VAD_MIN_SPEECH_MS` | `300` | Min speech duration in ms |
-| `BAYMAX_VAD_SILENCE_MS` | `500` | Silence timeout to end segment in ms |
-| `BAYMAX_STT_BACKEND` | `faster_whisper` | ASR backend: `faster_whisper` or `null` |
-| `BAYMAX_WHISPER_MODEL` | `base.en` | Whisper model name |
-| `BAYMAX_WHISPER_DEVICE` | `auto` | Compute device for ASR |
-| `BAYMAX_ECHO_SUPPRESSION_ENABLED` | `true` | Enable echo suppression |
-| `BAYMAX_ECHO_SIMILARITY_THRESHOLD` | `0.85` | Echo text similarity threshold |
-| `BAYMAX_MIC_MODE` | `vad` | Mic mode: `vad` or `push_to_talk` |
-| `BAYMAX_POST_SPEECH_COOLDOWN_MS` | `1500` | Cooldown after TTS finishes in ms |
-| `BAYMAX_ENABLE_LISTENING_INDICATOR` | `true` | Show listening state indicator |
-| `BAYMAX_AUDIO_ARTIFACT_DIR` | `./artifacts/audio` | Directory for audio artifacts |
+| Variable                            | Default             | Description                             |
+| ----------------------------------- | ------------------- | --------------------------------------- |
+| `BAYMAX_ENABLE_SPEECH_INPUT`        | `true`              | Enable/disable speech input globally    |
+| `BAYMAX_MIC_BACKEND`                | `sounddevice`       | Microphone backend                      |
+| `BAYMAX_MIC_SAMPLE_RATE`            | `48000`             | Audio sample rate in Hz                 |
+| `BAYMAX_MIC_CHANNELS`               | `1`                 | Audio channels (mono)                   |
+| `BAYMAX_MIC_DEVICE`                 | `default`           | Microphone device ID                    |
+| `BAYMAX_VAD_BACKEND`                | `silero`            | VAD backend: `silero` or `null`         |
+| `BAYMAX_VAD_THRESHOLD`              | `0.65`              | Speech detection threshold (0.0-1.0)    |
+| `BAYMAX_VAD_MIN_SPEECH_MS`          | `300`               | Min speech duration in ms               |
+| `BAYMAX_VAD_SILENCE_MS`             | `500`               | Silence timeout to end segment in ms    |
+| `BAYMAX_STT_BACKEND`                | `faster_whisper`    | ASR backend: `faster_whisper` or `null` |
+| `BAYMAX_WHISPER_MODEL`              | `base.en`           | Whisper model name                      |
+| `BAYMAX_WHISPER_DEVICE`             | `auto`              | Compute device for ASR                  |
+| `BAYMAX_ECHO_SUPPRESSION_ENABLED`   | `true`              | Enable echo suppression                 |
+| `BAYMAX_ECHO_SIMILARITY_THRESHOLD`  | `0.85`              | Echo text similarity threshold          |
+| `BAYMAX_MIC_MODE`                   | `vad`               | Mic mode: `vad` or `push_to_talk`       |
+| `BAYMAX_POST_SPEECH_COOLDOWN_MS`    | `1500`              | Cooldown after TTS finishes in ms       |
+| `BAYMAX_ENABLE_LISTENING_INDICATOR` | `true`              | Show listening state indicator          |
+| `BAYMAX_AUDIO_ARTIFACT_DIR`         | `./artifacts/audio` | Directory for audio artifacts           |
 
 ### Installing Speech Dependencies
 

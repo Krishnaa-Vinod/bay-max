@@ -46,9 +46,10 @@ def _select_auto_local_backend(settings: BaymaxSettings) -> tuple[str, str]:
             return "ollama", settings.ollama_model
 
         preferred_prefixes = (
-            "qwen2.5:1.5b",
-            "qwen2.5:3b",
             "qwen2.5:7b",
+            "qwen2.5:3b",
+            "qwen2.5:1.5b",
+            "qwen2.5:0.5b",
             "qwen2.5",
             "qwen",
         )
