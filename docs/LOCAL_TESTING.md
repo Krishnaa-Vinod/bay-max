@@ -1,10 +1,12 @@
 # Local Testing Guide
 
-This document explains how to test Bay-Max locally on a headless machine (e.g., HPC cluster nodes) without a display.
+This document explains how to test Bay-Max locally.
 
-## Iteration 011 Quick Smoke (Voice-First)
+## Iteration 013 Quick Smoke (Voice Assistant Core)
 
-1. Start backend + runtime in one process:
+### State Machine Verification
+
+1. Start backend + runtime:
 
 ```bash
 make run-local-backend-full
@@ -16,38 +18,57 @@ make run-local-backend-full
 make run-ui
 ```
 
-3. Verify mode transparency in UI diagnostics:
-
-- `voice_mode` shows one of: `realtime_voice`, `local_chained_voice`, `text_only`
-- fallback reason is shown when realtime is unavailable
-- web tool availability reason is shown when disabled/unavailable
-
-4. Verify mic lifecycle and interrupt path:
+3. Check assistant state in `/v1/live/status`:
 
 ```bash
-curl -X POST http://localhost:8000/v1/live/mic/toggle \
-  -H 'content-type: application/json' \
-  -d '{"action":"start"}'
+curl http://localhost:8000/v1/live/status | jq '.assistant_state, .activation_mode'
+```
 
+Expected: `"armed"` (or `"idle"` if push-to-talk) and your configured activation mode.
+
+### Activation Modes
+
+**Continuous VAD (default):**
+```bash
+export BAYMAX_ACTIVATION_MODE=continuous_vad
+make run-local-backend-full
+```
+- Speak naturally; Bay-Max should respond without explicit activation.
+
+**Push-to-Talk:**
+```bash
+export BAYMAX_ACTIVATION_MODE=push_to_talk
+make run-local-backend-full
+```
+- Click mic button or use API to activate.
+- Should return to idle after response.
+
+**Wake Phrase Gate:**
+```bash
+export BAYMAX_ACTIVATION_MODE=wake_phrase_gate
+export BAYMAX_WAKE_PHRASES="hey baymax,baymax"
+make run-local-backend-full
+```
+- Say "Hey Baymax, what time is it?"
+- Should only activate when wake phrase is detected.
+- Note: Uses ASR matching, not production wake-word model.
+
+### Follow-Up Window
+
+1. Ask a question and get a response.
+2. Within 4 seconds (default `BAYMAX_FOLLOW_UP_WINDOW_SEC`), ask a follow-up.
+3. Should work without re-activation.
+
+### Interrupt / Barge-In
+
+1. Start a response that generates long speech.
+2. Speak over Bay-Max or use interrupt API:
+
+```bash
 curl -X POST http://localhost:8000/v1/live/voice/interrupt
 ```
 
-5. Verify realtime provisioning endpoint:
-
-```bash
-curl -X POST http://localhost:8000/v1/realtime/session
-```
-
-Expected behavior:
-
-- If `OPENAI_API_KEY` is set and realtime is enabled, returns `mode: realtime_voice`.
-- Otherwise returns `mode: local_chained_voice` with an explicit `reason`.
-
-6. Verify web-tool path with visible references:
-
-- Ask: `Search the latest NVIDIA stock price and cite sources.`
-- Confirm response includes `Sources:` section.
-- Confirm telemetry includes tool usage (`search_web`, `fetch_url`, `summarize_sources`).
+3. TTS should stop, state should transition to `interrupted` → `listening`.
 
 ## Iteration 012 Quick Smoke (Answer-First + Speech Hygiene)
 

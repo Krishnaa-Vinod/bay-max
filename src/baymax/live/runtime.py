@@ -15,6 +15,8 @@ from baymax.live.frame_source import FolderFrameSource, OpenCVFrameSource
 from baymax.live.overlay import render_overlay
 from baymax.live.proactive_scheduler import ProactiveScheduler
 from baymax.live.schemas import (
+    ActivationMode,
+    AssistantVoiceState,
     CompanionEvent,
     CompanionEventType,
     LiveRunSummary,
@@ -22,6 +24,7 @@ from baymax.live.schemas import (
     SessionLifecycleState,
     VoiceMode,
 )
+from baymax.live.assistant_state import AssistantStateMachine
 from baymax.live.session_supervisor import SessionSupervisor
 from baymax.orchestrator.service import Orchestrator
 from baymax.perception.emotion import EmotionAnalyzer, get_emotion_analyzer
@@ -175,6 +178,18 @@ class LiveRuntime:
         if self._status.voice_mode != VoiceMode.REALTIME and settings.voice_mode == "realtime":
             self._status.voice_fallback_reason = "Realtime voice unavailable or not configured; using local mode"
         self._status.speech_loop_state = "idle"
+
+        # Iteration 013: Voice assistant state machine
+        activation_mode = ActivationMode.from_string(settings.activation_mode)
+        self._assistant_state = AssistantStateMachine(
+            activation_mode=activation_mode,
+            follow_up_window_sec=settings.follow_up_window_sec,
+            stay_armed_after_follow_up=settings.stay_armed_after_follow_up,
+        )
+        self._wake_phrases = settings.wake_phrases_list
+        self._wake_phrase_threshold = settings.wake_phrase_fuzzy_threshold
+        self._status.activation_mode = activation_mode
+        self._status.assistant_state = self._assistant_state.state
 
         # Perception state tracking for UI (iteration 010b hotfix)
         self._last_recognition_confidence: float | None = None
@@ -1337,6 +1352,11 @@ class LiveRuntime:
                 self._status.speech_loop_state = "speaking"
             elif self._status.vad_active or self._status.listening:
                 self._status.speech_loop_state = "listening"
+
+        # Iteration 013: Voice assistant state machine status
+        self._assistant_state.tick()
+        self._status.assistant_state = self._assistant_state.state
+        self._status.follow_up_window_active = self._assistant_state.is_follow_up_active
 
         # Affect analysis status (Iteration 009)
         if self._affect_enabled and self._affect_smoother is not None:

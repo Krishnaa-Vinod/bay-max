@@ -233,6 +233,29 @@ class BaymaxSettings(BaseSettings):
     web_search_max_results: int = 5
     web_fetch_timeout_sec: float = 8.0
 
+    # --- Iteration 013: Voice Assistant Core ---
+
+    # Activation mode: "push_to_talk" | "continuous_vad" | "wake_phrase_gate"
+    activation_mode: str = "continuous_vad"
+
+    # Wake phrases for wake_phrase_gate mode (case-insensitive matching)
+    # Phrases are matched against the start of transcripts with fuzzy tolerance
+    wake_phrases: str = "hey baymax,hi baymax,baymax"
+
+    # Fuzzy matching tolerance for wake phrases (0.0 = exact, 1.0 = very loose)
+    wake_phrase_fuzzy_threshold: float = 0.75
+
+    # Follow-up window after speaking (seconds) - user can continue without re-activating
+    follow_up_window_sec: float = 4.0
+
+    # Whether to stay armed after follow-up expires (vs returning to idle)
+    stay_armed_after_follow_up: bool = True
+
+    @property
+    def wake_phrases_list(self) -> list[str]:
+        """Parse wake_phrases string into a list of phrases."""
+        return [p.strip() for p in self.wake_phrases.split(",") if p.strip()]
+
     # --- Iteration 009: Affect Analysis / Facial Emotion Recognition ---
 
     # Master enable for affect analysis

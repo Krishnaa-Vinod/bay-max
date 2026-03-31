@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.13.0] - 2026-03-31 (Iteration 013)
+
+### Added
+- `AssistantVoiceState` enum: canonical voice state machine (idle, armed, listening, thinking, speaking, cooldown, interrupted)
+- `ActivationMode` enum: activation modes (push_to_talk, continuous_vad, wake_phrase_gate)
+- `AssistantStateMachine` class: centralized state management with explicit transitions
+- `ActivationGate` abstraction: pluggable activation mechanisms
+- `WakePhraseGate`: ASR-based wake phrase detection (provisional implementation)
+- Configuration: `BAYMAX_ACTIVATION_MODE`, `BAYMAX_WAKE_PHRASES`, `BAYMAX_FOLLOW_UP_WINDOW_SEC`
+- New doc: `docs/VOICE_ASSISTANT_ARCHITECTURE.md`
+- 43 new tests for state machine and activation modes
+
+### Changed
+- API version bumped from 0.11.0 to 0.13.0
+- `LiveRuntimeStatus` extended with `assistant_state`, `activation_mode`, `follow_up_*` fields
+- README reframed around friendly voice-assistant core
+- ARCHITECTURE.md updated with voice-first design principles
+- BACKLOG.md re-prioritized for voice assistant core
+- PROJECT_BRIEF.md updated from stale iteration-001 scope
+- ROADMAP.md updated with iteration 013 items
+
+### Design Decisions
+- **Single assistant runtime**: One primary assistant owns the interaction loop
+- **Optional specialist delegation**: Memory, web, perception enhance responses but don't dominate
+- **Wake phrase is provisional**: ASR-based, not production wake-word quality
+- **Follow-up window**: Natural multi-turn conversation without re-activation
+
 ## [0.10.0] - 2026-03-18 (Iteration 010b)
 
 ### Added
